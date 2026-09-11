@@ -96,6 +96,16 @@ body {
   cursor: not-allowed;
 }
 
+/* Keyboard users need to see where they are. :focus-visible keeps the ring off
+   mouse clicks while guaranteeing it for Tab navigation. */
+.btn:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+}
+
 .btn-primary {
   background: var(--color-accent-500);
   color: white;

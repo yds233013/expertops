@@ -31,6 +31,21 @@ function section(title: string) {
 interface Jar {
   operator?: string;
   portal?: string;
+  /** Double-submit CSRF token, exactly as a browser would hold it. */
+  csrf?: string;
+}
+
+/**
+ * Fetch the CSRF cookie the way a browser would: by loading a page first.
+ *
+ * Middleware issues it on any page request, so one GET is enough to pick it up.
+ */
+async function primeCsrf(jar: Jar): Promise<void> {
+  if (jar.csrf) return;
+  const response = await fetch(`${BASE}/login`, { redirect: 'manual' });
+  const setCookie = response.headers.get('set-cookie') ?? '';
+  const match = /expertops_csrf=([^;]*)/.exec(setCookie);
+  if (match?.[1]) jar.csrf = decodeURIComponent(match[1]);
 }
 
 async function api<T = any>(
@@ -41,14 +56,25 @@ async function api<T = any>(
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['content-type'] = 'application/json';
 
+  const jar = options.jar;
+  if (jar) await primeCsrf(jar);
+
   const cookie: string[] = [];
-  if (options.use === 'operator' && options.jar?.operator) {
-    cookie.push(`expertops_session=${options.jar.operator}`);
+  if (options.use === 'operator' && jar?.operator) {
+    cookie.push(`expertops_session=${jar.operator}`);
   }
-  if (options.use === 'portal' && options.jar?.portal) {
-    cookie.push(`expertops_portal=${options.jar.portal}`);
+  if (options.use === 'portal' && jar?.portal) {
+    cookie.push(`expertops_portal=${jar.portal}`);
+  }
+  if (jar?.csrf) {
+    cookie.push(`expertops_csrf=${jar.csrf}`);
+    // A same-origin browser submission echoes the cookie in a header.
+    headers['x-csrf-token'] = jar.csrf;
   }
   if (cookie.length > 0) headers.cookie = cookie.join('; ');
+
+  // The server checks Origin on every mutation.
+  headers.origin = BASE;
 
   const response = await fetch(`${BASE}${path}`, {
     method,
@@ -58,11 +84,13 @@ async function api<T = any>(
   });
 
   const setCookie = response.headers.get('set-cookie');
-  if (setCookie && options.jar) {
+  if (setCookie && jar) {
     const operator = /expertops_session=([^;]*)/.exec(setCookie);
-    if (operator?.[1]) options.jar.operator = operator[1];
+    if (operator?.[1]) jar.operator = operator[1];
     const portal = /expertops_portal=([^;]*)/.exec(setCookie);
-    if (portal?.[1]) options.jar.portal = portal[1];
+    if (portal?.[1]) jar.portal = portal[1];
+    const csrf = /expertops_csrf=([^;]*)/.exec(setCookie);
+    if (csrf?.[1]) jar.csrf = decodeURIComponent(csrf[1]);
   }
 
   const text = await response.text();
@@ -103,12 +131,26 @@ async function main() {
   check('a session cookie is issued', Boolean(jar.operator));
 
   const badPassword = await api('POST', '/api/auth/login', {
+    jar: { csrf: jar.csrf },
     body: { email: 'operator@expertops.test', password: 'wrong-password' },
   });
   check('a wrong password is rejected with 401', badPassword.status === 401);
 
   const anonymous = await api('GET', '/api/projects');
   check('an unauthenticated request is rejected with 401', anonymous.status === 401);
+
+  // A cross-site form post carrying the operator's cookie must be refused.
+  const forged = await fetch(`${BASE}/api/experts`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin: 'https://attacker.example',
+      cookie: `expertops_session=${jar.operator}; expertops_csrf=${jar.csrf}`,
+      'x-csrf-token': jar.csrf ?? '',
+    },
+    body: JSON.stringify({ fullName: 'Forged', email: 'forged@example.test', headline: 'x' }),
+  });
+  check('a cross-origin mutation is rejected with 403', forged.status === 403);
 
   const viewerJar: Jar = {};
   await api('POST', '/api/auth/login', {
@@ -287,7 +329,10 @@ async function main() {
   });
   check('the portal link opens a session', session.status === 200, session.body);
 
-  const reused = await api('POST', '/api/portal/session', { body: { token: rawToken } });
+  const reused = await api('POST', '/api/portal/session', {
+    jar: { csrf: jar.csrf },
+    body: { token: rawToken },
+  });
   check('the portal link cannot be reused (401)', reused.status === 401, reused.body);
 
   const declineWithoutReason = await api(

@@ -1,6 +1,6 @@
 'use client';
 
-import { CSRF_COOKIE, CSRF_HEADER } from '@/server/http/csrf';
+import { CSRF_COOKIE, CSRF_HEADER } from '@/lib/csrf-constants';
 
 /**
  * Browser-side fetch wrapper.

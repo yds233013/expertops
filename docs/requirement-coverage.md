@@ -1,0 +1,203 @@
+# Requirement coverage
+
+What was asked for, where it lives, and what proves it. Anything unfinished is
+in the last section rather than hidden in the table.
+
+Legend: **Done** — implemented and covered by a test. **Partial** — implemented
+but narrower than the requirement suggests. **Not done** — stated explicitly.
+
+---
+
+## Milestone 1 — verify and complete the foundation
+
+| Requirement | Status | Where | Proof |
+| --- | --- | --- | --- |
+| Map original requirements to behaviour and tests | Done | This document | — |
+| Investigate the two no-op job types | Done | Both removed | `worker.test.ts` asserts they cannot return |
+| Implement required jobs they should have been | Done | `staffing.detect_gaps` added; reminders/expiry already existed | `worker.test.ts`, `withdrawal-and-attention.test.ts` |
+| Unsupported jobs must not masquerade as successful | Done | No handler returns a fake success | `worker.test.ts` greps the handler source |
+| Operator confirmation before invitation dispatch | Done | Single invites are an operator click; batches need approval | `withdrawal-and-attention.test.ts` |
+| Operator confirmation before staffing assignment | Done | `confirmAssignment` under a row lock | `failure-cases.test.ts`, `concurrency.test.ts` |
+| CSRF protection, both session kinds | Done | `src/server/http/csrf.ts`, applied in the request guards | `csrf.test.ts` (18 tests) |
+| Test cross-origin mutation rejection | Done | Foreign origin, absent origin, missing header, mismatched header, forged cookie | `csrf.test.ts` |
+| Server-side roles | Done | 49 capabilities, three roles | `permissions.test.ts`, `extension-access.test.ts` |
+| Token scoping and expiry | Done | Single-use magic links, separate expert and candidate tables | `failure-cases.test.ts`, `portal.test.ts` |
+| Opt-out handling | Done | `Candidate.contactOptOutAt`, honoured at every send site | `screening.test.ts`, `decimal-and-csv.test.ts` |
+| Concurrency protection | Done | Row locks, conditional updates, unique constraints | `concurrency.test.ts` (16 tests) |
+| Atomic activity logging | Done | History written inside the caller's transaction | `activity-and-outbox.test.ts` |
+
+### On the two no-op jobs
+
+`assignment.notify` and `onboarding.notify_decision` reported `SUCCEEDED` while
+doing nothing, and nothing enqueued them. Neither corresponded to a required
+behaviour: invitation reminders, invitation expiry and onboarding reminders were
+already implemented and tested. The genuinely missing job was **staffing-gap
+detection**, which did not exist at all.
+
+Both were deleted rather than left looking healthy on the Worker screen, and the
+work they gestured at (notifying an external system) is listed under *Not done*
+below.
+
+---
+
+## Milestone 2 — applications and domain screening
+
+| Requirement | Status | Where |
+| --- | --- | --- |
+| Sourcing campaigns tied to project shortages | Done | `sourcing.ts`, `SourcingCampaign.projectId` |
+| Community/referral sources | Done | `SourceChannel`, with an effectiveness view |
+| Relationship owner, notes, next-action date | Done | `Candidate`, `updateRelationship` |
+| Structured applications and a candidate pipeline | Done | `Application`, `CandidateStage` |
+| Duplicate detection with human resolution, never silent merge | Done | `detectDuplicates`, `resolveDuplicate` |
+| Screening templates by domain | Done | `ScreeningTemplate` |
+| Versioned criteria, scoring guidance, required evidence | Done | `RubricCriterion` |
+| Human decision rules | Done | `grantQualification` requires a submitted review |
+| Screening invitations, submissions, reviewer assignment | Done | `screening.ts` |
+| Review deadlines, revision requests, reviewer decisions | Done | `screening.ts` |
+| Qualification records linked to evidence/version/reviewer/domain/date | Done | `Qualification` |
+| Synthetic work samples, never executed or fetched | Done | `validateWorkSampleLink` stores text only |
+| Screening distinct from project invitation | Done | Separate services, separate tables, no shared path |
+| Existing project eligibility checks preserved | Done | `proposeAssignment` unchanged; qualification is an additional gate |
+| Published rubrics immutable; edits create a version | Done | `updateDraftVersion` refuses |
+| Existing screenings retain their version | Done | Tested explicitly |
+| Changing requirements surfaces re-review | Done | `setProjectQualificationRequirement` |
+| Conflicting reviews create a resolution task | Done | `ReviewConflict`, admin-only |
+| Experts cannot view private reviewer notes | Done | `getScreeningForCandidate` selects fields explicitly |
+
+Covered by `screening.test.ts` (32 tests).
+
+---
+
+## Milestone 3 — connected automation and exception queue
+
+| Requirement | Status | Where |
+| --- | --- | --- |
+| All ten event-driven workflows | Done | `automation.ts`, `handlers.ts`, `docs/automation.md` |
+| Invitation and replacement batches need approval | Done | `outreach.ts` |
+| Qualification/verification/assignment/work/payment need human decisions | Done | Ten approval gates |
+| Shared business services for UI and worker | Done | Handlers call the same services as routes |
+| Atomic business change + audit + job scheduling | Done | `enqueueJob` inside the caller's transaction |
+| Safe under duplicate delivery, retries, crashes, multiple workers | Done | `concurrency.test.ts`, `withdrawal-and-attention.test.ts` |
+| Recheck state before acting | Done | Every handler re-reads |
+| Stale jobs harmless | Done | Return `{ skipped }` and succeed |
+| Reminder limits and suppression | Done | `REMINDER_POLICY`, `reminderAllowed` |
+| "Needs attention" as the main surface | Done | `/attention` |
+| Concrete blocker and impact | Done | Required fields on the type |
+| Owner or explicit unassigned | Done | Shown, assignable |
+| Due date and next action | Done | Required |
+| Links to records | Done | Project, expert, candidate |
+| Automatic resolution | Done | Sweeps resolve, including orphaned items |
+| No duplicate alerts | Done | Unique `dedupeKey` |
+| Automation failures shown separately | Done | Separate section, separate count |
+
+---
+
+## Milestone 4 — delivery, support and payment preparation
+
+| Requirement | Status | Where |
+| --- | --- | --- |
+| Work items with expert, instructions, due date, submission, revisions | Done | `WorkItem`, `WorkSubmission` |
+| Human review states | Done | `PENDING` / `REVISION_REQUESTED` / `APPROVED` |
+| Structured reviewer feedback | Done | Four named dimensions, validated |
+| No automatic expert-wide ranking from one review | Done | Nothing writes to the expert; asserted by a test |
+| Support requests linked to their project | Done | `SupportRequest` |
+| Category, message, owner, status, replies, response deadline | Done | With per-category targets |
+| A support issue can block readiness or delivery | Done | Read by `readinessBlocker` |
+| Experts see only their own requests and permitted replies | Done | `listSupportForExpert` |
+| Agreed rate, currency, authorised basis, approved quantity | Done | `PaymentItem` |
+| Precise decimal/integer arithmetic | Done | `src/lib/decimal.ts` |
+| Idempotent draft creation | Done | Unique on `workReviewId` |
+| Discrepancy flags, human approval, CSV export | Done | `payments.ts` |
+| Same work cannot be in two active batches | Done | Checked against active batch statuses |
+| Corrections preserve history and invalidate approvals | Done | Supersede, not edit |
+| Exported is not paid | Done | No `PAID` status exists anywhere |
+| Offboarding tasks with owners and manual confirmations | Done | `offboarding.ts` |
+| No claim that external accounts were removed | Done | Stated in the task text, the API response and the activity metadata |
+
+Covered by `delivery-and-payment.test.ts` (25 tests).
+
+---
+
+## Milestone 5 — demonstrate and verify
+
+| Requirement | Status | Where |
+| --- | --- | --- |
+| Repeatable isolated cybersecurity demo | Done | `scripts/demo.ts`, run-tagged and additive |
+| Project requires four experts | Done | Step 2 |
+| Some qualify, shortage creates sourcing work | Done | Step 3 |
+| Candidate submits incomplete screening | Done | Step 4 |
+| Reviewer becomes overdue | Done | Step 5 |
+| Qualified expert lacks capacity | Done | Step 3 (0 h/week) |
+| Accepted expert has an onboarding blocker | Done | Step 6 (blocking support request) |
+| Assigned expert withdraws | Done | Step 7 |
+| Replacement approved | Done | Step 8 |
+| Work needs revision, then approval | Done | Step 9 |
+| Payment discrepancy resolved before export | Done | Step 10 |
+| Clock abstraction in tests and demo | Done | `src/lib/clock.ts` |
+| No arbitrary-time-change HTTP endpoint | Done | In-process only; refuses in production |
+| CSV import with preview and validation | Done | `expert-import.ts` |
+| Report errors and duplicates | Done | Per-row verdicts |
+| Qualifications not imported as verified decisions | Done | Recorded as a note; asserted by a test |
+| Formula-injection protection on export | Done | `escapeCell` |
+| Isolated test database with safeguards | Done | `assertTestDatabase` refuses a non-test name |
+| Browser verification of both journeys | Partial | See below |
+
+### Required tests
+
+All present and passing:
+
+| Test | File |
+| --- | --- |
+| Duplicate events and requests | `withdrawal-and-attention.test.ts` |
+| Worker restart/retry and concurrent claiming | `worker.test.ts`, `concurrency.test.ts` |
+| Stale reminder suppression | `lifecycle.test.ts` |
+| Cross-expert and unauthorised access | `delivery-and-payment.test.ts`, `extension-access.test.ts` |
+| Rubric version preservation and conflicting reviews | `screening.test.ts` |
+| Qualifications not automatically granting assignment | `screening.test.ts` |
+| Last-seat and overlapping-capacity races | `concurrency.test.ts` |
+| Withdrawal and replacement flow | `withdrawal-and-attention.test.ts` |
+| Duplicate payment preparation and batch inclusion | `delivery-and-payment.test.ts` |
+| Full application → payment export workflow | `lifecycle.test.ts` |
+
+---
+
+## Not done
+
+Stated plainly rather than left to be discovered.
+
+**External-system notification.** The removed no-op jobs gestured at pushing a
+confirmed assignment or a verification decision to a client-side system. No such
+integration exists, and no job pretends to be one. Adding it means an adapter,
+credentials and a retry/bounce story that this build deliberately has none of.
+
+**Candidate portal UI.** The candidate portal has a service layer, tokens,
+sessions and a screening-invitation email with a working link, but the
+`/apply/enter/[token]` pages themselves are not built. Screening submissions are
+exercised through services and tests rather than a candidate-facing form. An
+operator can run the whole flow; a candidate currently cannot self-serve.
+
+**Rubric authoring UI.** Templates and versions are created and published
+through the API. There is no screen for editing criteria, so rubric changes are
+an API or seed-script operation today.
+
+**Sourcing campaign UI.** Campaigns are created through the API and surfaced on
+the candidate screen through source-channel effectiveness, but there is no
+campaign detail page.
+
+**Browser verification is partial.** The operator journey was checked by hand in
+Chrome: sign-in, the attention queue, taking and dismissing an item (which
+exercises CSRF end to end), candidates, delivery and payments. The expert portal
+was verified in the previous slice and is unchanged. There is no automated
+browser suite, and a narrow-viewport pass was not completed because the
+screenshot tool captures at a fixed width; the layouts use flex-wrap and
+horizontally scrolling tables but that has not been confirmed visually on a
+phone-sized window.
+
+**Accessibility is spot-checked, not audited.** Controls have accessible names,
+tables have scoped headers and captions, forms have labels, and there is a
+visible focus ring. Nothing has been tested with a screen reader, and colour
+contrast has not been measured.
+
+**Support and offboarding are read-mostly in the UI.** Both have full service
+and API coverage; the Delivery screen lists them and offers confirmation, but
+replying to a support request is API-only.

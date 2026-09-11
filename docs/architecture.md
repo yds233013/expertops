@@ -324,3 +324,94 @@ slot.
 
 `fileParallelism` is off: the suites share one test database and truncate
 between cases. Migrations are applied once per process.
+
+---
+
+# Extension architecture
+
+The expert-network extension follows the same layering. Twenty-eight new tables,
+thirteen new services, one new pure-domain module, and no new patterns.
+
+## What changed structurally
+
+**The automation map became data.** `src/server/domain/automation.ts` declares
+every event-driven workflow, approval gate and reminder rule as a typed
+constant. `docs/automation.md` describes the same table, and the UI reads the
+approval gates from it. There is one place to change a rule.
+
+**Time became injectable.** `src/lib/clock.ts` provides the ambient clock that
+services and handlers read. `src/lib/time.ts` defaults every helper to it, so
+most code needed no change. Tests and `scripts/demo.ts` install a `FixedClock`
+and advance it explicitly; `setAmbientClock` throws in a production build, and
+nothing reachable over HTTP can call it.
+
+**CSRF moved into the request guards.** `requireOperatorFromRequest` and
+`requireExpertFromRequest` check origin and a double-submit token before
+returning. A new endpoint is protected by virtue of requiring a session, rather
+than by remembering to add a check. Login and magic-link redemption are checked
+explicitly, since they create sessions without holding one.
+
+The token is minted in Edge middleware and verified on Node, so there are two
+HMAC implementations. `csrf-edge.ts` uses Web Crypto, `csrf.ts` uses
+`node:crypto`, and a test asserts they produce identical digests — if they ever
+diverged, every mutation would break.
+
+## New services
+
+| Service | Owns |
+| --- | --- |
+| `attention` | The exception queue: raise, refresh, resolve, dismiss |
+| `candidates` | Intake pipeline, applications, duplicate detection |
+| `sourcing` | Campaigns and source-channel effectiveness |
+| `screening` | Templates, immutable rubric versions, submissions, reviews, conflicts |
+| `qualifications` | Qualification records, project requirements, re-review |
+| `staffing-gaps` | Gap detection, readiness blockers, withdrawal, replacement |
+| `outreach` | Batches and the human approval gate before dispatch |
+| `work` | Work items, submissions, reviews |
+| `support` | Requests, replies, blocking flags |
+| `payments` | Draft items, discrepancies, batches, corrections, export |
+| `offboarding` | Checklists and human confirmations |
+| `candidate-portal` | Magic links and sessions for candidates |
+| `expert-import` | CSV preview, commit and export |
+
+## Money
+
+`src/lib/decimal.ts` is the only place arithmetic happens. Money is an integer
+count of minor units; quantities are scaled integers at two decimal places. The
+product of two integers is exact, and only the final division rounds, half-up.
+
+The module refuses a non-integer rate or an unscaled quantity rather than
+coercing, so a floating-point value cannot enter by accident. `sumMinor` refuses
+non-integers and guards the safe-integer range.
+
+## CSV
+
+`src/lib/csv.ts` neutralises every cell before quoting. A value beginning with
+`=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with an apostrophe,
+which every major spreadsheet reads as "this is text". Control characters are
+stripped first, so a leading NUL cannot hide a trigger from the check.
+
+The parser handles quoted fields, embedded commas, doubled quotes and both line
+endings, and reports a row with the wrong column count rather than guessing.
+
+## The attention queue
+
+The design constraint was that an operator should be able to trust an empty
+list. That produces three rules, all enforced in the service:
+
+- **One row per condition**, keyed on what is stuck rather than when it was
+  noticed, so a two-minute sweep does not produce thirty rows an hour.
+- **Self-resolving**, including for records that leave the scanned set entirely.
+  An early version orphaned items when a project filled and became `ACTIVE`;
+  the sweep now closes anything whose project is no longer in scope.
+- **Structurally actionable.** `blocker`, `impact` and `nextAction` are required
+  fields, so an item that cannot explain itself cannot be created.
+
+## Reference allocation
+
+Human-facing references (`EXP-0001`, `SCR-0004`) are allocated by scanning only
+references that match the expected shape. An earlier version took the lexical
+maximum, which meant a single record with a different shape — from a test
+factory or an import — sorted highest and silently reset the counter to 1,
+colliding on the next insert. That bug is why `uniqueViolationTarget` exists:
+the handler now reports which column actually collided.

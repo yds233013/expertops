@@ -42,6 +42,19 @@ describe('CSRF: token mechanics', () => {
     expect(verifyCsrfSignature('')).toBe(false);
   });
 
+  it('signs identically in the Node and Edge implementations', async () => {
+    // Middleware mints the cookie on the Edge runtime; the guards verify it on
+    // Node. If the two digests ever diverged, every mutation would be rejected.
+    const { generateEdgeToken, signEdgeToken } = await import('@/server/http/csrf-edge');
+    const raw = generateEdgeToken();
+
+    const edgeSigned = await signEdgeToken(raw, process.env.AUTH_SECRET!);
+    const nodeSigned = signCsrfToken(raw);
+
+    expect(edgeSigned).toBe(nodeSigned);
+    expect(verifyCsrfSignature(edgeSigned)).toBe(true);
+  });
+
   it('treats read methods as safe', () => {
     expect(isSafeMethod('GET')).toBe(true);
     expect(isSafeMethod('head')).toBe(true);

@@ -49,6 +49,7 @@ export function AttentionActions({
       <select
         id={`owner-${itemId}`}
         className="select"
+        aria-label="Assign owner"
         disabled={pending}
         value={currentOwnerId ?? ''}
         onChange={(event) => send({ action: 'assign', ownerId: event.target.value || null })}

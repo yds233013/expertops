@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { getEnv } from '@/lib/env';
 import { forbidden } from '@/lib/errors';
+import { CSRF_HEADER } from '@/lib/csrf-constants';
 
 /**
  * CSRF protection for cookie-authenticated mutations.
@@ -23,8 +24,7 @@ import { forbidden } from '@/lib/errors';
  * treated as sufficient: it does not cover same-site subdomain attackers, and
  * it is a browser behaviour rather than something the server verifies.
  */
-export const CSRF_COOKIE = 'expertops_csrf';
-export const CSRF_HEADER = 'x-csrf-token';
+export { CSRF_COOKIE, CSRF_HEADER } from '@/lib/csrf-constants';
 
 /** Methods that cannot change state and therefore need no CSRF check. */
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);

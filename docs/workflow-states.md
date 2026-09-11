@@ -288,3 +288,154 @@ mean anything left the machine. Delivery is claimed with a conditional update on
 
 The two rows in bold are the human confirmations. Nothing else in the system can
 produce them.
+
+---
+
+# Extension state machines
+
+Added by the expert-network extension. The same rule applies: every transition
+is declared once in code, and a service refuses anything not in the table.
+
+## Candidate
+
+`CandidateStage`, in `src/server/services/candidates.ts`.
+
+| From | To |
+| --- | --- |
+| `NEW` | `DUPLICATE_HOLD`, `SCREENING_INVITED`, `REJECTED`, `WITHDRAWN` |
+| `DUPLICATE_HOLD` | `NEW`, `WITHDRAWN`, `REJECTED` |
+| `SCREENING_INVITED` | `SCREENING_SUBMITTED`, `REJECTED`, `WITHDRAWN` |
+| `SCREENING_SUBMITTED` | `IN_REVIEW`, `REVISION_REQUESTED`, `QUALIFIED`, `REJECTED`, `WITHDRAWN` |
+| `IN_REVIEW` | `QUALIFIED`, `REJECTED`, `REVISION_REQUESTED`, `WITHDRAWN` |
+| `REVISION_REQUESTED` | `SCREENING_SUBMITTED`, `REJECTED`, `WITHDRAWN` |
+| `QUALIFIED` | `WITHDRAWN` |
+| `REJECTED` | `NEW` |
+| `WITHDRAWN` | `NEW` |
+
+`SCREENING_SUBMITTED → QUALIFIED` exists because `grantQualification` accepts a
+screening in `SUBMITTED` as well as `IN_REVIEW`. The screening status is the
+authority; this table must not contradict it.
+
+**A candidate is not an expert.** Conversion happens inside
+`grantQualification`, is logged, and is the only route. Nobody joins the network
+by filling in a form.
+
+## Rubric version
+
+| From | To | Notes |
+| --- | --- | --- |
+| `DRAFT` | `PUBLISHED`, `ARCHIVED` | Editable while DRAFT |
+| `PUBLISHED` | `ARCHIVED` | **Immutable.** Criteria, weights and thresholds can never change |
+| `ARCHIVED` | — | Terminal |
+
+Editing a published version is refused with a message telling you to create a
+new one. A screening keeps the version it started against for ever, which is
+what makes an old decision still explainable.
+
+Only one DRAFT may exist per template at a time.
+
+## Screening
+
+| From | To |
+| --- | --- |
+| `INVITED` | `SUBMITTED`, `EXPIRED`, `WITHDRAWN` |
+| `SUBMITTED` | `IN_REVIEW`, `REVISION_REQUESTED`, `DECIDED` |
+| `IN_REVIEW` | `REVISION_REQUESTED`, `DECIDED` |
+| `REVISION_REQUESTED` | `SUBMITTED`, `EXPIRED` |
+| `DECIDED` | — (terminal) |
+| `EXPIRED` / `WITHDRAWN` | — |
+
+**Guards**
+
+- A submission is accepted only from `INVITED` or `REVISION_REQUESTED`, and only
+  before the deadline. A submitted screening is closed until a reviewer asks for
+  changes.
+- An incomplete submission is **recorded as incomplete**, not rejected. Missing
+  evidence is listed on the submission.
+- A decision needs at least one submitted human review.
+- A decision is refused while a reviewer conflict is open.
+
+## Screening review
+
+`ASSIGNED → SUBMITTED`, or `ASSIGNED → WITHDRAWN`. Only the assigned reviewer
+may submit. Requesting a revision requires feedback the candidate can act on.
+`privateNotes` never leave the operator side: candidate-facing views are built
+by explicit field selection, so a new column cannot leak by being forgotten.
+
+## Review conflict
+
+`OPEN → RESOLVED`, by an admin, with a required note. Raised automatically when
+two submitted reviews disagree. There is no automatic tie-break.
+
+## Qualification
+
+| From | To | Cause |
+| --- | --- | --- |
+| `ACTIVE` | `NEEDS_REREVIEW` | A project raised its required rubric version |
+| `ACTIVE` | `REVOKED` | An operator revoked it, with a reason |
+| `NEEDS_REREVIEW` | `ACTIVE` | A human confirmed it still stands |
+| `NEEDS_REREVIEW` | `SUPERSEDED` | A human decided it no longer meets the bar |
+
+Raising a project's bar **never** revokes and **never** auto-approves. The
+affected qualification keeps its rubric version and its decision history.
+
+## Outreach batch
+
+`DRAFT → PENDING_APPROVAL → APPROVED → DISPATCHED`, with `REJECTED → DRAFT` and
+`CANCELLED` as exits.
+
+Dispatch is refused in any state but `APPROVED`. A batch of more than five
+recipients cannot be approved by whoever created it.
+
+## Work item
+
+| From | To |
+| --- | --- |
+| `DRAFT` | `ASSIGNED`, `CANCELLED` |
+| `ASSIGNED` | `SUBMITTED`, `CANCELLED` |
+| `SUBMITTED` | `IN_REVIEW`, `REVISION_REQUESTED`, `APPROVED`, `CANCELLED` |
+| `IN_REVIEW` | `REVISION_REQUESTED`, `APPROVED`, `CANCELLED` |
+| `REVISION_REQUESTED` | `SUBMITTED`, `CANCELLED` |
+| `APPROVED` | — (terminal) |
+
+A work item can only be created on a `CONFIRMED` seat. Approving sets
+`approvedQuantity`, which is the only figure payment preparation reads.
+
+## Support request
+
+`OPEN → WAITING_ON_EXPERT / WAITING_ON_OPS → RESOLVED → CLOSED`.
+
+A public operator reply stops the response clock; an internal note does not.
+Resolving clears both blocking flags, because the thing that was stuck no longer
+is.
+
+## Payment item
+
+| From | To |
+| --- | --- |
+| `DRAFT` | `READY` (discrepancy explained), `VOID` |
+| `READY` | `IN_BATCH`, `VOID` |
+| `IN_BATCH` | `EXPORTED`, `READY` (batch cancelled), `VOID` |
+| `EXPORTED` | `VOID` (via correction only) |
+
+There is no `PAID`. Correcting an item moves it to `VOID` and creates a
+replacement; the original keeps its figures.
+
+## Payment batch
+
+`DRAFT → PENDING_APPROVAL → APPROVED → EXPORTED`, with `→ DRAFT` on a
+correction and `CANCELLED` as an exit.
+
+Approval is refused for the operator who created the batch. Export is refused in
+any state but `APPROVED`.
+
+## Offboarding task
+
+`PENDING → CONFIRMED` or `PENDING → NOT_APPLICABLE`, both requiring a note.
+Neither means the system checked anything.
+
+## Attention item
+
+`OPEN → RESOLVED` (automatic, when the condition clears) or `OPEN → DISMISSED`
+(an operator, with a reason). A `RESOLVED` item reopens if the condition recurs;
+a `DISMISSED` one stays dismissed until it resolves and then recurs.
