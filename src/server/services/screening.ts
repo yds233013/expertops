@@ -26,14 +26,19 @@ import { setCandidateStage, validateWorkSampleLink } from './candidates';
 export const SCREENING_REFERENCE_PREFIX = 'SCR';
 
 async function nextScreeningReference(db: Db): Promise<string> {
-  const latest = await db.screening.findFirst({
-    orderBy: { reference: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.screening.findMany({
+    where: { reference: { startsWith: `${SCREENING_REFERENCE_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    SCREENING_REFERENCE_PREFIX,
-    parseReferenceSequence(SCREENING_REFERENCE_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(SCREENING_REFERENCE_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(SCREENING_REFERENCE_PREFIX, highest + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -596,6 +601,9 @@ export async function assignReviewer(
         reviewerId: input.reviewerId,
         submissionId: submission?.id ?? null,
         state: 'ASSIGNED',
+        // Set explicitly rather than relying on the column default, which would
+        // come from the database clock and disagree with the injected one.
+        assignedAt: clockNow(),
         dueAt,
       },
     });

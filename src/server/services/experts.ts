@@ -1,5 +1,5 @@
 import { type Expert, type ExpertStatus, type Prisma } from '@prisma/client';
-import { type Db, isPrismaErrorCode, PG_UNIQUE_VIOLATION } from '@/lib/db';
+import { type Db, isPrismaErrorCode, PG_UNIQUE_VIOLATION, uniqueViolationTarget } from '@/lib/db';
 import { badRequest, conflict, notFound } from '@/lib/errors';
 import {
   EXPERT_REFERENCE_PREFIX,
@@ -55,16 +55,26 @@ export async function upsertSkillByName(db: Db, name: string) {
   });
 }
 
-/** Allocate the next EXP-nnnn reference. Call inside the creating transaction. */
+/**
+ * Allocate the next EXP-nnnn reference.
+ *
+ * Only references that actually match the EXP-<digits> shape are considered.
+ * Sorting the whole column lexically is not safe: a record created by a test
+ * factory or an import with a different shape can sort highest and silently
+ * reset the counter to 1, which then collides on the next insert.
+ */
 export async function nextExpertReference(db: Db): Promise<string> {
-  const latest = await db.expert.findFirst({
-    orderBy: { reference: 'desc' },
+  const rows = await db.expert.findMany({
+    where: { reference: { startsWith: `${EXPERT_REFERENCE_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    EXPERT_REFERENCE_PREFIX,
-    parseReferenceSequence(EXPERT_REFERENCE_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(EXPERT_REFERENCE_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(EXPERT_REFERENCE_PREFIX, highest + 1);
 }
 
 export async function createExpert(
@@ -124,7 +134,14 @@ export async function createExpert(
     return expert;
   } catch (error) {
     if (isPrismaErrorCode(error, PG_UNIQUE_VIOLATION)) {
-      throw conflict(`An expert with email ${email} already exists.`);
+      const target = uniqueViolationTarget(error);
+      if (target.includes('reference')) {
+        // Two inserts raced for the same reference. Retrying is correct.
+        throw conflict('A reference collision occurred while creating this expert. Retry.', {
+          target,
+        });
+      }
+      throw conflict(`An expert with email ${email} already exists.`, { target });
     }
     throw error;
   }

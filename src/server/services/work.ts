@@ -5,6 +5,7 @@ import { badRequest, invalidState, notFound } from '@/lib/errors';
 import { formatReference, parseReferenceSequence } from '@/lib/ids';
 import { toQuantityScaled, quantityToString } from '@/lib/decimal';
 import { type Actor, recordActivity } from './activity';
+import { resolveIfPresent } from './attention';
 import { enqueueJob } from './jobs';
 import { validateWorkSampleLink } from './candidates';
 
@@ -21,14 +22,19 @@ import { validateWorkSampleLink } from './candidates';
 export const WORK_REFERENCE_PREFIX = 'WRK';
 
 async function nextWorkReference(db: Db): Promise<string> {
-  const latest = await db.workItem.findFirst({
-    orderBy: { reference: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.workItem.findMany({
+    where: { reference: { startsWith: `${WORK_REFERENCE_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    WORK_REFERENCE_PREFIX,
-    parseReferenceSequence(WORK_REFERENCE_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(WORK_REFERENCE_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(WORK_REFERENCE_PREFIX, highest + 1);
 }
 
 const WORK_TRANSITIONS: Record<WorkItemStatus, WorkItemStatus[]> = {
@@ -91,6 +97,12 @@ export async function createWorkItem(
       createdById: actor.userId ?? null,
     },
   });
+
+  await resolveIfPresent(
+    db,
+    `delivery:no_work:${assignment.id}`,
+    'Work was assigned on this seat.',
+  );
 
   await recordActivity(db, {
     actor,

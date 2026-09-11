@@ -9,6 +9,7 @@ import { now as clockNow } from '@/lib/clock';
 import { badRequest, forbidden, invalidState, notFound } from '@/lib/errors';
 import { formatReference, parseReferenceSequence } from '@/lib/ids';
 import { type Actor, recordActivity } from './activity';
+import { resolveIfPresent } from './attention';
 import { createInvitation } from './invitations';
 import { recommendReplacements } from './staffing-gaps';
 
@@ -25,14 +26,19 @@ import { recommendReplacements } from './staffing-gaps';
 export const BATCH_REFERENCE_PREFIX = 'BAT';
 
 async function nextBatchReference(db: Db): Promise<string> {
-  const latest = await db.outreachBatch.findFirst({
-    orderBy: { reference: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.outreachBatch.findMany({
+    where: { reference: { startsWith: `${BATCH_REFERENCE_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    BATCH_REFERENCE_PREFIX,
-    parseReferenceSequence(BATCH_REFERENCE_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(BATCH_REFERENCE_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(BATCH_REFERENCE_PREFIX, highest + 1);
 }
 
 const BATCH_TRANSITIONS: Record<OutreachBatchStatus, OutreachBatchStatus[]> = {
@@ -234,6 +240,12 @@ export async function decideBatch(
   if (claimed.count === 0) {
     throw invalidState('This batch was already decided by someone else.');
   }
+
+  await resolveIfPresent(
+    db,
+    `outreach:awaiting_approval:${input.batchId}`,
+    input.approve ? 'The batch was approved.' : 'The batch was rejected.',
+  );
 
   await recordActivity(db, {
     actor,

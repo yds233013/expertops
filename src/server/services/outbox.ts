@@ -1,5 +1,6 @@
 import { type OutboxStatus, type Prisma } from '@prisma/client';
 import { type Db } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { notFound } from '@/lib/errors';
 import { type TemplateName } from '@/server/email/templates';
 
@@ -60,7 +61,7 @@ export async function dispatchQueuedMessages(
   options: { limit?: number; now?: Date } = {},
 ): Promise<DispatchResult> {
   const limit = Math.min(Math.max(options.limit ?? 25, 1), 200);
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
 
   const queued = await db.outboxMessage.findMany({
     where: { status: 'QUEUED' },

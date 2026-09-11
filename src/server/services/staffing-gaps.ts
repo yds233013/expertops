@@ -216,8 +216,22 @@ export async function detectStaffingGaps(
         { now: at },
       );
       if (result.created) attentionRaised += 1;
-    } else if (await resolveIfPresent(db, dedupeKey, 'The staffing gap closed.', { now: at })) {
-      attentionResolved += 1;
+    } else {
+      if (await resolveIfPresent(db, dedupeKey, 'The staffing gap closed.', { now: at })) {
+        attentionResolved += 1;
+      }
+      // A withdrawal is only actionable while the seat is still short.
+      const withdrawals = await db.attentionItem.findMany({
+        where: { status: 'OPEN', category: 'staffing.withdrawal', projectId: id },
+        select: { dedupeKey: true },
+      });
+      for (const item of withdrawals) {
+        if (
+          await resolveIfPresent(db, item.dedupeKey, 'The vacated seat was refilled.', { now: at })
+        ) {
+          attentionResolved += 1;
+        }
+      }
     }
 
     // Each blocked-but-accepted expert is its own actionable item.
@@ -262,6 +276,28 @@ export async function detectStaffingGaps(
           attentionResolved += 1;
         }
       }
+    }
+  }
+
+  // A project that leaves the scanned statuses (closed, cancelled, or filled
+  // and now ACTIVE) is never visited again by the loop above, so its items
+  // would stay open forever. Close them here rather than orphaning them.
+  const scannedIds = new Set(projects.map((project) => project.id));
+  const orphaned = await db.attentionItem.findMany({
+    where: {
+      status: 'OPEN',
+      category: { in: ['staffing.gap', 'staffing.blocked_expert', 'staffing.withdrawal'] },
+      projectId: { notIn: scannedIds.size > 0 ? [...scannedIds] : ['__none__'] },
+    },
+    select: { dedupeKey: true },
+  });
+  for (const item of orphaned) {
+    if (
+      await resolveIfPresent(db, item.dedupeKey, 'The project is no longer open for staffing.', {
+        now: at,
+      })
+    ) {
+      attentionResolved += 1;
     }
   }
 
@@ -343,6 +379,16 @@ export async function recordWithdrawal(
     summary: `${expert.fullName} withdrew from ${project.code}`,
     metadata: { reason: input.reason.trim(), releasedAssignmentId },
   });
+
+  // Anything that was true only because this person held the seat is no longer
+  // true, so those items close rather than lingering as noise.
+  for (const key of [
+    releasedAssignmentId ? `delivery:no_work:${releasedAssignmentId}` : null,
+    `staffing:ready:${input.projectId}:${input.expertId}`,
+    `staffing:blocked:${input.projectId}:${input.expertId}`,
+  ]) {
+    if (key) await resolveIfPresent(client, key, 'The expert withdrew from this project.');
+  }
 
   const gap = await computeProjectGap(client, input.projectId);
 

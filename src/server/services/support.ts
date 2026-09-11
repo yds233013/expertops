@@ -35,14 +35,19 @@ export const RESPONSE_TARGET_HOURS: Record<SupportCategory, number> = {
 };
 
 async function nextSupportReference(db: Db): Promise<string> {
-  const latest = await db.supportRequest.findFirst({
-    orderBy: { reference: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.supportRequest.findMany({
+    where: { reference: { startsWith: `${SUPPORT_REFERENCE_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    SUPPORT_REFERENCE_PREFIX,
-    parseReferenceSequence(SUPPORT_REFERENCE_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(SUPPORT_REFERENCE_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(SUPPORT_REFERENCE_PREFIX, highest + 1);
 }
 
 export interface RaiseSupportInput {

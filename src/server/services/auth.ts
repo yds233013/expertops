@@ -1,5 +1,6 @@
 import { type User, type UserRole } from '@prisma/client';
 import { type Db } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { getEnv } from '@/lib/env';
 import { badRequest, conflict, unauthenticated } from '@/lib/errors';
 import { generateToken, hashPassword, hashToken, verifyPassword } from '@/lib/crypto';
@@ -74,16 +75,16 @@ export async function resolveSession(
     include: { user: true },
   });
   if (!session) return null;
-  if (session.expiresAt.getTime() <= Date.now()) {
+  if (session.expiresAt.getTime() <= clockNow().getTime()) {
     await db.session.delete({ where: { id: session.id } }).catch(() => undefined);
     return null;
   }
   if (!session.user.isActive) return null;
 
   // Only touch the row once a minute; otherwise every page render writes.
-  if (Date.now() - session.lastSeenAt.getTime() > 60_000) {
+  if (clockNow().getTime() - session.lastSeenAt.getTime() > 60_000) {
     await db.session
-      .update({ where: { id: session.id }, data: { lastSeenAt: new Date() } })
+      .update({ where: { id: session.id }, data: { lastSeenAt: clockNow() } })
       .catch(() => undefined);
   }
 
@@ -95,7 +96,7 @@ export async function logout(db: Db, token: string | undefined | null): Promise<
   await db.session.deleteMany({ where: { tokenHash: hashToken(token) } });
 }
 
-export async function purgeExpiredSessions(db: Db, now: Date = new Date()) {
+export async function purgeExpiredSessions(db: Db, now: Date = clockNow()) {
   const operators = await db.session.deleteMany({ where: { expiresAt: { lte: now } } });
   const experts = await db.expertPortalSession.deleteMany({ where: { expiresAt: { lte: now } } });
   const tokens = await db.expertPortalToken.deleteMany({

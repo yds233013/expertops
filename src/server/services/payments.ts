@@ -18,6 +18,7 @@ import {
 } from '@/lib/decimal';
 import { toCsv } from '@/lib/csv';
 import { type Actor, recordActivity } from './activity';
+import { resolveIfPresent } from './attention';
 
 /**
  * Payment preparation.
@@ -41,25 +42,35 @@ export const PAYMENT_ITEM_PREFIX = 'PAY';
 export const PAYMENT_BATCH_PREFIX = 'PB';
 
 async function nextItemReference(db: Db): Promise<string> {
-  const latest = await db.paymentItem.findFirst({
-    orderBy: { reference: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.paymentItem.findMany({
+    where: { reference: { startsWith: `${PAYMENT_ITEM_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    PAYMENT_ITEM_PREFIX,
-    parseReferenceSequence(PAYMENT_ITEM_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(PAYMENT_ITEM_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(PAYMENT_ITEM_PREFIX, highest + 1);
 }
 
 async function nextBatchReference(db: Db): Promise<string> {
-  const latest = await db.paymentBatch.findFirst({
-    orderBy: { reference: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.paymentBatch.findMany({
+    where: { reference: { startsWith: `${PAYMENT_BATCH_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    PAYMENT_BATCH_PREFIX,
-    parseReferenceSequence(PAYMENT_BATCH_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(PAYMENT_BATCH_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(PAYMENT_BATCH_PREFIX, highest + 1);
 }
 
 export interface Discrepancy {
@@ -268,6 +279,12 @@ export async function resolveDiscrepancy(
       discrepancyResolution: input.resolution.trim(),
     },
   });
+
+  await resolveIfPresent(
+    db,
+    `payment:discrepancy:${item.id}`,
+    'An operator explained the discrepancy.',
+  );
 
   await recordActivity(db, {
     actor,

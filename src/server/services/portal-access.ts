@@ -1,5 +1,6 @@
 import { type Expert, type PortalTokenPurpose } from '@prisma/client';
 import { type Db } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { getEnv, portalLinksVisible } from '@/lib/env';
 import { unauthenticated } from '@/lib/errors';
 import { generateToken, hashToken } from '@/lib/crypto';
@@ -67,7 +68,7 @@ export async function redeemPortalToken(db: Db, rawToken: string): Promise<Porta
   if (!record) throw unauthenticated('This portal link is not valid.');
   if (record.revokedAt) throw unauthenticated('This portal link has been revoked.');
   if (record.usedAt) throw unauthenticated('This portal link has already been used.');
-  if (record.expiresAt.getTime() <= Date.now()) {
+  if (record.expiresAt.getTime() <= clockNow().getTime()) {
     throw unauthenticated(
       'This portal link has expired. Ask your ExpertOps contact for a new one.',
     );
@@ -78,7 +79,7 @@ export async function redeemPortalToken(db: Db, rawToken: string): Promise<Porta
 
   const claimed = await db.expertPortalToken.updateMany({
     where: { id: record.id, usedAt: null, revokedAt: null },
-    data: { usedAt: new Date() },
+    data: { usedAt: clockNow() },
   });
   if (claimed.count === 0) {
     // Another request redeemed the same link first.
@@ -104,15 +105,15 @@ export async function resolvePortalSession(
     include: { expert: true },
   });
   if (!session) return null;
-  if (session.expiresAt.getTime() <= Date.now()) {
+  if (session.expiresAt.getTime() <= clockNow().getTime()) {
     await db.expertPortalSession.delete({ where: { id: session.id } }).catch(() => undefined);
     return null;
   }
   if (session.expert.status === 'ARCHIVED') return null;
 
-  if (Date.now() - session.lastSeenAt.getTime() > 60_000) {
+  if (clockNow().getTime() - session.lastSeenAt.getTime() > 60_000) {
     await db.expertPortalSession
-      .update({ where: { id: session.id }, data: { lastSeenAt: new Date() } })
+      .update({ where: { id: session.id }, data: { lastSeenAt: clockNow() } })
       .catch(() => undefined);
   }
   return session.expert;
@@ -126,7 +127,7 @@ export async function endPortalSession(db: Db, token: string | undefined | null)
 export async function revokePortalTokens(db: Db, expertId: string): Promise<number> {
   const result = await db.expertPortalToken.updateMany({
     where: { expertId, usedAt: null, revokedAt: null },
-    data: { revokedAt: new Date() },
+    data: { revokedAt: clockNow() },
   });
   return result.count;
 }

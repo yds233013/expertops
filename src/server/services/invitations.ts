@@ -1,5 +1,6 @@
 import { type Invitation, type Prisma } from '@prisma/client';
 import { type Db, isPrismaErrorCode, PG_UNIQUE_VIOLATION } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { getEnv } from '@/lib/env';
 import { badRequest, conflict, invalidState, notFound } from '@/lib/errors';
 import { hoursFromNow } from '@/lib/time';
@@ -156,7 +157,7 @@ async function scheduleSend(db: Db, invitationId: string) {
     type: 'invitation.send',
     payload: { invitationId },
     priority: 20,
-    dedupeKey: `invitation.send:${invitationId}:${Date.now()}`,
+    dedupeKey: `invitation.send:${invitationId}:${clockNow().getTime()}`,
   });
 }
 
@@ -221,7 +222,7 @@ export async function sendInvitation(
 
   const claimed = await db.invitation.updateMany({
     where: { id: invitation.id, status: 'DRAFT' },
-    data: { status: 'SENT', sentAt: new Date() },
+    data: { status: 'SENT', sentAt: clockNow() },
   });
   if (claimed.count === 0) {
     return null;
@@ -239,7 +240,7 @@ export async function sendInvitation(
   });
 
   return {
-    invitation: { ...invitation, status: 'SENT', sentAt: new Date() },
+    invitation: { ...invitation, status: 'SENT', sentAt: clockNow() },
     outboxMessageId: message.id,
     portalUrl: portalToken.url,
   };
@@ -270,14 +271,14 @@ export async function respondToInvitation(db: Db, expertId: string, input: Respo
   const target = input.accept ? 'ACCEPTED' : 'DECLINED';
   assertTransition('Invitation', INVITATION_TRANSITIONS, invitation.status, target);
 
-  if (invitation.expiresAt.getTime() <= Date.now()) {
+  if (invitation.expiresAt.getTime() <= clockNow().getTime()) {
     throw invalidState('This invitation has expired and can no longer be answered.');
   }
   if (!input.accept && !input.declineReason?.trim()) {
     throw badRequest('Please give a short reason when declining.');
   }
 
-  const now = new Date();
+  const now = clockNow();
   const claimed = await db.invitation.updateMany({
     where: { id: invitation.id, status: 'SENT' },
     data: {
@@ -341,7 +342,7 @@ export async function withdrawInvitation(
     data: {
       status: 'WITHDRAWN',
       withdrawReason: reason.trim().slice(0, 500),
-      respondedAt: new Date(),
+      respondedAt: clockNow(),
     },
   });
   if (claimed.count === 0) {
@@ -377,7 +378,7 @@ export async function expireOverdueInvitations(
   db: Db,
   options: { now?: Date; limit?: number } = {},
 ): Promise<ExpireResult> {
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
   const candidates = await db.invitation.findMany({
     where: { status: 'SENT', expiresAt: { lte: now } },
     take: options.limit ?? 100,
@@ -445,7 +446,7 @@ export async function remindPendingInvitations(
     limit?: number;
   } = {},
 ): Promise<RemindResult> {
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
   const remindAfterHours = options.remindAfterHours ?? 24;
   const minHoursRemaining = options.minHoursRemaining ?? 2;
   const sentBefore = new Date(now.getTime() - remindAfterHours * 3_600_000);

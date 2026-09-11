@@ -1,5 +1,6 @@
 import { type Assignment, type AssignmentStatus } from '@prisma/client';
 import { type Db, isPrismaErrorCode, PG_UNIQUE_VIOLATION, type Transactor } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { badRequest, capacityExceeded, conflict, invalidState, notFound } from '@/lib/errors';
 import {
   assertTransition,
@@ -196,7 +197,7 @@ export async function confirmAssignment(
       );
     }
 
-    const now = new Date();
+    const now = clockNow();
     const claimed = await tx.assignment.updateMany({
       where: { id: assignmentId, status: 'PROPOSED' },
       data: { status: 'CONFIRMED', confirmedAt: now, releasedAt: null, releaseReason: null },
@@ -305,7 +306,7 @@ export async function releaseAssignment(
 
     await lockProject(tx, assignment.projectId);
 
-    const now = new Date();
+    const now = clockNow();
     const claimed = await tx.assignment.updateMany({
       where: { id: assignmentId, status: { in: ['PROPOSED', 'CONFIRMED'] } },
       data: {

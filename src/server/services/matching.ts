@@ -1,5 +1,6 @@
 import { type Prisma } from '@prisma/client';
 import { type Db } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { invalidState, notFound } from '@/lib/errors';
 import {
   ALGORITHM_VERSION,
@@ -36,7 +37,7 @@ export async function runMatching(
   projectId: string,
   options: RunMatchingOptions = {},
 ) {
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
   const limit = Math.min(Math.max(options.limit ?? 25, 1), 100);
   const weights: MatchWeights = { ...DEFAULT_WEIGHTS, ...options.weights };
 

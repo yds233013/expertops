@@ -1,4 +1,5 @@
 import {
+  type CandidateStage,
   type Expert,
   type ExpertStatus,
   type PrismaClient,
@@ -202,4 +203,144 @@ export async function makeStaffableExpert(
   });
 
   return expert;
+}
+
+// ---------------------------------------------------------------------------
+// Extension factories
+// ---------------------------------------------------------------------------
+
+/** A domain, created once and reused by slug. */
+export async function makeDomain(
+  name = 'Cybersecurity',
+  client: PrismaClient = prisma as PrismaClient,
+) {
+  return client.domain.upsert({
+    where: { slug: slugify(name) },
+    update: {},
+    create: { slug: slugify(name), name, description: `${name} domain for tests.` },
+  });
+}
+
+export interface RubricOverrides {
+  name?: string;
+  version?: number;
+  passThreshold?: number;
+  publish?: boolean;
+  criteria?: Array<{
+    key: string;
+    label?: string;
+    maxScore?: number;
+    weight?: number;
+    requiredEvidence?: 'NONE' | 'WORK_SAMPLE_LINK' | 'WRITTEN_ANSWER' | 'REFERENCE_STATEMENT';
+    isGating?: boolean;
+  }>;
+}
+
+/**
+ * A published rubric version.
+ *
+ * Published by default because that is the only state a screening can run
+ * against, and immutability is the property most tests are checking.
+ */
+export async function makeRubricVersion(
+  domainId: string,
+  overrides: RubricOverrides = {},
+  client: PrismaClient = prisma as PrismaClient,
+) {
+  const name = overrides.name ?? `Template ${unique('tpl')}`;
+  const template = await client.screeningTemplate.upsert({
+    where: { slug: slugify(name) },
+    update: {},
+    create: { slug: slugify(name), name, domainId },
+  });
+
+  const criteria = overrides.criteria ?? [
+    { key: 'depth', label: 'Practical depth', requiredEvidence: 'WRITTEN_ANSWER' as const },
+    { key: 'evidence', label: 'Evidence quality', requiredEvidence: 'WORK_SAMPLE_LINK' as const },
+  ];
+
+  return client.screeningRubricVersion.create({
+    data: {
+      templateId: template.id,
+      version: overrides.version ?? 1,
+      status: overrides.publish === false ? 'DRAFT' : 'PUBLISHED',
+      publishedAt: overrides.publish === false ? null : new Date(),
+      passThreshold: overrides.passThreshold ?? 10,
+      guidance: 'Assess demonstrated practice.',
+      criteria: {
+        create: criteria.map((criterion, position) => ({
+          key: criterion.key,
+          label: criterion.label ?? criterion.key,
+          scoringGuidance: 'Guidance.',
+          maxScore: criterion.maxScore ?? 5,
+          weight: criterion.weight ?? 2,
+          requiredEvidence: criterion.requiredEvidence ?? 'NONE',
+          isGating: criterion.isGating ?? false,
+          position,
+        })),
+      },
+    },
+    include: { criteria: true, template: { include: { domain: true } } },
+  });
+}
+
+export async function makeCandidate(
+  overrides: { fullName?: string; email?: string; stage?: CandidateStage } = {},
+  client: PrismaClient = prisma as PrismaClient,
+) {
+  return client.candidate.create({
+    data: {
+      reference: unique('CAN').toUpperCase().slice(0, 20),
+      fullName: overrides.fullName ?? 'Test Candidate',
+      email: overrides.email ?? `${unique('candidate')}@example.test`,
+      headline: 'Test candidate headline',
+      stage: overrides.stage ?? 'NEW',
+      yearsExperience: 8,
+    },
+  });
+}
+
+/** Give an expert an active qualification without going through a screening. */
+export async function makeQualification(
+  expertId: string,
+  domainId: string,
+  rubricVersionId: string,
+  decidedById?: string,
+  client: PrismaClient = prisma as PrismaClient,
+) {
+  return client.qualification.create({
+    data: {
+      expertId,
+      domainId,
+      rubricVersionId,
+      status: 'ACTIVE',
+      decidedById: decidedById ?? null,
+      decidedAt: new Date(),
+    },
+  });
+}
+
+/** A confirmed seat, which is the precondition for any work item. */
+export async function makeConfirmedAssignment(
+  projectId: string,
+  expertId: string,
+  overrides: { rateCents?: number; hours?: number } = {},
+  client: PrismaClient = prisma as PrismaClient,
+) {
+  const assignment = await client.assignment.create({
+    data: {
+      projectId,
+      expertId,
+      status: 'CONFIRMED',
+      allocationHoursPerWeek: overrides.hours ?? 16,
+      rateCents: overrides.rateCents ?? 20_000,
+      currency: 'USD',
+      confirmedAt: new Date(),
+    },
+  });
+  const filled = await client.assignment.count({
+    where: { projectId, status: { in: ['CONFIRMED', 'COMPLETED'] } },
+  });
+  await client.project.update({ where: { id: projectId }, data: { seatsFilled: filled } });
+  return assignment;
 }

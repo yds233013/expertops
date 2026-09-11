@@ -1,5 +1,6 @@
 import { type Job, type JobStatus, type Prisma } from '@prisma/client';
 import { type Db, isPrismaErrorCode, PG_UNIQUE_VIOLATION } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { forbidden, notFound } from '@/lib/errors';
 import { secondsFromNow } from '@/lib/time';
 
@@ -70,7 +71,7 @@ export async function enqueueJob(db: Db, input: EnqueueInput): Promise<EnqueueRe
       data: {
         type: input.type,
         payload: input.payload ?? {},
-        runAt: input.runAt ?? new Date(),
+        runAt: input.runAt ?? clockNow(),
         priority: input.priority ?? 100,
         maxAttempts: input.maxAttempts ?? 5,
         dedupeKey: input.dedupeKey ?? null,
@@ -108,7 +109,7 @@ export async function claimJobs(
 ): Promise<
   Array<{ id: string; type: JobType; payload: unknown; attempts: number; maxAttempts: number }>
 > {
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
   const staleBefore = new Date(now.getTime() - options.lockTimeoutSeconds * 1000);
 
   const rows = await db.$queryRaw<ClaimedRow[]>`
@@ -152,7 +153,7 @@ export async function completeJob(
     where: { id: jobId },
     data: {
       status: 'SUCCEEDED',
-      finishedAt: new Date(),
+      finishedAt: clockNow(),
       lockedAt: null,
       lockedBy: null,
       lastError: null,
@@ -172,7 +173,7 @@ export async function failJob(
   error: string,
   options: { attempts: number; maxAttempts: number; now?: Date },
 ): Promise<JobStatus> {
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
   const exhausted = options.attempts >= options.maxAttempts;
   const status: JobStatus = exhausted ? 'DEAD' : 'FAILED';
   await db.job.update({
@@ -242,7 +243,7 @@ export async function retryJob(db: Db, jobId: string): Promise<Job> {
     where: { id: jobId },
     data: {
       status: 'PENDING',
-      runAt: new Date(),
+      runAt: clockNow(),
       attempts: 0,
       lastError: null,
       lockedAt: null,
@@ -259,7 +260,7 @@ export async function cancelJob(db: Db, jobId: string): Promise<Job> {
   if (job.status === 'SUCCEEDED') throw forbidden('A succeeded job cannot be cancelled.');
   return db.job.update({
     where: { id: jobId },
-    data: { status: 'CANCELLED', lockedAt: null, lockedBy: null, finishedAt: new Date() },
+    data: { status: 'CANCELLED', lockedAt: null, lockedBy: null, finishedAt: clockNow() },
   });
 }
 

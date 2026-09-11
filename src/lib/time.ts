@@ -1,20 +1,22 @@
+import { now as clockNow } from './clock';
+
 export const MINUTE_MS = 60_000;
 export const HOUR_MS = 60 * MINUTE_MS;
 export const DAY_MS = 24 * HOUR_MS;
 
-export function hoursFromNow(hours: number, now: Date = new Date()): Date {
+export function hoursFromNow(hours: number, now: Date = clockNow()): Date {
   return new Date(now.getTime() + hours * HOUR_MS);
 }
 
-export function minutesFromNow(minutes: number, now: Date = new Date()): Date {
+export function minutesFromNow(minutes: number, now: Date = clockNow()): Date {
   return new Date(now.getTime() + minutes * MINUTE_MS);
 }
 
-export function secondsFromNow(seconds: number, now: Date = new Date()): Date {
+export function secondsFromNow(seconds: number, now: Date = clockNow()): Date {
   return new Date(now.getTime() + seconds * 1000);
 }
 
-export function daysFromNow(days: number, now: Date = new Date()): Date {
+export function daysFromNow(days: number, now: Date = clockNow()): Date {
   return new Date(now.getTime() + days * DAY_MS);
 }
 
@@ -23,7 +25,7 @@ export function hoursBetween(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / HOUR_MS);
 }
 
-export function isPast(date: Date, now: Date = new Date()): boolean {
+export function isPast(date: Date, now: Date = clockNow()): boolean {
   return date.getTime() <= now.getTime();
 }
 

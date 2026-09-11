@@ -1,5 +1,6 @@
 import { type Prisma, type Schedule } from '@prisma/client';
 import { type Db } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { secondsFromNow } from '@/lib/time';
 import { enqueueJob, type JobType } from './jobs';
 
@@ -121,7 +122,7 @@ export async function ensureDefaultSchedules(db: Db): Promise<Schedule[]> {
         intervalSeconds: definition.intervalSeconds,
         payload: definition.payload ?? {},
         enabled: definition.enabled ?? true,
-        nextRunAt: new Date(),
+        nextRunAt: clockNow(),
       },
     });
     results.push(schedule);
@@ -148,7 +149,7 @@ export async function claimDueSchedules(
   db: Db,
   options: { now?: Date; limit?: number } = {},
 ): Promise<Array<{ id: string; name: string; jobType: JobType; payload: unknown }>> {
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
   const limit = options.limit ?? 25;
 
   const rows = await db.$queryRaw<DueScheduleRow[]>`
@@ -190,7 +191,7 @@ export interface TickResult {
  * if two workers somehow claimed the same schedule only one job row is created.
  */
 export async function tickSchedules(db: Db, options: { now?: Date } = {}): Promise<TickResult> {
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
   const due = await claimDueSchedules(db, { now });
 
   let enqueued = 0;

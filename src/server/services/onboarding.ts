@@ -1,5 +1,6 @@
 import { type OnboardingCase, type OnboardingItemKind, type Prisma } from '@prisma/client';
 import { type Db } from '@/lib/db';
+import { now as clockNow } from '@/lib/clock';
 import { badRequest, invalidState, notFound } from '@/lib/errors';
 import { assertTransition, ONBOARDING_TRANSITIONS } from '@/server/domain/state-machines';
 import { type Actor, recordActivity } from './activity';
@@ -122,7 +123,7 @@ export async function startOnboarding(
   if (onboardingCase.status === 'NOT_STARTED') {
     const updated = await db.onboardingCase.update({
       where: { id: onboardingCase.id },
-      data: { status: 'IN_PROGRESS', startedAt: new Date() },
+      data: { status: 'IN_PROGRESS', startedAt: clockNow() },
     });
     await recordActivity(db, {
       actor,
@@ -216,7 +217,7 @@ export async function saveChecklistAnswers(
       where: { id: onboardingCase.id },
       data: {
         status: 'IN_PROGRESS',
-        startedAt: onboardingCase.startedAt ?? new Date(),
+        startedAt: onboardingCase.startedAt ?? clockNow(),
         submittedAt: null,
       },
     });
@@ -228,7 +229,7 @@ export async function saveChecklistAnswers(
   }
 
   const itemsByKey = new Map(onboardingCase.items.map((item) => [item.key, item]));
-  const now = new Date();
+  const now = clockNow();
 
   for (const answer of answers) {
     const item = itemsByKey.get(answer.key);
@@ -287,7 +288,7 @@ export async function submitOnboarding(db: Db, actor: Actor, expertId: string) {
 
   const updated = await db.onboardingCase.update({
     where: { id: onboardingCase.id },
-    data: { status: 'SUBMITTED', submittedAt: new Date(), nudgedAt: null },
+    data: { status: 'SUBMITTED', submittedAt: clockNow(), nudgedAt: null },
   });
 
   if (onboardingCase.expert.status === 'ONBOARDING') {
@@ -335,7 +336,7 @@ export async function decideVerification(db: Db, actor: Actor, input: Verificati
     throw badRequest('A reason is required when returning an onboarding submission.');
   }
 
-  const now = new Date();
+  const now = clockNow();
 
   // Guard against two operators deciding the same case at once: the update only
   // applies while the case is still SUBMITTED.
@@ -407,7 +408,7 @@ export async function findStalledOnboarding(
   db: Db,
   options: { nudgeAfterHours: number; now?: Date; limit?: number },
 ) {
-  const now = options.now ?? new Date();
+  const now = options.now ?? clockNow();
   const cutoff = new Date(now.getTime() - options.nudgeAfterHours * 3_600_000);
   const where: Prisma.OnboardingCaseWhereInput = {
     status: { in: ['NOT_STARTED', 'IN_PROGRESS'] },

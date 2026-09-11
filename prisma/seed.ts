@@ -220,10 +220,19 @@ async function reset() {
   // explicitly keeps the seed independent of cascade configuration.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
-      "ActivityEvent", "OutboxMessage", "Job", "Schedule",
+      "ActivityEvent", "OutboxMessage", "Job", "Schedule", "AttentionItem",
+      "OffboardingTask", "PaymentItem", "PaymentBatch",
+      "SupportReply", "SupportRequest",
+      "WorkReview", "WorkSubmission", "WorkItem",
+      "OutreachBatchItem", "OutreachBatch",
       "Assignment", "AvailabilityWindow", "OnboardingItem", "OnboardingCase",
       "Invitation", "MatchCandidate", "MatchRun",
-      "ProjectSkillRequirement", "Project",
+      "ProjectQualificationRequirement", "ProjectSkillRequirement", "Project",
+      "Qualification", "ReviewConflict", "ScreeningReview", "ScreeningSubmission", "Screening",
+      "RubricCriterion", "ScreeningRubricVersion", "ScreeningTemplate",
+      "DuplicateFlag", "Application",
+      "CandidatePortalSession", "CandidatePortalToken", "Candidate",
+      "SourcingCampaign", "SourceChannel", "Domain",
       "ExpertSkill", "ExpertPortalSession", "ExpertPortalToken", "Expert",
       "Skill", "Session", "User"
     RESTART IDENTITY CASCADE
@@ -523,6 +532,201 @@ async function seedActivity(
   log.info('activity seeded', { count: events.length });
 }
 
+// --- extension: domains, source channels and screening rubrics -------------
+
+const DOMAINS = [
+  {
+    slug: 'cybersecurity',
+    name: 'Cybersecurity',
+    description: 'Security operations, incident response and threat analysis.',
+  },
+  {
+    slug: 'payments',
+    name: 'Payments',
+    description: 'Card schemes, settlement and payment infrastructure.',
+  },
+  {
+    slug: 'life-sciences',
+    name: 'Life Sciences',
+    description: 'Clinical operations and medical device regulation.',
+  },
+] as const;
+
+async function seedDomains() {
+  const created = [];
+  for (const domain of DOMAINS) {
+    created.push(await prisma.domain.create({ data: { ...domain } }));
+  }
+  log.info('domains seeded', { count: created.length });
+  return created;
+}
+
+const SOURCE_CHANNELS = [
+  { name: 'Practitioner community', kind: 'COMMUNITY' as const },
+  { name: 'Expert referral', kind: 'REFERRAL' as const },
+  { name: 'Direct application', kind: 'DIRECT_APPLICATION' as const },
+  { name: 'Conference contact', kind: 'EVENT' as const },
+  { name: 'Bulk import', kind: 'IMPORT' as const },
+];
+
+async function seedSourceChannels() {
+  for (const channel of SOURCE_CHANNELS) {
+    await prisma.sourceChannel.create({
+      data: { slug: slugify(channel.name), name: channel.name, kind: channel.kind },
+    });
+  }
+  log.info('source channels seeded', { count: SOURCE_CHANNELS.length });
+}
+
+/**
+ * Rubrics are seeded already published, because a published version is
+ * immutable and that is the state the demo and the tests need to exercise.
+ * Cybersecurity gets two versions so the "raising the bar" path has something
+ * real to work with.
+ */
+const CYBER_CRITERIA_V1 = [
+  {
+    key: 'incident-response',
+    label: 'Incident response depth',
+    scoringGuidance: '5 = has led containment on a live intrusion; 1 = classroom familiarity only.',
+    maxScore: 5,
+    weight: 3,
+    requiredEvidence: 'WRITTEN_ANSWER' as const,
+    isGating: true,
+  },
+  {
+    key: 'threat-analysis',
+    label: 'Threat analysis and attribution',
+    scoringGuidance:
+      '5 = builds original analysis from raw telemetry; 1 = consumes vendor reports.',
+    maxScore: 5,
+    weight: 2,
+    requiredEvidence: 'WORK_SAMPLE_LINK' as const,
+    isGating: false,
+  },
+  {
+    key: 'communication',
+    label: 'Written communication under pressure',
+    scoringGuidance: '5 = writes an exec-ready summary mid-incident; 1 = needs heavy editing.',
+    maxScore: 5,
+    weight: 2,
+    requiredEvidence: 'WRITTEN_ANSWER' as const,
+    isGating: false,
+  },
+];
+
+async function seedRubrics(
+  domains: Awaited<ReturnType<typeof seedDomains>>,
+  users: Awaited<ReturnType<typeof seedOperators>>,
+) {
+  const admin = users[0]!;
+  const cyber = domains.find((domain) => domain.slug === 'cybersecurity')!;
+  const payments = domains.find((domain) => domain.slug === 'payments')!;
+
+  const cyberTemplate = await prisma.screeningTemplate.create({
+    data: {
+      slug: 'cybersecurity-practitioner',
+      name: 'Cybersecurity practitioner screening',
+      domainId: cyber.id,
+      description: 'Baseline assessment for hands-on security practitioners.',
+    },
+  });
+
+  // v1: the original bar.
+  await prisma.screeningRubricVersion.create({
+    data: {
+      templateId: cyberTemplate.id,
+      version: 1,
+      status: 'PUBLISHED',
+      passThreshold: 18,
+      guidance: 'Assess demonstrated practice, not credentials.',
+      changeNote: 'Initial published rubric.',
+      publishedAt: daysFromNow(-120),
+      publishedById: admin.id,
+      criteria: {
+        create: CYBER_CRITERIA_V1.map((criterion, position) => ({ ...criterion, position })),
+      },
+    },
+  });
+
+  // v2: a raised bar, adding a gating criterion. Used to demonstrate that
+  // existing qualifications are flagged for re-review rather than revoked.
+  await prisma.screeningRubricVersion.create({
+    data: {
+      templateId: cyberTemplate.id,
+      version: 2,
+      status: 'PUBLISHED',
+      passThreshold: 24,
+      guidance: 'Assess demonstrated practice, not credentials. Cloud exposure is now required.',
+      changeNote: 'Added a gating cloud-security criterion after three engagements needed it.',
+      publishedAt: daysFromNow(-20),
+      publishedById: admin.id,
+      criteria: {
+        create: [
+          ...CYBER_CRITERIA_V1.map((criterion, position) => ({ ...criterion, position })),
+          {
+            key: 'cloud-security',
+            label: 'Cloud control-plane security',
+            scoringGuidance:
+              '5 = has hardened a multi-account cloud estate; 1 = no direct exposure.',
+            maxScore: 5,
+            weight: 3,
+            requiredEvidence: 'WRITTEN_ANSWER' as const,
+            isGating: true,
+            position: 3,
+          },
+        ],
+      },
+    },
+  });
+
+  const paymentsTemplate = await prisma.screeningTemplate.create({
+    data: {
+      slug: 'payments-specialist',
+      name: 'Payments specialist screening',
+      domainId: payments.id,
+      description: 'Settlement, reconciliation and scheme rules.',
+    },
+  });
+  await prisma.screeningRubricVersion.create({
+    data: {
+      templateId: paymentsTemplate.id,
+      version: 1,
+      status: 'PUBLISHED',
+      passThreshold: 12,
+      guidance: 'Focus on reconciliation practice and scheme rule fluency.',
+      publishedAt: daysFromNow(-60),
+      publishedById: admin.id,
+      criteria: {
+        create: [
+          {
+            key: 'settlement',
+            label: 'Settlement and reconciliation',
+            scoringGuidance: '5 = has owned a settlement break investigation end to end.',
+            maxScore: 5,
+            weight: 3,
+            requiredEvidence: 'WRITTEN_ANSWER' as const,
+            isGating: true,
+            position: 0,
+          },
+          {
+            key: 'scheme-rules',
+            label: 'Scheme rule fluency',
+            scoringGuidance: '5 = cites chapter and verse without looking it up.',
+            maxScore: 5,
+            weight: 2,
+            requiredEvidence: 'NONE' as const,
+            isGating: false,
+            position: 1,
+          },
+        ],
+      },
+    },
+  });
+
+  log.info('rubrics seeded', { templates: 2, versions: 3 });
+}
+
 async function seedSchedules() {
   for (const definition of DEFAULT_SCHEDULES) {
     await prisma.schedule.create({
@@ -548,6 +752,9 @@ async function main() {
   const skills = await seedSkills();
   const experts = await seedExperts(skills);
   const projects = await seedProjects(users, skills);
+  const domains = await seedDomains();
+  await seedSourceChannels();
+  await seedRubrics(domains, users);
   await seedActivity(users, projects, experts);
   await seedSchedules();
 
@@ -556,6 +763,7 @@ async function main() {
     skills: skills.length,
     experts: experts.length,
     projects: projects.length,
+    domains: domains.length,
   });
   console.log('');
   console.log('Demo operator accounts (development only, password from SEED_DEMO_PASSWORD):');

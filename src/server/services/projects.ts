@@ -42,11 +42,19 @@ function validateRequirement(requirement: RequirementInput) {
 }
 
 export async function nextProjectCode(db: Db): Promise<string> {
-  const latest = await db.project.findFirst({ orderBy: { code: 'desc' }, select: { code: true } });
-  return formatReference(
-    PROJECT_REFERENCE_PREFIX,
-    parseReferenceSequence(PROJECT_REFERENCE_PREFIX, latest?.code) + 1,
-  );
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.project.findMany({
+    where: { code: { startsWith: `${PROJECT_REFERENCE_PREFIX}-` } },
+    select: { code: true },
+  });
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(PROJECT_REFERENCE_PREFIX, row.code);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(PROJECT_REFERENCE_PREFIX, highest + 1);
 }
 
 export async function createProject(

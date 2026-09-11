@@ -83,7 +83,15 @@ export async function callRoute<T = any>(
   let body: unknown = null;
   if (response.status !== 204) {
     const text = await response.clone().text();
-    body = text ? JSON.parse(text) : null;
+    // Some endpoints return CSV rather than JSON. Hand the raw text back
+    // instead of throwing, so a test can assert on either.
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
+    }
   }
   return { status: response.status, body: body as T, response };
 }

@@ -6,16 +6,24 @@ import { currentOperator } from '@/server/http/context';
 import { jobCounts } from '@/server/services/jobs';
 import { outboxCounts } from '@/server/services/outbox';
 import { onboardingCounts } from '@/server/services/onboarding';
+import { attentionCounts } from '@/server/services/attention';
+import { candidateCountsByStage } from '@/server/services/candidates';
+import { workCounts } from '@/server/services/work';
+import { paymentCounts } from '@/server/services/payments';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Badge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
 const NAV = [
+  { href: '/attention', label: 'Needs attention' },
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/candidates', label: 'Candidates' },
   { href: '/projects', label: 'Projects' },
   { href: '/experts', label: 'Experts' },
   { href: '/onboarding', label: 'Verification' },
+  { href: '/work', label: 'Delivery' },
+  { href: '/payments', label: 'Payments' },
   { href: '/outbox', label: 'Outbox' },
   { href: '/activity', label: 'Activity' },
   { href: '/jobs', label: 'Worker' },
@@ -25,14 +33,24 @@ export default async function OperatorLayout({ children }: { children: React.Rea
   const operator = await currentOperator();
   if (!operator) redirect('/login');
 
-  const [outbox, jobs, onboarding] = await Promise.all([
+  const [outbox, jobs, onboarding, attention, candidates, work, payments] = await Promise.all([
     outboxCounts(prisma),
     jobCounts(prisma),
     onboardingCounts(prisma),
+    attentionCounts(prisma),
+    candidateCountsByStage(prisma),
+    workCounts(prisma),
+    paymentCounts(prisma),
   ]);
 
+  // Badges show work waiting on a person, not raw record counts.
   const badges: Record<string, number> = {
+    '/attention': attention.total,
+    '/candidates':
+      candidates.DUPLICATE_HOLD + candidates.SCREENING_SUBMITTED + candidates.IN_REVIEW,
     '/onboarding': onboarding.SUBMITTED,
+    '/work': work.SUBMITTED + work.IN_REVIEW,
+    '/payments': payments.withOpenDiscrepancies,
     '/outbox': outbox.QUEUED,
     '/jobs': jobs.DEAD + jobs.FAILED,
   };

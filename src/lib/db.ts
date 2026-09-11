@@ -60,3 +60,19 @@ export function isPrismaErrorCode(error: unknown, code: string): boolean {
  * transaction.
  */
 export type Transactor = Pick<PrismaClient, '$transaction'> & Db;
+
+/**
+ * Which column(s) a unique violation was on.
+ *
+ * Prisma puts the target in `meta.target`. Reporting it stops a conflict on one
+ * field being explained to the user as a conflict on another, which is both
+ * confusing and a real debugging cost.
+ */
+export function uniqueViolationTarget(error: unknown): string[] {
+  if (!isPrismaErrorCode(error, PG_UNIQUE_VIOLATION)) return [];
+  const meta = (error as { meta?: { target?: unknown } }).meta;
+  const target = meta?.target;
+  if (Array.isArray(target)) return target.map(String);
+  if (typeof target === 'string') return [target];
+  return [];
+}

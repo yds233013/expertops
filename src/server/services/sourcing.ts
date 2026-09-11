@@ -15,14 +15,19 @@ import { type Actor, recordActivity } from './activity';
 export const CAMPAIGN_REFERENCE_PREFIX = 'SRC';
 
 async function nextCampaignCode(db: Db): Promise<string> {
-  const latest = await db.sourcingCampaign.findFirst({
-    orderBy: { code: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.sourcingCampaign.findMany({
+    where: { code: { startsWith: `${CAMPAIGN_REFERENCE_PREFIX}-` } },
     select: { code: true },
   });
-  return formatReference(
-    CAMPAIGN_REFERENCE_PREFIX,
-    parseReferenceSequence(CAMPAIGN_REFERENCE_PREFIX, latest?.code) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(CAMPAIGN_REFERENCE_PREFIX, row.code);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(CAMPAIGN_REFERENCE_PREFIX, highest + 1);
 }
 
 export interface CreateCampaignInput {

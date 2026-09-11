@@ -599,7 +599,7 @@ export const HANDLERS: Record<JobType, JobHandler> = {
           category: 'review.overdue',
           severity: hoursLate > 48 ? 'HIGH' : 'MEDIUM',
           title: `${review.reviewer.name} is ${hoursLate}h late reviewing ${review.screening.reference}`,
-          blocker: `Review assigned ${hoursBetween(review.assignedAt, ctx.now)}h ago, due ${hoursLate}h ago, still not submitted.`,
+          blocker: `Due ${hoursLate}h ago and still not submitted.`,
           impact: `${review.screening.candidate.fullName} cannot be qualified or rejected until this review lands.`,
           nextAction:
             review.remindersSent >= REMINDER_POLICY.maxReminders

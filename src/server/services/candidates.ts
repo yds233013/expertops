@@ -23,25 +23,35 @@ export const CANDIDATE_REFERENCE_PREFIX = 'CAN';
 export const APPLICATION_REFERENCE_PREFIX = 'APP';
 
 export async function nextCandidateReference(db: Db): Promise<string> {
-  const latest = await db.candidate.findFirst({
-    orderBy: { reference: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.candidate.findMany({
+    where: { reference: { startsWith: `${CANDIDATE_REFERENCE_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    CANDIDATE_REFERENCE_PREFIX,
-    parseReferenceSequence(CANDIDATE_REFERENCE_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(CANDIDATE_REFERENCE_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(CANDIDATE_REFERENCE_PREFIX, highest + 1);
 }
 
 async function nextApplicationReference(db: Db): Promise<string> {
-  const latest = await db.application.findFirst({
-    orderBy: { reference: 'desc' },
+  // Only well-formed references count towards the sequence; see
+  // nextExpertReference for why lexical MAX is unsafe here.
+  const rows = await db.application.findMany({
+    where: { reference: { startsWith: `${APPLICATION_REFERENCE_PREFIX}-` } },
     select: { reference: true },
   });
-  return formatReference(
-    APPLICATION_REFERENCE_PREFIX,
-    parseReferenceSequence(APPLICATION_REFERENCE_PREFIX, latest?.reference) + 1,
-  );
+
+  let highest = 0;
+  for (const row of rows) {
+    const sequence = parseReferenceSequence(APPLICATION_REFERENCE_PREFIX, row.reference);
+    if (sequence > highest) highest = sequence;
+  }
+  return formatReference(APPLICATION_REFERENCE_PREFIX, highest + 1);
 }
 
 export function normaliseEmail(email: string): string {
@@ -123,11 +133,16 @@ export async function createCandidate(
 
   // A suspected duplicate parks the person until a human decides. Nothing is
   // merged, and no outreach happens while the question is open.
-  if (duplicateFlags.length > 0) {
-    await db.candidate.update({ where: { id: candidate.id }, data: { stage: 'DUPLICATE_HOLD' } });
+  if (duplicateFlags.length === 0) {
+    return { candidate, duplicateFlags };
   }
 
-  return { candidate, duplicateFlags };
+  // Re-read so callers see the hold rather than the pre-update row.
+  const held = await db.candidate.update({
+    where: { id: candidate.id },
+    data: { stage: 'DUPLICATE_HOLD' },
+  });
+  return { candidate: held, duplicateFlags };
 }
 
 /**
@@ -424,7 +439,10 @@ export const CANDIDATE_STAGE_TRANSITIONS: Record<CandidateStage, CandidateStage[
   NEW: ['DUPLICATE_HOLD', 'SCREENING_INVITED', 'REJECTED', 'WITHDRAWN'],
   DUPLICATE_HOLD: ['NEW', 'WITHDRAWN', 'REJECTED'],
   SCREENING_INVITED: ['SCREENING_SUBMITTED', 'REJECTED', 'WITHDRAWN'],
-  SCREENING_SUBMITTED: ['IN_REVIEW', 'REVISION_REQUESTED', 'REJECTED', 'WITHDRAWN'],
+  // QUALIFIED is reachable directly because grantQualification accepts a
+  // screening in SUBMITTED as well as IN_REVIEW. The screening status is the
+  // authority; this table must not contradict it.
+  SCREENING_SUBMITTED: ['IN_REVIEW', 'REVISION_REQUESTED', 'QUALIFIED', 'REJECTED', 'WITHDRAWN'],
   IN_REVIEW: ['QUALIFIED', 'REJECTED', 'REVISION_REQUESTED', 'WITHDRAWN'],
   REVISION_REQUESTED: ['SCREENING_SUBMITTED', 'REJECTED', 'WITHDRAWN'],
   QUALIFIED: ['WITHDRAWN'],
