@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 /** Opens a short form so the operator can add a note and a response deadline. */
 export function InviteButton({
@@ -46,26 +47,19 @@ export function InviteButton({
     setPending(true);
     setError(null);
     try {
-      const response = await fetch(`/api/projects/${projectId}/invitations`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          expertId,
-          message: message.trim() || undefined,
-          ttlHours,
-          matchCandidateId: matchCandidateId ?? null,
-        }),
+      const result = await apiPost(`/api/projects/${projectId}/invitations`, {
+        expertId,
+        message: message.trim() || undefined,
+        ttlHours,
+        matchCandidateId: matchCandidateId ?? null,
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error?.message ?? 'The invitation could not be created.');
+      if (!result.ok) {
+        setError(result.error?.message ?? 'The invitation could not be created.');
         return;
       }
       setOpen(false);
       setMessage('');
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }

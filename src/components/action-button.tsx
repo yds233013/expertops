@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { clsx } from 'clsx';
+import { apiFetch } from '@/lib/api-client';
 
 /**
  * A button that POSTs to an API route and surfaces the server's error message.
@@ -44,21 +45,14 @@ export function ActionButton({
     setPending(true);
     setError(null);
     try {
-      const response = await fetch(url, {
-        method,
-        headers: body ? { 'content-type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        setError(payload?.error?.message ?? `Request failed (${response.status}).`);
+      const result = await apiFetch(url, { method, body });
+      if (!result.ok) {
+        setError(result.error?.message ?? `Request failed (${result.status}).`);
         return;
       }
       setConfirming(false);
       onDone?.();
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }

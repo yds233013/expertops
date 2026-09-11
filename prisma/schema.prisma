@@ -48,6 +48,29 @@ model User {
   verifiedCases      OnboardingCase[] @relation("OnboardingVerifiedBy")
   createdAssignments Assignment[]     @relation("AssignmentCreatedBy")
 
+  // Extension back-relations
+  ownedCampaigns         SourcingCampaign[]       @relation("CampaignOwner")
+  createdCampaigns       SourcingCampaign[]       @relation("CampaignCreatedBy")
+  ownedCandidates        Candidate[]              @relation("CandidateOwner")
+  createdCandidates      Candidate[]              @relation("CandidateCreatedBy")
+  resolvedDuplicates     DuplicateFlag[]
+  publishedRubrics       ScreeningRubricVersion[] @relation("RubricPublishedBy")
+  decidedScreenings      Screening[]              @relation("ScreeningDecidedBy")
+  screeningReviews       ScreeningReview[]        @relation("ScreeningReviewer")
+  resolvedConflicts      ReviewConflict[]
+  decidedQualifications  Qualification[]          @relation("QualificationDecidedBy")
+  ownedAttentionItems    AttentionItem[]          @relation("AttentionOwner")
+  createdBatches         OutreachBatch[]          @relation("BatchCreatedBy")
+  approvedBatches        OutreachBatch[]          @relation("BatchApprovedBy")
+  createdWorkItems       WorkItem[]               @relation("WorkItemCreatedBy")
+  workReviews            WorkReview[]             @relation("WorkReviewer")
+  ownedSupportRequests   SupportRequest[]         @relation("SupportOwner")
+  supportReplies         SupportReply[]
+  createdPaymentBatches  PaymentBatch[]           @relation("BatchCreatedByUser")
+  approvedPaymentBatches PaymentBatch[]           @relation("PaymentApprovedBy")
+  ownedOffboardingTasks  OffboardingTask[]        @relation("OffboardingOwner")
+  confirmedOffboarding   OffboardingTask[]        @relation("OffboardingConfirmedBy")
+
   @@index([role])
 }
 
@@ -107,6 +130,18 @@ model Expert {
   portalTokens    ExpertPortalToken[]
   portalSessions  ExpertPortalSession[]
   activityEvents  ActivityEvent[]
+
+  // Extension back-relations
+  referredCandidates Candidate[]         @relation("ExpertReferrals")
+  candidateRecord    Candidate?          @relation("CandidateExpert")
+  duplicateFlags     DuplicateFlag[]
+  qualifications     Qualification[]
+  attentionItems     AttentionItem[]
+  outreachBatchItems OutreachBatchItem[]
+  workItems          WorkItem[]
+  supportRequests    SupportRequest[]
+  paymentItems       PaymentItem[]
+  offboardingTasks   OffboardingTask[]
 
   @@index([status])
   @@index([status, hourlyRateCents])
@@ -225,6 +260,16 @@ model Project {
   availability   AvailabilityWindow[]
   assignments    Assignment[]
   activityEvents ActivityEvent[]
+
+  // Extension back-relations
+  campaigns                 SourcingCampaign[]
+  qualificationRequirements ProjectQualificationRequirement[]
+  attentionItems            AttentionItem[]
+  outreachBatches           OutreachBatch[]
+  workItems                 WorkItem[]
+  supportRequests           SupportRequest[]
+  paymentItems              PaymentItem[]
+  offboardingTasks          OffboardingTask[]
 
   @@index([status])
   @@index([createdById])
@@ -442,6 +487,10 @@ model Assignment {
   expert    Expert  @relation(fields: [expertId], references: [id], onDelete: Cascade)
   createdBy User?   @relation("AssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
+  // Extension back-relations
+  workItems        WorkItem[]
+  offboardingTasks OffboardingTask[]
+
   @@unique([projectId, expertId])
   @@index([projectId, status])
   @@index([expertId, status])
@@ -470,9 +519,10 @@ model ActivityEvent {
   action        String
   summary       String
   metadata      Json      @default("{}")
-  // Denormalised links so project/expert timelines are single-index reads.
+  // Denormalised links so project/expert/candidate timelines are single-index reads.
   projectId     String?
   expertId      String?
+  candidateId   String?
   createdAt     DateTime  @default(now())
 
   actorUser User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
@@ -483,6 +533,7 @@ model ActivityEvent {
   @@index([entityType, entityId, createdAt])
   @@index([projectId, createdAt])
   @@index([expertId, createdAt])
+  @@index([candidateId, createdAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -573,4 +624,1002 @@ model Schedule {
   updatedAt       DateTime  @updatedAt
 
   @@index([enabled, nextRunAt])
+}
+
+// ===========================================================================
+// EXTENSION: applications, domain screening, delivery, support and payment
+// preparation.
+//
+// Everything below is additive. No existing table or column changes meaning,
+// so the migration is safe to apply to a populated development database.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Domains and sourcing
+// ---------------------------------------------------------------------------
+
+/// A field of expertise that screening rubrics and project requirements are
+/// written against, e.g. "cybersecurity".
+model Domain {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String   @default("")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  campaigns      SourcingCampaign[]
+  templates      ScreeningTemplate[]
+  applications   Application[]
+  qualifications Qualification[]
+  requirements   ProjectQualificationRequirement[]
+
+  @@index([isActive])
+}
+
+enum SourcingCampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+/// A deliberate push to find more people in a domain, usually opened because a
+/// project cannot be staffed from the existing network.
+model SourcingCampaign {
+  id          String                 @id @default(cuid())
+  code        String                 @unique
+  name        String
+  domainId    String
+  /// Set when the campaign exists to fill a specific project shortage.
+  projectId   String?
+  targetCount Int                    @default(1)
+  status      SourcingCampaignStatus @default(DRAFT)
+  ownerId     String?
+  notes       String                 @default("")
+  opensAt     DateTime?
+  closesAt    DateTime?
+  createdById String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  domain     Domain      @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  owner      User?       @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy  User?       @relation("CampaignCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  candidates Candidate[]
+
+  @@index([status, domainId])
+  @@index([projectId])
+}
+
+enum SourceChannelKind {
+  REFERRAL
+  COMMUNITY
+  DIRECT_APPLICATION
+  EVENT
+  IMPORT
+  OTHER
+}
+
+/// Where a candidate came from. Communities and referrals are first-class so an
+/// operator can see which relationships actually produce qualified experts.
+model SourceChannel {
+  id        String            @id @default(cuid())
+  slug      String            @unique
+  name      String
+  kind      SourceChannelKind @default(OTHER)
+  notes     String            @default("")
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+
+  candidates Candidate[]
+
+  @@index([kind, isActive])
+}
+
+// ---------------------------------------------------------------------------
+// Candidates and applications
+// ---------------------------------------------------------------------------
+
+enum CandidateStage {
+  NEW
+  DUPLICATE_HOLD
+  SCREENING_INVITED
+  SCREENING_SUBMITTED
+  IN_REVIEW
+  REVISION_REQUESTED
+  QUALIFIED
+  REJECTED
+  WITHDRAWN
+}
+
+/// A person in the intake pipeline.
+///
+/// Deliberately separate from Expert: a candidate is someone being assessed,
+/// an expert is someone in the network. Converting one to the other is an
+/// explicit, recorded step, never an implicit upgrade.
+model Candidate {
+  id                  String         @id @default(cuid())
+  reference           String         @unique
+  fullName            String
+  email               String
+  headline            String         @default("")
+  timezone            String         @default("UTC")
+  yearsExperience     Int            @default(0)
+  stage               CandidateStage @default(NEW)
+  sourceChannelId     String?
+  /// Set when an existing expert referred this person.
+  referredByExpertId  String?
+  campaignId          String?
+  /// The operator who owns this relationship.
+  relationshipOwnerId String?
+  notes               String         @default("")
+  nextActionAt        DateTime?
+  nextActionNote      String         @default("")
+  /// Set when the person asks not to be contacted again. Honoured by the outbox.
+  contactOptOutAt     DateTime?
+  contactOptOutReason String?
+  /// Set once the candidate has been converted into a network expert.
+  expertId            String?        @unique
+  createdById         String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  sourceChannel     SourceChannel?         @relation(fields: [sourceChannelId], references: [id], onDelete: SetNull)
+  referredByExpert  Expert?                @relation("ExpertReferrals", fields: [referredByExpertId], references: [id], onDelete: SetNull)
+  campaign          SourcingCampaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  relationshipOwner User?                  @relation("CandidateOwner", fields: [relationshipOwnerId], references: [id], onDelete: SetNull)
+  expert            Expert?                @relation("CandidateExpert", fields: [expertId], references: [id], onDelete: SetNull)
+  createdBy         User?                  @relation("CandidateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  applications      Application[]
+  screenings        Screening[]
+  duplicateFlags    DuplicateFlag[]        @relation("FlaggedCandidate")
+  matchedByFlags    DuplicateFlag[]        @relation("MatchedCandidate")
+  attentionItems    AttentionItem[]
+  portalTokens      CandidatePortalToken[]
+
+  @@index([stage])
+  @@index([email])
+  @@index([relationshipOwnerId, nextActionAt])
+  @@index([campaignId])
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  ACKNOWLEDGED
+  SCREENING_STARTED
+  CLOSED_QUALIFIED
+  CLOSED_REJECTED
+  CLOSED_WITHDRAWN
+}
+
+/// A structured application to work in a domain.
+model Application {
+  id              String            @id @default(cuid())
+  reference       String            @unique
+  candidateId     String
+  domainId        String
+  campaignId      String?
+  status          ApplicationStatus @default(SUBMITTED)
+  /// Structured answers keyed by question id. No free-form file upload exists.
+  answers         Json              @default("{}")
+  /// Synthetic work-sample links. Recorded as text and never fetched.
+  workSampleLinks Json              @default("[]")
+  submittedAt     DateTime          @default(now())
+  acknowledgedAt  DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  domain    Domain    @relation(fields: [domainId], references: [id], onDelete: Restrict)
+
+  @@index([status, submittedAt])
+  @@index([candidateId])
+}
+
+enum DuplicateFlagStatus {
+  OPEN
+  CONFIRMED_SAME
+  CONFIRMED_DIFFERENT
+}
+
+/// A suspected duplicate person.
+///
+/// Raised automatically, resolved only by a human. Nothing merges two people
+/// without an operator saying so, because a wrong merge destroys history that
+/// cannot be recovered.
+model DuplicateFlag {
+  id                 String              @id @default(cuid())
+  candidateId        String
+  matchedCandidateId String?
+  matchedExpertId    String?
+  /// Why the system thinks these may be the same person.
+  reason             String
+  /// 0-100 heuristic confidence. Advisory only.
+  score              Int                 @default(0)
+  status             DuplicateFlagStatus @default(OPEN)
+  resolvedById       String?
+  resolvedAt         DateTime?
+  resolutionNote     String?
+  createdAt          DateTime            @default(now())
+
+  candidate        Candidate  @relation("FlaggedCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+  matchedCandidate Candidate? @relation("MatchedCandidate", fields: [matchedCandidateId], references: [id], onDelete: Cascade)
+  matchedExpert    Expert?    @relation(fields: [matchedExpertId], references: [id], onDelete: Cascade)
+  resolvedBy       User?      @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([candidateId, matchedCandidateId])
+  @@unique([candidateId, matchedExpertId])
+  @@index([status])
+}
+
+/// Single-use portal link for a candidate completing a screening.
+model CandidatePortalToken {
+  id           String    @id @default(cuid())
+  candidateId  String
+  tokenHash    String    @unique
+  purpose      String    @default("SCREENING")
+  expiresAt    DateTime
+  usedAt       DateTime?
+  revokedAt    DateTime?
+  devPlaintext String?
+  createdAt    DateTime  @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@index([expiresAt])
+}
+
+model CandidatePortalSession {
+  id          String   @id @default(cuid())
+  candidateId String
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([candidateId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Screening rubrics and reviews
+// ---------------------------------------------------------------------------
+
+model ScreeningTemplate {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  domainId    String
+  description String   @default("")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  domain   Domain                   @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  versions ScreeningRubricVersion[]
+
+  @@index([domainId, isActive])
+}
+
+enum RubricStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// An immutable published rubric.
+///
+/// Once PUBLISHED, criteria and thresholds never change. Editing produces a new
+/// version, so a screening decided last month can still be explained against
+/// exactly the rubric that was in force at the time.
+model ScreeningRubricVersion {
+  id            String       @id @default(cuid())
+  templateId    String
+  version       Int
+  status        RubricStatus @default(DRAFT)
+  /// Total weighted score needed for a pass recommendation. Advisory: the
+  /// decision is still a reviewer's.
+  passThreshold Int          @default(0)
+  guidance      String       @default("")
+  changeNote    String       @default("")
+  publishedAt   DateTime?
+  publishedById String?
+  createdById   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  template       ScreeningTemplate                 @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  publishedBy    User?                             @relation("RubricPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  criteria       RubricCriterion[]
+  screenings     Screening[]
+  qualifications Qualification[]
+  requirements   ProjectQualificationRequirement[]
+
+  @@unique([templateId, version])
+  @@index([status])
+}
+
+enum EvidenceKind {
+  NONE
+  WORK_SAMPLE_LINK
+  WRITTEN_ANSWER
+  REFERENCE_STATEMENT
+}
+
+model RubricCriterion {
+  id               String       @id @default(cuid())
+  rubricVersionId  String
+  key              String
+  label            String
+  /// What a reviewer should look for at each score level.
+  scoringGuidance  String       @default("")
+  maxScore         Int          @default(5)
+  weight           Int          @default(1)
+  requiredEvidence EvidenceKind @default(NONE)
+  /// A criterion the candidate must pass regardless of total score.
+  isGating         Boolean      @default(false)
+  position         Int          @default(0)
+
+  rubricVersion ScreeningRubricVersion @relation(fields: [rubricVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([rubricVersionId, key])
+  @@index([rubricVersionId, position])
+}
+
+enum ScreeningStatus {
+  INVITED
+  SUBMITTED
+  IN_REVIEW
+  REVISION_REQUESTED
+  DECIDED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum ScreeningOutcome {
+  APPROVED
+  REJECTED
+}
+
+/// One candidate assessed against one immutable rubric version.
+model Screening {
+  id              String            @id @default(cuid())
+  reference       String            @unique
+  candidateId     String
+  rubricVersionId String
+  status          ScreeningStatus   @default(INVITED)
+  outcome         ScreeningOutcome?
+  invitedAt       DateTime          @default(now())
+  /// Candidate's deadline to submit.
+  dueAt           DateTime
+  submittedAt     DateTime?
+  /// Reviewer's deadline once a submission exists.
+  reviewDueAt     DateTime?
+  decidedAt       DateTime?
+  decidedById     String?
+  decisionNote    String?
+  currentRevision Int               @default(0)
+  remindersSent   Int               @default(0)
+  lastRemindedAt  DateTime?
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  candidate      Candidate              @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  rubricVersion  ScreeningRubricVersion @relation(fields: [rubricVersionId], references: [id], onDelete: Restrict)
+  decidedBy      User?                  @relation("ScreeningDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  submissions    ScreeningSubmission[]
+  reviews        ScreeningReview[]
+  conflict       ReviewConflict?
+  qualification  Qualification?
+  attentionItems AttentionItem[]
+
+  @@index([status, reviewDueAt])
+  @@index([candidateId])
+}
+
+model ScreeningSubmission {
+  id              String   @id @default(cuid())
+  screeningId     String
+  revision        Int
+  /// Answers keyed by criterion key.
+  answers         Json     @default("{}")
+  /// Synthetic links, stored as text. Never fetched by the application.
+  workSampleLinks Json     @default("[]")
+  note            String   @default("")
+  /// False when required evidence is missing, which is how an incomplete
+  /// submission is represented rather than rejecting it outright.
+  isComplete      Boolean  @default(false)
+  missingEvidence Json     @default("[]")
+  submittedAt     DateTime @default(now())
+
+  screening Screening         @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  reviews   ScreeningReview[]
+
+  @@unique([screeningId, revision])
+}
+
+enum ReviewState {
+  ASSIGNED
+  SUBMITTED
+  WITHDRAWN
+}
+
+enum ReviewDecision {
+  APPROVE
+  REJECT
+  REQUEST_REVISION
+}
+
+/// A human reviewer's assessment. Private notes never leave the operator side.
+model ScreeningReview {
+  id             String          @id @default(cuid())
+  screeningId    String
+  submissionId   String?
+  reviewerId     String
+  state          ReviewState     @default(ASSIGNED)
+  decision       ReviewDecision?
+  /// Per-criterion scores keyed by criterion key.
+  scores         Json            @default("{}")
+  /// Shown to the candidate when a revision is requested.
+  publicFeedback String          @default("")
+  /// Operator-only. Never serialised to a candidate or expert response.
+  privateNotes   String          @default("")
+  assignedAt     DateTime        @default(now())
+  dueAt          DateTime
+  submittedAt    DateTime?
+  remindersSent  Int             @default(0)
+  lastRemindedAt DateTime?
+
+  screening  Screening            @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  submission ScreeningSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  reviewer   User                 @relation("ScreeningReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([screeningId, reviewerId])
+  @@index([state, dueAt])
+  @@index([reviewerId, state])
+}
+
+enum ConflictStatus {
+  OPEN
+  RESOLVED
+}
+
+/// Raised when reviewers of the same screening disagree. Resolution is an
+/// authorised operator decision, never an automatic tie-break.
+model ReviewConflict {
+  id           String          @id @default(cuid())
+  screeningId  String          @unique
+  status       ConflictStatus  @default(OPEN)
+  summary      String
+  resolvedById String?
+  resolvedAt   DateTime?
+  resolution   ReviewDecision?
+  note         String?
+  createdAt    DateTime        @default(now())
+
+  screening  Screening @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  resolvedBy User?     @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+}
+
+enum QualificationStatus {
+  ACTIVE
+  NEEDS_REREVIEW
+  SUPERSEDED
+  REVOKED
+}
+
+/// Proof that a named human decided this expert meets a specific rubric version
+/// in a domain. Always traceable to the evidence and the decider.
+model Qualification {
+  id              String              @id @default(cuid())
+  expertId        String
+  domainId        String
+  rubricVersionId String
+  screeningId     String?             @unique
+  status          QualificationStatus @default(ACTIVE)
+  decidedById     String?
+  decidedAt       DateTime            @default(now())
+  /// Set when the project requirements moved on and this needs looking at.
+  rereviewReason  String?
+  revokedAt       DateTime?
+  revokedById     String?
+  note            String              @default("")
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  expert        Expert                 @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  domain        Domain                 @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  rubricVersion ScreeningRubricVersion @relation(fields: [rubricVersionId], references: [id], onDelete: Restrict)
+  screening     Screening?             @relation(fields: [screeningId], references: [id], onDelete: SetNull)
+  decidedBy     User?                  @relation("QualificationDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([expertId, domainId, rubricVersionId])
+  @@index([expertId, status])
+  @@index([domainId, status])
+}
+
+/// What a project will accept. Raising the bar surfaces re-review work rather
+/// than silently invalidating people already staffed.
+model ProjectQualificationRequirement {
+  id                 String   @id @default(cuid())
+  projectId          String
+  domainId           String
+  /// The oldest rubric version the project accepts.
+  minRubricVersionId String
+  isMandatory        Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  project          Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  domain           Domain                 @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  minRubricVersion ScreeningRubricVersion @relation(fields: [minRubricVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, domainId])
+}
+
+// ---------------------------------------------------------------------------
+// Needs-attention queue
+// ---------------------------------------------------------------------------
+
+enum AttentionKind {
+  /// A real-world blocker an operator has to resolve.
+  BUSINESS_BLOCKER
+  /// The automation itself broke. Shown separately so a failing job is never
+  /// mistaken for a business problem.
+  AUTOMATION_FAILURE
+}
+
+enum AttentionSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AttentionStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+/// The operator's main working surface.
+///
+/// One row per unresolved condition, keyed by `dedupeKey` so a sweep that runs
+/// every minute cannot produce a minute's worth of identical alerts. Items
+/// resolve themselves when the underlying condition goes away.
+model AttentionItem {
+  id             String            @id @default(cuid())
+  dedupeKey      String            @unique
+  kind           AttentionKind     @default(BUSINESS_BLOCKER)
+  category       String
+  severity       AttentionSeverity @default(MEDIUM)
+  title          String
+  /// The concrete thing that is stuck.
+  blocker        String
+  /// What it costs if nobody acts.
+  impact         String
+  /// What to do next.
+  nextAction     String
+  ownerId        String?
+  dueAt          DateTime?
+  status         AttentionStatus   @default(OPEN)
+  resolvedAt     DateTime?
+  resolvedReason String?
+  /// Bumped every sweep so a stale item is visible without duplicating it.
+  lastSeenAt     DateTime          @default(now())
+  metadata       Json              @default("{}")
+
+  projectId        String?
+  expertId         String?
+  candidateId      String?
+  screeningId      String?
+  assignmentId     String?
+  workItemId       String?
+  supportRequestId String?
+  paymentBatchId   String?
+  jobId            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner     User?      @relation("AttentionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expert    Expert?    @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  candidate Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  screening Screening? @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+
+  @@index([status, severity, dueAt])
+  @@index([status, kind])
+  @@index([ownerId, status])
+  @@index([projectId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Batched outreach requiring human approval
+// ---------------------------------------------------------------------------
+
+enum OutreachBatchKind {
+  PROJECT_INVITATION
+  REPLACEMENT
+  SCREENING_INVITATION
+}
+
+enum OutreachBatchStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  DISPATCHED
+  CANCELLED
+}
+
+/// A proposed set of outreach messages.
+///
+/// The system can assemble a batch; only an authorised operator can approve it,
+/// and nothing is dispatched before that approval is recorded.
+model OutreachBatch {
+  id           String              @id @default(cuid())
+  reference    String              @unique
+  kind         OutreachBatchKind
+  status       OutreachBatchStatus @default(DRAFT)
+  projectId    String?
+  campaignId   String?
+  reason       String              @default("")
+  note         String              @default("")
+  createdById  String?
+  approvedById String?
+  approvedAt   DateTime?
+  rejectedById String?
+  rejectedAt   DateTime?
+  dispatchedAt DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  project    Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy  User?               @relation("BatchCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy User?               @relation("BatchApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  items      OutreachBatchItem[]
+
+  @@index([status, kind])
+  @@index([projectId])
+}
+
+model OutreachBatchItem {
+  id            String  @id @default(cuid())
+  batchId       String
+  expertId      String?
+  candidateId   String?
+  /// Populated once dispatch actually created the invitation.
+  invitationId  String? @unique
+  /// Why the system proposed this person.
+  rationale     String  @default("")
+  matchScore    Int?
+  /// Set when dispatch skipped this row, e.g. the person opted out meanwhile.
+  skippedReason String?
+
+  batch  OutreachBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  expert Expert?       @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, expertId])
+  @@index([batchId])
+}
+
+// ---------------------------------------------------------------------------
+// Delivery: work items, submissions and reviews
+// ---------------------------------------------------------------------------
+
+enum WorkBasis {
+  HOURLY
+  DELIVERABLE
+}
+
+enum WorkItemStatus {
+  DRAFT
+  ASSIGNED
+  SUBMITTED
+  IN_REVIEW
+  REVISION_REQUESTED
+  APPROVED
+  CANCELLED
+}
+
+/// A unit of work handed to a staffed expert.
+model WorkItem {
+  id               String         @id @default(cuid())
+  reference        String         @unique
+  projectId        String
+  assignmentId     String
+  expertId         String
+  title            String
+  instructions     String         @default("")
+  basis            WorkBasis      @default(DELIVERABLE)
+  dueAt            DateTime?
+  status           WorkItemStatus @default(DRAFT)
+  currentRevision  Int            @default(0)
+  /// Set only by an approving review. The payment basis comes from here.
+  approvedQuantity Decimal?       @db.Decimal(10, 2)
+  approvedAt       DateTime?
+  createdById      String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignment  Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  expert      Expert           @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  createdBy   User?            @relation("WorkItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  submissions WorkSubmission[]
+  reviews     WorkReview[]
+  paymentItem PaymentItem?
+
+  @@index([projectId, status])
+  @@index([expertId, status])
+  @@index([status, dueAt])
+}
+
+model WorkSubmission {
+  id           String   @id @default(cuid())
+  workItemId   String
+  revision     Int
+  summary      String   @default("")
+  content      String   @default("")
+  /// Synthetic links only; never fetched.
+  attachments  Json     @default("[]")
+  /// Hours claimed on an hourly item. Verified by the reviewer, not trusted.
+  hoursClaimed Decimal? @db.Decimal(10, 2)
+  submittedAt  DateTime @default(now())
+
+  workItem WorkItem     @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  reviews  WorkReview[]
+
+  @@unique([workItemId, revision])
+}
+
+enum WorkReviewState {
+  PENDING
+  REVISION_REQUESTED
+  APPROVED
+}
+
+/// A human review of one submission.
+///
+/// Deliberately scoped to the submission. Nothing here changes a network-wide
+/// standing or ranking for the expert: one piece of work is not a verdict on a
+/// person.
+model WorkReview {
+  id               String          @id @default(cuid())
+  workItemId       String
+  submissionId     String
+  reviewerId       String?
+  state            WorkReviewState @default(PENDING)
+  /// Structured per-dimension feedback, e.g. accuracy / completeness / clarity.
+  feedback         Json            @default("{}")
+  summary          String          @default("")
+  revisionRequest  String?
+  /// Quantity the reviewer actually authorises for payment.
+  approvedQuantity Decimal?        @db.Decimal(10, 2)
+  decidedAt        DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  workItem    WorkItem       @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  submission  WorkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer    User?          @relation("WorkReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  paymentItem PaymentItem?
+
+  @@index([workItemId, state])
+  @@index([state])
+}
+
+// ---------------------------------------------------------------------------
+// Expert support requests
+// ---------------------------------------------------------------------------
+
+enum SupportCategory {
+  ACCESS
+  SCOPE_QUESTION
+  TOOLING
+  SCHEDULING
+  PAYMENT
+  OTHER
+}
+
+enum SupportStatus {
+  OPEN
+  WAITING_ON_EXPERT
+  WAITING_ON_OPS
+  RESOLVED
+  CLOSED
+}
+
+model SupportRequest {
+  id               String          @id @default(cuid())
+  reference        String          @unique
+  expertId         String
+  projectId        String?
+  category         SupportCategory @default(OTHER)
+  subject          String
+  message          String
+  status           SupportStatus   @default(OPEN)
+  ownerId          String?
+  /// An operator can mark a request as genuinely blocking. These surface in the
+  /// attention queue and stop readiness or delivery from being called done.
+  blocksReadiness  Boolean         @default(false)
+  blocksDelivery   Boolean         @default(false)
+  responseDueAt    DateTime?
+  firstRespondedAt DateTime?
+  resolvedAt       DateTime?
+  resolvedById     String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  expert  Expert         @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  project Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  owner   User?          @relation("SupportOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  replies SupportReply[]
+
+  @@index([status, responseDueAt])
+  @@index([expertId, status])
+  @@index([projectId, status])
+}
+
+enum SupportAuthorType {
+  OPERATOR
+  EXPERT
+}
+
+model SupportReply {
+  id             String            @id @default(cuid())
+  requestId      String
+  authorType     SupportAuthorType
+  authorUserId   String?
+  authorExpertId String?
+  body           String
+  /// Operator-only note. Never returned to the expert portal.
+  internalOnly   Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+
+  request    SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  authorUser User?          @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Payment preparation
+//
+// This prepares payment data for a finance process that lives outside this
+// system. Nothing here moves money, and "exported" is not "paid".
+// ---------------------------------------------------------------------------
+
+enum PaymentItemStatus {
+  DRAFT
+  READY
+  IN_BATCH
+  EXPORTED
+  VOID
+}
+
+model PaymentItem {
+  id                      String            @id @default(cuid())
+  reference               String            @unique
+  expertId                String
+  projectId               String
+  /// One payment item per approved work review. The unique constraint is what
+  /// makes draft creation idempotent under duplicate job delivery.
+  workItemId              String?           @unique
+  workReviewId            String?           @unique
+  basis                   WorkBasis
+  /// Hours or deliverable count actually authorised by the reviewer.
+  quantity                Decimal           @db.Decimal(10, 2)
+  /// Agreed rate in minor units. Integer arithmetic throughout.
+  rateMinor               Int
+  currency                String            @default("USD")
+  /// quantity x rateMinor, rounded half-up to a whole minor unit.
+  amountMinor             Int
+  status                  PaymentItemStatus @default(DRAFT)
+  batchId                 String?
+  /// Machine-detected problems, e.g. rate mismatch against the assignment.
+  discrepancies           Json              @default("[]")
+  /// Cleared by an operator with a recorded explanation.
+  discrepancyResolvedById String?
+  discrepancyResolvedAt   DateTime?
+  discrepancyResolution   String?
+  notes                   String            @default("")
+  /// Set when a correction replaces this item. History is never overwritten.
+  supersededById          String?           @unique
+  voidedAt                DateTime?
+  voidReason              String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  expert       Expert        @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workItem     WorkItem?     @relation(fields: [workItemId], references: [id], onDelete: SetNull)
+  workReview   WorkReview?   @relation(fields: [workReviewId], references: [id], onDelete: SetNull)
+  batch        PaymentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  supersededBy PaymentItem?  @relation("PaymentCorrection", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   PaymentItem?  @relation("PaymentCorrection")
+
+  @@index([status, expertId])
+  @@index([batchId])
+  @@index([projectId, status])
+}
+
+enum PaymentBatchStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  EXPORTED
+  CANCELLED
+}
+
+model PaymentBatch {
+  id           String             @id @default(cuid())
+  reference    String             @unique
+  status       PaymentBatchStatus @default(DRAFT)
+  currency     String             @default("USD")
+  periodStart  DateTime
+  periodEnd    DateTime
+  totalMinor   Int                @default(0)
+  itemCount    Int                @default(0)
+  note         String             @default("")
+  createdById  String?
+  approvedById String?
+  approvedAt   DateTime?
+  exportedAt   DateTime?
+  exportedById String?
+  cancelledAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  createdBy  User?         @relation("BatchCreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy User?         @relation("PaymentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  items      PaymentItem[]
+
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Offboarding
+// ---------------------------------------------------------------------------
+
+enum OffboardingTaskStatus {
+  PENDING
+  CONFIRMED
+  NOT_APPLICABLE
+}
+
+/// A checklist item at the end of an engagement.
+///
+/// Each row records a human confirming they did something outside this system.
+/// ExpertOps does not touch external accounts and does not claim to.
+model OffboardingTask {
+  id               String                @id @default(cuid())
+  projectId        String
+  expertId         String
+  assignmentId     String?
+  key              String
+  label            String
+  description      String                @default("")
+  status           OffboardingTaskStatus @default(PENDING)
+  ownerId          String?
+  dueAt            DateTime?
+  confirmedById    String?
+  confirmedAt      DateTime?
+  confirmationNote String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expert      Expert      @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  assignment  Assignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  owner       User?       @relation("OffboardingOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  confirmedBy User?       @relation("OffboardingConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, expertId, key])
+  @@index([status, dueAt])
 }

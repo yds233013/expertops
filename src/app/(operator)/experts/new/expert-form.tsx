@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 interface SkillRow {
   name: string;
@@ -46,20 +47,13 @@ export function ExpertForm({
     };
 
     try {
-      const response = await fetch('/api/experts', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const body = await response.json();
-      if (!response.ok) {
-        setError(body?.error?.message ?? 'The expert could not be created.');
+      const result = await apiPost<{ expert: { id: string } }>('/api/experts', payload);
+      if (!result.ok || !result.data) {
+        setError(result.error?.message ?? 'The expert could not be created.');
         return;
       }
-      router.push(`/experts/${body.expert.id}`);
+      router.push(`/experts/${result.data.expert.id}`);
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }

@@ -8,11 +8,12 @@ import {
   sendInvitation,
 } from '@/server/services/invitations';
 import { SYSTEM_ACTOR } from '@/server/services/activity';
+import { readFile } from 'node:fs/promises';
 import {
   enqueueJob,
   failJob,
   jobCounts,
-  type JobType,
+  JOB_TYPES,
   listJobs,
   pruneFinishedJobs,
   retryJob,
@@ -115,33 +116,27 @@ describe('worker: job execution', () => {
     }
   });
 
-  it('declares its unimplemented integrations rather than pretending to work', async () => {
-    // These two exist so the shape of a future integration is visible. They must
-    // stay honest: report not-implemented, and never queue a message.
-    const placeholders: Array<{ type: JobType; payload: Record<string, string> }> = [
-      { type: 'assignment.notify', payload: { assignmentId: 'anything' } },
-      { type: 'onboarding.notify_decision', payload: { expertId: 'anything' } },
-    ];
-
-    for (const placeholder of placeholders) {
-      await enqueueJob(prisma, { type: placeholder.type, payload: placeholder.payload });
+  it('registers a handler for every declared job type', () => {
+    for (const type of JOB_TYPES) {
+      expect(HANDLERS[type], `no handler for ${type}`).toBeTypeOf('function');
     }
+  });
 
-    const worker = new Worker({ client: prisma, name: 'placeholder-test', batchSize: 10 });
-    await worker.tick();
+  it('declares no job type that is a no-op masquerading as a business action', async () => {
+    // The original build shipped two job types that always reported success
+    // while doing nothing. Both were removed rather than left to look healthy
+    // on the Worker screen. This test stops them coming back.
+    const source = await readFile('src/server/worker/handlers.ts', 'utf8');
+    expect(source).not.toContain('not implemented in this slice');
 
-    const jobs = await prisma.job.findMany({
-      where: { type: { in: placeholders.map((p) => p.type) } },
-    });
-    expect(jobs).toHaveLength(2);
-    for (const job of jobs) {
-      // A no-op must still succeed, so it never masquerades as a broken job.
-      expect(job.status).toBe('SUCCEEDED');
-      expect((job.result as Record<string, unknown>).notified).toBe(false);
-      expect((job.result as Record<string, unknown>).reason).toContain('not implemented');
-    }
+    expect(JOB_TYPES).not.toContain('assignment.notify' as never);
+    expect(JOB_TYPES).not.toContain('onboarding.notify_decision' as never);
 
-    expect(await prisma.outboxMessage.count()).toBe(0);
+    // The jobs that the original requirements actually asked for do exist.
+    expect(JOB_TYPES).toContain('invitation.remind');
+    expect(JOB_TYPES).toContain('invitation.expire');
+    expect(JOB_TYPES).toContain('onboarding.nudge');
+    expect(JOB_TYPES).toContain('staffing.detect_gaps');
   });
 
   it('sends a queued invitation through the invitation.send job', async () => {

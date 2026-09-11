@@ -4,6 +4,7 @@ import { badRequest, invalidState, notFound } from '@/lib/errors';
 import { assertTransition, ONBOARDING_TRANSITIONS } from '@/server/domain/state-machines';
 import { type Actor, recordActivity } from './activity';
 import { setExpertStatus } from './experts';
+import { enqueueJob } from './jobs';
 
 /**
  * Onboarding checklist.
@@ -365,6 +366,15 @@ export async function decideVerification(db: Db, actor: Actor, input: Verificati
       ? `${actor.label} verified ${onboardingCase.expert.fullName}`
       : `${actor.label} returned ${onboardingCase.expert.fullName}'s submission for changes`,
     metadata: { note: input.note?.trim() ?? null, decidedBy: actor.label },
+  });
+
+  // A verification decision changes who can be staffed, so readiness is
+  // rechecked for every project this expert has accepted.
+  await enqueueJob(db, {
+    type: 'readiness.recheck',
+    payload: { expertId: input.expertId },
+    priority: 20,
+    dedupeKey: `readiness.recheck:${onboardingCase.id}:${now.getTime()}`,
   });
 
   return db.onboardingCase.findUniqueOrThrow({

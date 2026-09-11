@@ -2,7 +2,8 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { capabilitiesFor } from '@/server/auth/permissions';
-import { OPERATOR_COOKIE, sessionCookieOptions } from '@/server/http/context';
+import { OPERATOR_COOKIE, readCsrfCookie, sessionCookieOptions } from '@/server/http/context';
+import { assertCsrf } from '@/server/http/csrf';
 import { ok, parseJson, route } from '@/server/http/respond';
 import { login } from '@/server/services/auth';
 
@@ -12,6 +13,10 @@ const bodySchema = z.object({
 });
 
 export const POST = route(async (request: NextRequest) => {
+  // Login creates a session, so it is a state-changing request and gets the
+  // same origin + token check as any authenticated mutation. The token cookie
+  // is issued by middleware on the first page load.
+  assertCsrf(request, readCsrfCookie(request));
   const body = await parseJson(request, bodySchema);
   const result = await login(prisma, body);
 

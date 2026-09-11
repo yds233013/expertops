@@ -53,6 +53,55 @@ export const DEFAULT_SCHEDULES: readonly ScheduleDefinition[] = [
     payload: { pruneJobsOlderThanDays: 7 },
     description: 'Purges expired sessions and old finished jobs.',
   },
+  {
+    name: 'attention-sweep',
+    jobType: 'attention.sweep',
+    intervalSeconds: 120,
+    description:
+      'Recomputes the Needs-attention queue: staffing gaps, duplicates, conflicts, re-reviews and pending approvals.',
+  },
+  {
+    name: 'staffing-gap-detection',
+    jobType: 'staffing.detect_gaps',
+    intervalSeconds: 300,
+    description: 'Finds projects that will not be staffed in time.',
+  },
+  {
+    name: 'screening-expire',
+    jobType: 'screening.expire',
+    intervalSeconds: 300,
+    description: 'Closes screenings whose submission window has passed.',
+  },
+  {
+    name: 'screening-remind',
+    jobType: 'screening.remind_candidate',
+    intervalSeconds: 600,
+    description: 'Reminds candidates with an open screening, subject to the reminder cap.',
+  },
+  {
+    name: 'review-remind',
+    jobType: 'review.remind',
+    intervalSeconds: 600,
+    description: 'Chases reviewers past their deadline, at most twice.',
+  },
+  {
+    name: 'review-escalate',
+    jobType: 'review.escalate_overdue',
+    intervalSeconds: 600,
+    description: 'Escalates overdue reviews to the operator attention queue.',
+  },
+  {
+    name: 'work-overdue',
+    jobType: 'work.remind_overdue',
+    intervalSeconds: 900,
+    description: 'Flags work items past their due date.',
+  },
+  {
+    name: 'support-sla',
+    jobType: 'support.check_response_sla',
+    intervalSeconds: 600,
+    description: 'Flags support requests that have had no reply within their response target.',
+  },
 ] as const;
 
 export async function ensureDefaultSchedules(db: Db): Promise<Schedule[]> {

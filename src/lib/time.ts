@@ -14,6 +14,10 @@ export function secondsFromNow(seconds: number, now: Date = new Date()): Date {
   return new Date(now.getTime() + seconds * 1000);
 }
 
+export function daysFromNow(days: number, now: Date = new Date()): Date {
+  return new Date(now.getTime() + days * DAY_MS);
+}
+
 /** Whole hours between two instants, rounded down. */
 export function hoursBetween(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / HOUR_MS);

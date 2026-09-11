@@ -12,14 +12,37 @@ import { secondsFromNow } from '@/lib/time';
  * and no in-memory state: restart the worker and it picks up where it left off.
  */
 export const JOB_TYPES = [
+  // Invitations
   'invitation.send',
   'invitation.remind',
   'invitation.expire',
+  // Onboarding
   'onboarding.start',
   'onboarding.nudge',
-  'onboarding.notify_decision',
-  'assignment.notify',
+  // Applications and screening
+  'application.acknowledge',
+  'screening.invite',
+  'screening.remind_candidate',
+  'screening.expire',
+  'screening.assign_reviewer',
+  'review.remind',
+  'review.escalate_overdue',
+  // Qualification and readiness
+  'qualification.apply',
+  'readiness.recheck',
+  // Staffing
+  'staffing.detect_gaps',
+  'staffing.project_start_tasks',
+  'staffing.propose_replacements',
   'matching.run',
+  // Delivery, support and payment
+  'work.review_task',
+  'work.remind_overdue',
+  'support.check_response_sla',
+  'payment.draft_from_approved_work',
+  // Cross-cutting
+  'attention.sweep',
+  'project.offboarding_tasks',
   'outbox.dispatch',
   'maintenance.sweep',
 ] as const;

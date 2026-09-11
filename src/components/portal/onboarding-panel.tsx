@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Card, EmptyState, StatusBadge } from '@/components/ui';
+import { apiPatch, apiPost } from '@/lib/api-client';
 
 interface ItemRow {
   id: string;
@@ -48,24 +49,16 @@ export function OnboardingPanel({ onboardingCase }: { onboardingCase: CaseRow | 
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch('/api/portal/onboarding', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          answers: Object.entries(answers).map(([key, value]) => ({ key, value })),
-        }),
+      const result = await apiPatch('/api/portal/onboarding', {
+        answers: Object.entries(answers).map(([key, value]) => ({ key, value })),
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error?.message ?? 'Your answers could not be saved.');
+      if (!result.ok) {
+        setError(result.error?.message ?? 'Your answers could not be saved.');
         return false;
       }
       setNotice('Progress saved.');
       router.refresh();
       return true;
-    } catch {
-      setError('Could not reach the server.');
-      return false;
     } finally {
       setPending(null);
     }
@@ -77,16 +70,13 @@ export function OnboardingPanel({ onboardingCase }: { onboardingCase: CaseRow | 
     setPending('submit');
     setError(null);
     try {
-      const response = await fetch('/api/portal/onboarding/submit', { method: 'POST' });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error?.message ?? 'Your checklist could not be submitted.');
+      const result = await apiPost('/api/portal/onboarding/submit');
+      if (!result.ok) {
+        setError(result.error?.message ?? 'Your checklist could not be submitted.');
         return;
       }
       setNotice('Submitted. An ExpertOps operator will review it.');
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(null);
     }

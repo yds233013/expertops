@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Card, EmptyState } from '@/components/ui';
+import { apiDelete, apiPost } from '@/lib/api-client';
 
 interface WindowRow {
   id: string;
@@ -32,30 +33,24 @@ export function AvailabilityPanel({
     event.preventDefault();
     setPending(true);
     setError(null);
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const projectId = String(form.get('projectId') ?? '');
 
     try {
-      const response = await fetch('/api/portal/availability', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          startAt: String(form.get('startAt') ?? ''),
-          endAt: String(form.get('endAt') ?? ''),
-          hoursPerWeek: Number(form.get('hoursPerWeek') ?? 0),
-          projectId: projectId || null,
-          note: String(form.get('note') ?? '').trim() || undefined,
-        }),
+      const result = await apiPost('/api/portal/availability', {
+        startAt: String(form.get('startAt') ?? ''),
+        endAt: String(form.get('endAt') ?? ''),
+        hoursPerWeek: Number(form.get('hoursPerWeek') ?? 0),
+        projectId: projectId || null,
+        note: String(form.get('note') ?? '').trim() || undefined,
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error?.message ?? 'That window could not be saved.');
+      if (!result.ok) {
+        setError(result.error?.message ?? 'That window could not be saved.');
         return;
       }
-      (event.target as HTMLFormElement).reset();
+      formElement.reset();
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }
@@ -63,10 +58,9 @@ export function AvailabilityPanel({
 
   async function remove(id: string) {
     setError(null);
-    const response = await fetch(`/api/portal/availability/${id}`, { method: 'DELETE' });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setError(body?.error?.message ?? 'That window could not be removed.');
+    const result = await apiDelete(`/api/portal/availability/${id}`);
+    if (!result.ok) {
+      setError(result.error?.message ?? 'That window could not be removed.');
       return;
     }
     router.refresh();

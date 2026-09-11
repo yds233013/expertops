@@ -27,6 +27,37 @@ export const CAPABILITIES = [
   'jobs:read',
   'jobs:manage',
   'user:manage',
+  // --- extension ---------------------------------------------------------
+  'candidate:read',
+  'candidate:write',
+  'campaign:read',
+  'campaign:write',
+  'screening:read',
+  'screening:write',
+  'screening:review',
+  'screening:decide',
+  'screening:resolve_conflict',
+  'rubric:read',
+  'rubric:write',
+  'rubric:publish',
+  'qualification:read',
+  'qualification:write',
+  'outreach:read',
+  'outreach:write',
+  'outreach:approve',
+  'attention:read',
+  'attention:manage',
+  'work:read',
+  'work:write',
+  'work:review',
+  'support:read',
+  'support:respond',
+  'payment:read',
+  'payment:write',
+  'payment:approve',
+  'offboarding:read',
+  'offboarding:confirm',
+  'import:run',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -38,6 +69,17 @@ const VIEWER: Capability[] = [
   'activity:read',
   'outbox:read',
   'jobs:read',
+  'candidate:read',
+  'campaign:read',
+  'screening:read',
+  'rubric:read',
+  'qualification:read',
+  'outreach:read',
+  'attention:read',
+  'work:read',
+  'support:read',
+  'payment:read',
+  'offboarding:read',
 ];
 
 const OPERATOR: Capability[] = [
@@ -52,9 +94,39 @@ const OPERATOR: Capability[] = [
   'staffing:propose',
   'staffing:confirm',
   'staffing:release',
+  'candidate:write',
+  'campaign:write',
+  'screening:write',
+  'screening:review',
+  'screening:decide',
+  'rubric:write',
+  'qualification:write',
+  'outreach:write',
+  'attention:manage',
+  'work:write',
+  'work:review',
+  'support:respond',
+  'payment:write',
+  'offboarding:confirm',
+  'import:run',
 ];
 
-const ADMIN: Capability[] = [...OPERATOR, 'jobs:manage', 'user:manage'];
+/**
+ * Decisions reserved for an admin.
+ *
+ * These are the ones where a second pair of eyes is the point: publishing an
+ * immutable rubric, breaking a reviewer tie, approving bulk outreach, and
+ * approving a payment batch that becomes money somewhere else.
+ */
+const ADMIN: Capability[] = [
+  ...OPERATOR,
+  'jobs:manage',
+  'user:manage',
+  'rubric:publish',
+  'screening:resolve_conflict',
+  'outreach:approve',
+  'payment:approve',
+];
 
 export const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {
   VIEWER: VIEWER,

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 export function SignOutButton() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export function SignOutButton() {
       disabled={pending}
       onClick={async () => {
         setPending(true);
-        await fetch('/api/auth/logout', { method: 'POST' });
+        await apiPost('/api/auth/logout');
         router.replace('/login');
         router.refresh();
       }}

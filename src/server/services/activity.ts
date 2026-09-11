@@ -33,6 +33,7 @@ export interface RecordActivityInput {
   metadata?: Prisma.InputJsonValue;
   projectId?: string | null;
   expertId?: string | null;
+  candidateId?: string | null;
 }
 
 export async function recordActivity(db: Db, input: RecordActivityInput) {
@@ -49,6 +50,7 @@ export async function recordActivity(db: Db, input: RecordActivityInput) {
       metadata: input.metadata ?? {},
       projectId: input.projectId ?? null,
       expertId: input.expertId ?? input.actor.expertId ?? null,
+      candidateId: input.candidateId ?? null,
     },
   });
 }
@@ -56,6 +58,7 @@ export async function recordActivity(db: Db, input: RecordActivityInput) {
 export interface ActivityQuery {
   projectId?: string;
   expertId?: string;
+  candidateId?: string;
   entityType?: string;
   entityId?: string;
   actions?: string[];
@@ -69,6 +72,7 @@ export async function listActivity(db: Db, query: ActivityQuery = {}) {
   const where: Prisma.ActivityEventWhereInput = {};
   if (query.projectId) where.projectId = query.projectId;
   if (query.expertId) where.expertId = query.expertId;
+  if (query.candidateId) where.candidateId = query.candidateId;
   if (query.entityType) where.entityType = query.entityType;
   if (query.entityId) where.entityId = query.entityId;
   if (query.actorType) where.actorType = query.actorType;

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 export function LoginForm() {
   const router = useRouter();
@@ -15,20 +16,13 @@ export function LoginForm() {
     setPending(true);
     setError(null);
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const body = await response.json();
-      if (!response.ok) {
-        setError(body?.error?.message ?? 'Sign-in failed.');
+      const result = await apiPost('/api/auth/login', { email, password });
+      if (!result.ok) {
+        setError(result.error?.message ?? 'Sign-in failed.');
         return;
       }
       router.replace('/dashboard');
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }

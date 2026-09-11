@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 /** Proposes a seat. Confirming the seat is a separate, explicit operator step. */
 export function ProposeForm({
@@ -27,23 +28,16 @@ export function ProposeForm({
     setPending(true);
     setError(null);
     try {
-      const response = await fetch(`/api/projects/${projectId}/assignments`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          expertId,
-          allocationHoursPerWeek: hours,
-          rateCents: Math.round(rate * 100),
-        }),
+      const result = await apiPost(`/api/projects/${projectId}/assignments`, {
+        expertId,
+        allocationHoursPerWeek: hours,
+        rateCents: Math.round(rate * 100),
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error?.message ?? 'The seat could not be proposed.');
+      if (!result.ok) {
+        setError(result.error?.message ?? 'The seat could not be proposed.');
         return;
       }
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }

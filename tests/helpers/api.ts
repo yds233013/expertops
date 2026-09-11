@@ -3,6 +3,7 @@ import { type User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { login } from '@/server/services/auth';
 import { OPERATOR_COOKIE, PORTAL_COOKIE } from '@/server/http/context';
+import { CSRF_COOKIE, CSRF_HEADER, generateCsrfToken, signCsrfToken } from '@/server/http/csrf';
 
 /**
  * Drive route handlers directly.
@@ -19,6 +20,14 @@ export interface RequestOptions {
   operatorToken?: string;
   portalToken?: string;
   headers?: Record<string, string>;
+  /**
+   * CSRF behaviour. Requests default to a well-formed same-origin submission,
+   * which is what a real browser sends. Tests that exercise the protection
+   * itself override these.
+   */
+  origin?: string | null;
+  csrfCookie?: string | null;
+  csrfHeader?: string | null;
 }
 
 export function buildRequest(
@@ -36,6 +45,19 @@ export function buildRequest(
   if (options.portalToken) cookies.push(`${PORTAL_COOKIE}=${options.portalToken}`);
 
   const headers = new Headers(options.headers ?? {});
+
+  // A same-origin browser submission by default: matching Origin, a signed CSRF
+  // cookie, and the same value echoed in the header.
+  const csrfToken =
+    options.csrfCookie === undefined ? signCsrfToken(generateCsrfToken()) : options.csrfCookie;
+  if (csrfToken) cookies.push(`${CSRF_COOKIE}=${csrfToken}`);
+
+  const headerValue = options.csrfHeader === undefined ? csrfToken : options.csrfHeader;
+  if (headerValue) headers.set(CSRF_HEADER, headerValue);
+
+  if (options.origin !== null) headers.set('origin', options.origin ?? BASE);
+  headers.set('host', new URL(BASE).host);
+
   if (cookies.length > 0) headers.set('cookie', cookies.join('; '));
   if (options.body !== undefined) headers.set('content-type', 'application/json');
 

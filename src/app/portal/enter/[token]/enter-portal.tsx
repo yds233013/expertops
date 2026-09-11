@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 export function EnterPortal({ token }: { token: string }) {
   const router = useRouter();
@@ -14,14 +15,9 @@ export function EnterPortal({ token }: { token: string }) {
 
     void (async () => {
       try {
-        const response = await fetch('/api/portal/session', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token }),
-        });
-        if (!response.ok) {
-          const body = await response.json().catch(() => null);
-          setError(body?.error?.message ?? 'This link could not be opened.');
+        const result = await apiPost('/api/portal/session', { token });
+        if (!result.ok) {
+          setError(result.error?.message ?? 'This link could not be opened.');
           return;
         }
         router.replace('/portal');

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 export function InvitationPanel({ invitationId }: { invitationId: string }) {
   const router = useRouter();
@@ -14,19 +15,15 @@ export function InvitationPanel({ invitationId }: { invitationId: string }) {
     setPending(true);
     setError(null);
     try {
-      const response = await fetch(`/api/portal/invitations/${invitationId}/respond`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ accept, declineReason: accept ? undefined : reason.trim() }),
+      const result = await apiPost(`/api/portal/invitations/${invitationId}/respond`, {
+        accept,
+        declineReason: accept ? undefined : reason.trim(),
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error?.message ?? 'Your response could not be recorded.');
+      if (!result.ok) {
+        setError(result.error?.message ?? 'Your response could not be recorded.');
         return;
       }
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }

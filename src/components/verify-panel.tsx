@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 /**
  * The human confirmation step. Verification is never automatic: an operator has
@@ -17,20 +18,16 @@ export function VerifyPanel({ expertId, expertName }: { expertId: string; expert
     setPending(approve ? 'approve' : 'reject');
     setError(null);
     try {
-      const response = await fetch(`/api/experts/${expertId}/verify`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ approve, note: note.trim() || undefined }),
+      const result = await apiPost(`/api/experts/${expertId}/verify`, {
+        approve,
+        note: note.trim() || undefined,
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        setError(payload?.error?.message ?? 'The decision could not be recorded.');
+      if (!result.ok) {
+        setError(result.error?.message ?? 'The decision could not be recorded.');
         return;
       }
       setNote('');
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(null);
     }

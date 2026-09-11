@@ -1,7 +1,13 @@
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { PORTAL_COOKIE, readPortalCookie, sessionCookieOptions } from '@/server/http/context';
+import {
+  PORTAL_COOKIE,
+  readCsrfCookie,
+  readPortalCookie,
+  sessionCookieOptions,
+} from '@/server/http/context';
+import { assertCsrf } from '@/server/http/csrf';
 import { ok, parseJson, route } from '@/server/http/respond';
 import { endPortalSession, redeemPortalToken } from '@/server/services/portal-access';
 
@@ -9,6 +15,8 @@ const bodySchema = z.object({ token: z.string().min(10) });
 
 /** Exchange a single-use magic-link token for a portal session cookie. */
 export const POST = route(async (request: NextRequest) => {
+  // Redeeming a magic link mints a portal session, so it is protected too.
+  assertCsrf(request, readCsrfCookie(request));
   const body = await parseJson(request, bodySchema);
   const result = await redeemPortalToken(prisma, body.token);
   const response = ok({
@@ -25,6 +33,7 @@ export const POST = route(async (request: NextRequest) => {
 });
 
 export const DELETE = route(async (request: NextRequest) => {
+  assertCsrf(request, readCsrfCookie(request));
   await endPortalSession(prisma, readPortalCookie(request));
   const response = ok({ signedOut: true });
   response.cookies.set(PORTAL_COOKIE, '', { path: '/', maxAge: 0 });

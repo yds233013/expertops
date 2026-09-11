@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { unauthenticated } from '@/lib/errors';
 import { assertCapability, type Capability } from '@/server/auth/permissions';
+import { assertCsrf, CSRF_COOKIE } from './csrf';
 import { type AuthenticatedOperator, resolveSession } from '@/server/services/auth';
 import { operatorActor, expertActor, type Actor } from '@/server/services/activity';
 import { resolvePortalSession } from '@/server/services/portal-access';
@@ -85,9 +86,17 @@ export async function operatorFromRequest(request: Request): Promise<Authenticat
   return resolveSession(prisma, readCookie(request, OPERATOR_COOKIE));
 }
 
+/**
+ * Resolve the operator for a request, rejecting cross-site mutations.
+ *
+ * The CSRF check runs here rather than in each route handler, so a new
+ * endpoint is protected by virtue of requiring a session at all. Safe methods
+ * pass through untouched.
+ */
 export async function requireOperatorFromRequest(request: Request): Promise<AuthenticatedOperator> {
   const operator = await operatorFromRequest(request);
   if (!operator) throw unauthenticated('Sign in to continue.');
+  assertCsrf(request, readCookie(request, CSRF_COOKIE));
   return operator;
 }
 
@@ -104,11 +113,14 @@ export async function expertFromRequest(request: Request): Promise<Expert | null
   return resolvePortalSession(prisma, readCookie(request, PORTAL_COOKIE));
 }
 
+/** The expert-portal equivalent. Portal sessions are cookies too, so they need
+ * exactly the same protection as operator sessions. */
 export async function requireExpertFromRequest(
   request: Request,
 ): Promise<{ expert: Expert; actor: Actor }> {
   const expert = await expertFromRequest(request);
   if (!expert) throw unauthenticated('Open your portal link to continue.');
+  assertCsrf(request, readCookie(request, CSRF_COOKIE));
   return { expert, actor: expertActor(expert) };
 }
 
@@ -118,4 +130,8 @@ export function readSessionCookie(request: Request): string | undefined {
 
 export function readPortalCookie(request: Request): string | undefined {
   return readCookie(request, PORTAL_COOKIE);
+}
+
+export function readCsrfCookie(request: Request): string | undefined {
+  return readCookie(request, CSRF_COOKIE);
 }

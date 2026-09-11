@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 export function WithdrawButton({ invitationId }: { invitationId: string }) {
   const router = useRouter();
@@ -22,20 +23,15 @@ export function WithdrawButton({ invitationId }: { invitationId: string }) {
     setPending(true);
     setError(null);
     try {
-      const response = await fetch(`/api/invitations/${invitationId}/withdraw`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ reason: reason.trim() }),
+      const result = await apiPost(`/api/invitations/${invitationId}/withdraw`, {
+        reason: reason.trim(),
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(body?.error?.message ?? 'The invitation could not be withdrawn.');
+      if (!result.ok) {
+        setError(result.error?.message ?? 'The invitation could not be withdrawn.');
         return;
       }
       setOpen(false);
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }

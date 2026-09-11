@@ -12,6 +12,7 @@ import {
   renderAssignmentReleasedEmail,
 } from '@/server/email/templates';
 import { type Actor, recordActivity } from './activity';
+import { enqueueJob } from './jobs';
 import { declaredHoursForProject } from './availability';
 import { queueMessage } from './outbox';
 import { advanceProjectStatus } from './projects';
@@ -254,6 +255,13 @@ export async function confirmAssignment(
       projectStatus: project.status,
       projectId: project.id,
     };
+  });
+
+  await enqueueJob(client, {
+    type: 'staffing.project_start_tasks',
+    payload: { assignmentId },
+    priority: 40,
+    dedupeKey: `staffing.project_start_tasks:${assignmentId}`,
   });
 
   // Status advance happens after the lock is released so it cannot deadlock

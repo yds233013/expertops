@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { apiPost } from '@/lib/api-client';
 
 interface RequirementRow {
   skillName: string;
@@ -56,20 +57,13 @@ export function ProjectForm({
     };
 
     try {
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const body = await response.json();
-      if (!response.ok) {
-        setError(body?.error?.message ?? 'The project could not be created.');
+      const result = await apiPost<{ project: { id: string } }>('/api/projects', payload);
+      if (!result.ok || !result.data) {
+        setError(result.error?.message ?? 'The project could not be created.');
         return;
       }
-      router.push(`/projects/${body.project.id}`);
+      router.push(`/projects/${result.data.project.id}`);
       router.refresh();
-    } catch {
-      setError('Could not reach the server.');
     } finally {
       setPending(false);
     }

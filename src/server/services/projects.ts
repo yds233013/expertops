@@ -4,6 +4,7 @@ import { badRequest, conflict, invalidState, notFound } from '@/lib/errors';
 import { formatReference, parseReferenceSequence, PROJECT_REFERENCE_PREFIX } from '@/lib/ids';
 import { assertTransition, PROJECT_TRANSITIONS } from '@/server/domain/state-machines';
 import { type Actor, recordActivity, SYSTEM_ACTOR } from './activity';
+import { enqueueJob } from './jobs';
 import { upsertSkillByName } from './experts';
 
 export interface RequirementInput {
@@ -234,6 +235,15 @@ export async function setProjectStatus(
   }
 
   const project = await db.project.update({ where: { id: projectId }, data: { status: to } });
+
+  if (to === 'CLOSED' || to === 'CANCELLED') {
+    await enqueueJob(db, {
+      type: 'project.offboarding_tasks',
+      payload: { projectId },
+      priority: 50,
+      dedupeKey: `project.offboarding_tasks:${projectId}`,
+    });
+  }
 
   if (!options.silent) {
     await recordActivity(db, {
