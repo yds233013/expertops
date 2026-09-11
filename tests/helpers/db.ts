@@ -1,0 +1,55 @@
+import { execSync } from 'node:child_process';
+import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
+
+/**
+ * Test database lifecycle.
+ *
+ * Migrations are applied once per test process; tables are truncated before
+ * each test so cases stay independent without paying for a full reset.
+ */
+let migrated = false;
+
+export function applyMigrations(): void {
+  if (migrated) return;
+  execSync('npx prisma migrate deploy', {
+    stdio: 'pipe',
+    env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
+  });
+  migrated = true;
+}
+
+const TABLES = [
+  'ActivityEvent',
+  'OutboxMessage',
+  'Job',
+  'Schedule',
+  'Assignment',
+  'AvailabilityWindow',
+  'OnboardingItem',
+  'OnboardingCase',
+  'Invitation',
+  'MatchCandidate',
+  'MatchRun',
+  'ProjectSkillRequirement',
+  'Project',
+  'ExpertSkill',
+  'ExpertPortalSession',
+  'ExpertPortalToken',
+  'Expert',
+  'Skill',
+  'Session',
+  'User',
+];
+
+export async function truncateAll(client: PrismaClient = prisma as PrismaClient): Promise<void> {
+  const list = TABLES.map((table) => `"${table}"`).join(', ');
+  await client.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
+}
+
+/** A second, independent client - used to prove cross-connection concurrency. */
+export function newClient(): PrismaClient {
+  return new PrismaClient({ log: ['warn', 'error'] });
+}
+
+export { prisma };

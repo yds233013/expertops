@@ -1,0 +1,30 @@
+# Local-only development services for ExpertOps.
+# Nothing here is intended for a public or shared environment.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: expertops-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: expertops
+      POSTGRES_PASSWORD: expertops
+      POSTGRES_DB: expertops
+      # Deterministic collation so ORDER BY results match across machines.
+      POSTGRES_INITDB_ARGS: '--locale=C --encoding=UTF8'
+    # Host port 5433 is used on purpose: many developer machines already run a
+    # local PostgreSQL on 5432. Change EXPERTOPS_DB_PORT to override.
+    ports:
+      - '${EXPERTOPS_DB_PORT:-5433}:5432'
+    volumes:
+      - expertops-pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U expertops -d expertops']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  expertops-pgdata:
+    name: expertops-pgdata

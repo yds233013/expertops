@@ -1,0 +1,161 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink-50: #f6f7f9;
+  --color-ink-100: #eceef2;
+  --color-ink-200: #d5dae3;
+  --color-ink-300: #b0b9c9;
+  --color-ink-400: #7d8aa0;
+  --color-ink-500: #5b6880;
+  --color-ink-600: #475266;
+  --color-ink-700: #3a4354;
+  --color-ink-800: #2a3141;
+  --color-ink-900: #1b2130;
+  --color-accent-50: #eef4ff;
+  --color-accent-100: #dbe7ff;
+  --color-accent-300: #96b6ff;
+  --color-accent-500: #3f68d6;
+  --color-accent-600: #2f52b5;
+  --color-accent-700: #26418f;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-ink-50);
+  color: var(--color-ink-900);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Utility classes used across the operator workspace. */
+.card {
+  background: white;
+  border: 1px solid var(--color-ink-200);
+  border-radius: 0.75rem;
+}
+
+.label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-500);
+  margin-bottom: 0.35rem;
+}
+
+.input,
+.textarea,
+.select {
+  width: 100%;
+  border: 1px solid var(--color-ink-300);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.875rem;
+  background: white;
+  color: var(--color-ink-900);
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+  outline: 2px solid var(--color-accent-300);
+  outline-offset: 1px;
+  border-color: var(--color-accent-500);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-accent-500);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-600);
+}
+
+.btn-secondary {
+  background: white;
+  border-color: var(--color-ink-300);
+  color: var(--color-ink-800);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-ink-100);
+}
+
+.btn-danger {
+  background: #b4232a;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #971c22;
+}
+
+.btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+table.data th {
+  text-align: left;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink-500);
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--color-ink-200);
+  white-space: nowrap;
+}
+
+table.data td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--color-ink-100);
+  vertical-align: top;
+}
+
+table.data tr:last-child td {
+  border-bottom: none;
+}
+
+.scroll-x {
+  overflow-x: auto;
+}
