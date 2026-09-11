@@ -14,6 +14,8 @@ import 'dotenv/config';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import { hashPassword } from '../src/lib/crypto';
 import { createLogger } from '../src/lib/logger';
+import { assertDestructiveAllowed } from '../src/lib/database-safety';
+import { acquireSuiteLock, describeLockHolder, type SuiteLockHandle } from '../src/lib/suite-lock';
 import { ONBOARDING_CHECKLIST } from '../src/server/services/onboarding';
 import { DEFAULT_SCHEDULES } from '../src/server/services/schedules';
 
@@ -744,9 +746,21 @@ async function seedSchedules() {
 }
 
 async function main() {
-  log.info('seeding database', {
-    url: (process.env.DATABASE_URL ?? '').replace(/:[^:@]+@/, ':***@'),
+  // Fail closed before anything is touched. The seed truncates every table, so
+  // an unrecognised DATABASE_URL is refused rather than assumed safe. The usual
+  // cause of a wrong target is a stray export in the shell, not a bug here.
+  const target = assertDestructiveAllowed({
+    operation: 'truncate and reseed',
+    allow: ['development', 'test', 'e2e'],
+    acknowledgedUnknown: process.argv.includes('--i-know-what-im-doing'),
   });
+
+  log.info('seeding database', { database: target.name, host: target.host, kind: target.kind });
+
+  // Hold the destructive-operation lock for the whole run, so a seed cannot
+  // wipe a running test suite's fixtures (or the reverse).
+  lock = await acquireSuiteLock({ holder: describeLockHolder('seed') });
+
   await reset();
   const users = await seedOperators();
   const skills = await seedSkills();
@@ -776,11 +790,14 @@ async function main() {
   console.log('');
 }
 
+let lock: SuiteLockHandle | null = null;
+
 main()
   .catch((error) => {
     log.error('seed failed', { error: error instanceof Error ? error.message : String(error) });
     process.exitCode = 1;
   })
   .finally(async () => {
+    await lock?.release();
     await prisma.$disconnect();
   });

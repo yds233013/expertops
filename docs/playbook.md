@@ -54,7 +54,7 @@ The blocker names the reason. In rough order of how often it happens:
 - *Waiting on operator verification* — go to **Verification** and review it.
 - *No availability declared* — the expert has to add a window in their portal.
   Nothing you can do from your side except ask.
-- *Blocked by support request SUP-xxxx* — open it under **Delivery**. Someone
+- *Blocked by support request SUP-xxxx* — open it under **Support**. Someone
   marked it as blocking, which means it genuinely stops them starting.
 - *Qualification: ...* — they do not meet what the project requires. Either they
   need screening against the newer rubric, or the project's bar is wrong.
@@ -114,7 +114,10 @@ Either way, a flagged item cannot enter a batch until this is done.
 1. **Application arrives.** Acknowledged automatically. An item appears saying a
    screening has not been started.
 2. **Start a screening.** Pick a published rubric version. The candidate gets a
-   single-use portal link through the simulated outbox.
+   single-use portal link through the simulated outbox, which opens their own
+   screening page: instructions, the criteria, a form, and a deadline.
+   Rubrics themselves are authored under **Rubrics**; publishing a version
+   freezes it, and changing it means drafting the next one.
 3. **They submit.** An incomplete submission is accepted and marked incomplete
    rather than bounced; you can still see what they attempted.
 4. **A reviewer is assigned automatically.** If nobody is eligible, that becomes
@@ -135,8 +138,8 @@ staffing gate still applies.
 
 ## Running delivery
 
-1. **Create a work item** from a confirmed seat, with instructions and a due
-   date.
+1. **Create a work item** from a confirmed seat under **Delivery**, with
+   instructions and a basis. An hourly item makes the expert declare hours.
 2. **They submit.** An item appears asking for review.
 3. **Approve or request a revision.** A revision request needs a specific
    description of what to change.
@@ -146,6 +149,25 @@ staffing gate still applies.
 
 A review judges one submission. It does not change the expert's standing, and
 nothing in the system aggregates reviews into a rating.
+
+---
+
+## Answering an expert
+
+**Support** holds whole conversations, not a queue of subjects. Each one shows
+who owns it, when the first response is due, and whether it is blocking anyone
+from starting or delivering.
+
+Two buttons, and the difference is the whole point of the screen:
+
+- **Send reply** appears in the expert's portal.
+- **Save internal note** never does. Internal notes are drawn with a dashed
+  border and labelled *internal, not sent to the expert*, so a note is never
+  mistaken for something they have already read.
+
+A request marked as blocking readiness stops the expert being staffed, and the
+staffing screen names the request as the reason. Resolving it clears the block;
+that is why the resolution asks what was actually done.
 
 ---
 

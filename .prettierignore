@@ -1,5 +1,9 @@
 node_modules
 .next
+.next-e2e
+playwright-report
+test-results
+docs/screenshots
 dist
 coverage
 prisma/migrations

@@ -139,8 +139,8 @@ Covered by `delivery-and-payment.test.ts` (25 tests).
 | Report errors and duplicates | Done | Per-row verdicts |
 | Qualifications not imported as verified decisions | Done | Recorded as a note; asserted by a test |
 | Formula-injection protection on export | Done | `escapeCell` |
-| Isolated test database with safeguards | Done | `assertTestDatabase` refuses a non-test name |
-| Browser verification of both journeys | Partial | See below |
+| Isolated test database with safeguards | Done | `src/lib/database-safety.ts` fail-closed allow list, `src/lib/suite-lock.ts` cross-process lock, three separate databases |
+| Browser verification of both journeys | Done | `tests/e2e/` — 25 Playwright tests against a production build, real PostgreSQL and a real worker |
 
 ### Required tests
 
@@ -161,6 +161,60 @@ All present and passing:
 
 ---
 
+## Milestone 6 — completing the scope
+
+Added in this pass. Everything below is reachable in a browser; none of it
+requires an API call.
+
+| Requirement | Status | Where | Proof |
+| --- | --- | --- | --- |
+| Candidate opens a simulated screening invitation | Done | `/apply/enter/[token]` | `journey.spec.ts` step 4 |
+| Candidate reads instructions and the criteria | Done | `/apply` | `journey.spec.ts` step 4 |
+| Candidate enters and submits responses | Done | `components/apply/screening-form.tsx` | `journey.spec.ts` step 4 |
+| Candidate sees submission status and what is missing | Done | `/apply` renders the latest submission's missing evidence | `journey.spec.ts` step 4 |
+| Candidate reads permitted revision feedback | Done | `Screening.revisionFeedback` plus public reviewer feedback | `journey.spec.ts` step 6 |
+| Candidate edits and resubmits | Done | The form is pre-filled from their own last submission | `journey.spec.ts` step 6 |
+| Candidate sees the next step | Done | `CANDIDATE_NEXT_STEP` per status | `candidate-portal.test.ts` |
+| Private reviewer notes never reach a candidate | Done | `getScreeningForCandidate` selects fields explicitly | `candidate-portal.test.ts`, `journey.spec.ts` step 6 |
+| Invalid / expired / revoked / consumed links handled clearly | Done | `redeemCandidateToken` messages, rendered by the entry page | `candidate-portal.test.ts`, `access.spec.ts` |
+| Changing an id cannot expose another candidate | Done | Authorisation is by session, never by URL | `candidate-portal.test.ts`, `access.spec.ts` |
+| Token-bearing URLs kept out of logs | Done | Token travels in a POST body; the entry page replaces the URL; screenshots refuse `/enter/` | `screenshots.spec.ts` asserts it |
+| Rubric authoring: draft, edit, validate, publish, new version | Done | `/rubrics` | `journey.spec.ts` step 1 |
+| Published versions immutable in the UI | Done | The editor is replaced by a read-only view | `journey.spec.ts` step 1 |
+| Existing screenings keep their recorded version | Done | Unchanged service rule | `screening.test.ts` |
+| Campaign detail: shortage, sources, referrals, candidates, owner, next actions, progress | Done | `/campaigns/[campaignId]` | `journey.spec.ts` step 2, `responsive.spec.ts` |
+| Screening review and qualification decisions in the browser | Done | `/screenings` | `journey.spec.ts` steps 5 and 7 |
+| Revision requests and conflict resolution in the browser | Done | `/screenings` decision panel | `journey.spec.ts` step 5 |
+| Operator replies to support | Done | `/support` | `journey.spec.ts` step 12 |
+| Expert replies to support | Done | Portal support panel | `journey.spec.ts` step 12 |
+| Conversation history, ownership, status, linked blocker | Done | `/support` | `journey.spec.ts` step 12 |
+| Participant scope and roles enforced server-side | Done | `replyToSupport`, `listSupportForExpert` | `support-conversations.test.ts` |
+| Private operator notes never appear as expert-visible replies | Done | Filtered in the service, marked in the operator UI | `support-conversations.test.ts`, `journey.spec.ts` step 12 |
+| Expert submits work in the browser | Done | Portal work panel | `journey.spec.ts` step 13 |
+| Operator assigns work in the browser | Done | `/work` | `journey.spec.ts` step 13 |
+| Operator creates and exports a payment batch in the browser | Done | `/payments` | `journey.spec.ts` step 14 |
+| Approved work appears once in payment preparation | Done | Idempotent draft creation | `journey.spec.ts` step 14, `delivery-and-payment.test.ts` |
+| Test databases cannot be confused with development | Done | `database-safety.ts`, `suite-lock.ts` | `database-safety.test.ts` (18 tests) |
+| Responsive usability at desktop and narrow mobile | Done | Checked mechanically at 1280px and 375px | `responsive.spec.ts` |
+
+### The browser suite
+
+`npm run e2e` starts a production build on port 3100 against `expertops_e2e`
+and a real worker process, then runs 25 tests in four files:
+
+| File | What it proves |
+| --- | --- |
+| `journey.spec.ts` | One continuous journey in 14 steps, from authoring a rubric to exporting an approved payment batch. Operator, candidate and expert each have their own browser context. |
+| `access.spec.ts` | Expired, revoked and already-used links are refused with a readable reason; one candidate cannot reach another's screening by changing an id; operator pages redirect to sign-in. |
+| `responsive.spec.ts` | Every principal operator page plus the candidate portal at 1280px and 375px: no sideways scrolling, every control has an accessible name, focus is visible, and the candidate form can be completed and submitted by keyboard. |
+| `screenshots.spec.ts` | Writes the walkthrough images in `docs/screenshots/`, refusing to photograph any page whose URL contains a token. |
+
+Fixture setup (operator accounts, one domain, two skills, one pre-published
+rubric) is done with helpers. Every action the suite verifies happens in the
+browser.
+
+---
+
 ## Not done
 
 Stated plainly rather than left to be discovered.
@@ -170,34 +224,29 @@ confirmed assignment or a verification decision to a client-side system. No such
 integration exists, and no job pretends to be one. Adding it means an adapter,
 credentials and a retry/bounce story that this build deliberately has none of.
 
-**Candidate portal UI.** The candidate portal has a service layer, tokens,
-sessions and a screening-invitation email with a working link, but the
-`/apply/enter/[token]` pages themselves are not built. Screening submissions are
-exercised through services and tests rather than a candidate-facing form. An
-operator can run the whole flow; a candidate currently cannot self-serve.
+**No real email, payments, or external accounts.** Every message is written to
+the in-app outbox. Payment preparation produces a CSV and nothing else; there is
+no `PAID` status anywhere in the schema, on purpose.
 
-**Rubric authoring UI.** Templates and versions are created and published
-through the API. There is no screen for editing criteria, so rubric changes are
-an API or seed-script operation today.
+**Accessibility is checked mechanically, not audited.** The browser suite
+asserts four specific things at two viewport widths: the document does not
+scroll sideways, every interactive control has an accessible name, keyboard
+focus is visible, and the candidate form can be completed and submitted with the
+keyboard alone. That is not an audit. Nothing has been tested with a screen
+reader, colour contrast has not been measured, and no assistive technology
+beyond the keyboard has been used.
 
-**Sourcing campaign UI.** Campaigns are created through the API and surfaced on
-the candidate screen through source-channel effectiveness, but there is no
-campaign detail page.
+**Offboarding is read-mostly in the UI.** Tasks are listed on the Delivery
+screen and can be confirmed there, but there is no screen for creating or
+reassigning one; that remains an API operation.
 
-**Browser verification is partial.** The operator journey was checked by hand in
-Chrome: sign-in, the attention queue, taking and dismissing an item (which
-exercises CSRF end to end), candidates, delivery and payments. The expert portal
-was verified in the previous slice and is unchanged. There is no automated
-browser suite, and a narrow-viewport pass was not completed because the
-screenshot tool captures at a fixed width; the layouts use flex-wrap and
-horizontally scrolling tables but that has not been confirmed visually on a
-phone-sized window.
+**Campaign candidates are assigned, not recruited, through the UI.** A candidate
+is attached to a campaign when they are added. There is no screen for moving an
+existing candidate between campaigns.
 
-**Accessibility is spot-checked, not audited.** Controls have accessible names,
-tables have scoped headers and captions, forms have labels, and there is a
-visible focus ring. Nothing has been tested with a screen reader, and colour
-contrast has not been measured.
+**Bulk outreach has no dedicated screen.** Outreach batches exist as a service
+with an approval gate and are visible in the attention queue and activity
+history, but composing one is an API call.
 
-**Support and offboarding are read-mostly in the UI.** Both have full service
-and API coverage; the Delivery screen lists them and offers confirmation, but
-replying to a support request is API-only.
+**Single browser engine.** The suite runs in Chromium only. Firefox and WebKit
+are not exercised.

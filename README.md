@@ -32,6 +32,8 @@ company, and it makes no comparison to any commercial product.
 - [Running the application](#running-the-application)
 - [The cybersecurity demo](#the-cybersecurity-demo)
 - [Demo walkthrough](#demo-walkthrough)
+- [Candidate walkthrough](#candidate-walkthrough)
+- [Support conversations](#support-conversations)
 - [Demo credentials](#demo-credentials)
 - [Testing](#testing)
 - [What is automated, what a human decides, what is simulated](#what-is-automated-what-a-human-decides-what-is-simulated)
@@ -66,11 +68,22 @@ npm run db:seed               # loads repeatable synthetic data
 ```
 
 `npm run db:up` publishes PostgreSQL on **5433**, not 5432, so it does not
-collide with a PostgreSQL you may already run locally. It also creates a second
-database, `expertops_test`, used only by the test suite.
+collide with a PostgreSQL you may already run locally. It creates three
+databases: `expertops` for development, `expertops_test` for the test suite, and
+`expertops_e2e` for the browser suite. The two test databases are truncated on
+every run; the development one is never touched by a test.
 
-To point at your own PostgreSQL instead, set `DATABASE_URL` and
-`TEST_DATABASE_URL` in `.env` and skip `npm run db:up`.
+To point at your own PostgreSQL instead, set `DATABASE_URL`, `TEST_DATABASE_URL`
+and `E2E_DATABASE_URL` in `.env` and skip `npm run db:up`. The guard in
+`src/lib/database-safety.ts` will refuse any name it does not recognise as a
+test or end-to-end database, which is deliberate; see
+[Test database safety](#test-database-safety).
+
+To run the browser suite you also need its browser once:
+
+```bash
+npx playwright install chromium
+```
 
 ---
 
@@ -110,6 +123,8 @@ drains. The Worker screen in the app shows queue depth and schedule state.
 | `npm run db:studio` | Prisma Studio |
 | `npm test` | Full test suite |
 | `npm run test:unit` / `test:api` / `test:integration` | One layer |
+| `npm run e2e` | Browser suite: production build on port 3100 against `expertops_e2e` |
+| `npm run e2e:report` | Open the last browser-suite HTML report |
 | `npm run smoke` | Scripted walkthrough against a running app |
 | `npm run demo` | Repeatable cybersecurity demo, additive and run-tagged |
 | `npm run demo:clean` | The same, removing previous demo runs first |
@@ -276,6 +291,105 @@ attributed to the operator, the expert, or the worker that caused it. The
 **Activity** screen shows the same across the whole workspace, filterable by
 actor.
 
+---
+
+## Candidate walkthrough
+
+The intake half of the product, from an operator authoring a rubric to a
+candidate submitting, revising and being qualified. Sign in as
+`admin@expertops.test`; publishing a rubric is an admin decision.
+
+### 1. Author and publish a rubric
+
+**Rubrics → New template.** Name it, pick a domain, create it. Then **Start
+draft v1** on the template that appears.
+
+Fill in the instructions the candidate will read, then each criterion: a label,
+what a reviewer should look for, a maximum score, a weight, and whether it needs
+a written answer or a work sample link. **Add criterion** for a second one.
+
+**Save draft**, then **Publish v1** and confirm. The editor is replaced by a
+read-only view saying the version is immutable, and the template now offers
+**Start draft v2**. That is the rule made visible: changing a rubric means a new
+version, and screenings already running keep the version they started on.
+
+### 2. Open a campaign for the shortage
+
+**Campaigns → Open campaign.** Name it, choose the domain, optionally tie it to
+a project, and set how many qualified people you need.
+
+The detail page answers the questions the shortage raises: how many seats the
+linked project still has open, who is accepted but not yet able to take one and
+why, where these candidates came from, how many were referred by an existing
+expert, and what follow-up is due next.
+
+### 3. Add a candidate and invite them to screen
+
+**Candidates → Add a candidate.** Name, email, source and campaign. Duplicate
+detection runs on save; a possible duplicate is put on hold for a human decision
+and nothing is merged.
+
+Open the candidate, choose the published rubric version, and **Send screening**.
+
+### 4. Open the invitation as the candidate
+
+**Outbox** holds the simulated email. In development it prints the single-use
+link. Open it in a private window, so the candidate session and your operator
+session do not share cookies.
+
+The candidate sees the instructions, the criteria they are assessed on, a form
+for each one, and a deadline. Submit with a required work sample link missing:
+the submission is kept and the page says exactly what is still needed rather
+than throwing the answers away.
+
+### 5. Review it
+
+**Screening.** The submission is shown against the rubric it is being judged
+against. Assign yourself as the reviewer, score each criterion, write feedback
+the candidate will read and, separately, private notes they never will.
+
+**Ask for a revision**, then use the decision panel to **Request a revision**
+with a note. The candidate's deadline reopens.
+
+### 6. Revise, as the candidate
+
+Back in the candidate window, the feedback is at the top of the page and the
+form is pre-filled with what they wrote last time. Add the link, submit again.
+
+The private notes are not on this page, and not in the response behind it.
+
+### 7. Qualify
+
+**Screening** again: assign yourself to the new revision, **Recommend approve**,
+then **Qualify**. An expert record is created.
+
+A qualification makes someone eligible. It does not staff them: onboarding
+verification, an accepted invitation and declared availability are all still
+required, and the panel says so.
+
+### 8. Record their skills
+
+**Experts → the new expert → Skills.** A project's required skills are a hard
+filter, so an expert with nothing recorded is excluded from every match. Add one
+and save. From here the staffing walkthrough above applies.
+
+---
+
+## Support conversations
+
+**Support** lists whole threads rather than a queue of subjects, with the owner,
+the response deadline and whether the request is blocking readiness or delivery.
+
+Replying has two buttons, and the difference matters: **Send reply** appears in
+the expert's portal, **Save internal note** never does. Internal notes are drawn
+with a dashed border and labelled *internal, not sent to the expert*, so nobody
+mistakes one for something the expert has seen.
+
+The expert's side is at the bottom of their portal: raise a request, read
+replies, answer them.
+
+---
+
 ### Running the walkthrough as a script
 
 ```bash
@@ -340,10 +454,13 @@ database. They apply migrations once per process and truncate between cases, so
 ### Results
 
 ```
-Test Files  23 passed (23)
-     Tests  417 passed (417)
-  Duration  ~132s
+Test Files  27 passed (27)
+     Tests  464 passed (464)
+  Duration  ~265s
 ```
+
+Plus 25 browser tests in `npm run e2e`, which takes about 80 seconds including
+the production build it starts from.
 
 | Suite | Tests | Covers |
 | --- | --- | --- |
@@ -370,12 +487,59 @@ Test Files  23 passed (23)
 | `tests/integration/worker.test.ts` | 24 | Scheduling, execution, retries, dead-lettering |
 | `tests/integration/activity-and-outbox.test.ts` | 9 | Attribution, paging, rollback, simulated delivery |
 | `tests/integration/seed.test.ts` | 11 | Repeatability and seed-data invariants |
+| `tests/integration/database-safety.test.ts` | 20 | Fail-closed database guards and the cross-process suite lock |
+| `tests/integration/candidate-portal.test.ts` | 6 | The candidate journey, private-note absence, cross-candidate refusal |
+| `tests/api/support-conversations.test.ts` | 4 | Operator and expert replies, internal notes, participant scope |
+| `tests/e2e/journey.spec.ts` | 14 | The whole journey in a browser, three separate contexts |
+| `tests/e2e/access.spec.ts` | 5 | Expired, revoked and reused links; changing an id; signed-out pages |
+| `tests/e2e/responsive.spec.ts` | 5 | Overflow, accessible names, focus and keyboard use at two viewports |
+| `tests/e2e/screenshots.spec.ts` | 1 | Writes `docs/screenshots/`, refusing any page whose URL carries a token |
+
+### Browser tests
+
+```bash
+npm run e2e            # builds, starts on port 3100, runs 25 tests in Chromium
+npm run e2e:report     # open the HTML report from the last run
+```
+
+The browser suite is isolated from development in three ways, because it
+truncates its database on every run:
+
+- **A separate database.** `E2E_DATABASE_URL` points at `expertops_e2e`, and the
+  guard in `src/lib/database-safety.ts` refuses to run against anything it does
+  not recognise as an end-to-end database.
+- **A separate port.** `E2E_PORT` defaults to 3100, so a development server on
+  3000 is untouched.
+- **A separate build directory.** The e2e build writes to `.next-e2e`, so it
+  cannot overwrite `.next` underneath a running `npm run dev`.
+
+It starts a real worker process of its own and stops only that process at the
+end. The suite covers one continuous fourteen-step journey through the browser,
+access that must fail (expired, revoked and reused links; one candidate trying
+to reach another's screening), responsive and keyboard checks at 1280px and
+375px, and the screenshots in `docs/screenshots/`.
 
 ### Test database safety
 
-The suite truncates every table between cases, so `assertTestDatabase()` refuses
-to run unless the connection string names a database containing `test`. Pointing
-the suite at your development database fails loudly rather than destroying it.
+Three databases, and a guard that fails closed:
+
+| Database | Used by | May be truncated by |
+| --- | --- | --- |
+| `expertops` | `npm run dev` | `npm run db:seed` only |
+| `expertops_test` | `npm test` | the vitest suite and the seed |
+| `expertops_e2e` | `npm run e2e` | the browser suite and the seed |
+
+`src/lib/database-safety.ts` holds the only copy of the rules. It is an allow
+list rather than a deny list: a database whose name it does not recognise is
+refused outright rather than assumed safe, nothing destructive runs when
+`NODE_ENV` is `production`, and the test suite refuses the development database
+even if the allow list is widened by mistake.
+
+`src/lib/suite-lock.ts` adds a cross-process lock in a table outside the Prisma
+schema, so a seed and a test run cannot truncate each other's fixtures
+mid-run — the failure mode that looks like a product bug and vanishes on a
+rerun. A stuck lock names its holder, goes stale after five minutes, and is
+inherited by child processes the holder spawns on purpose.
 
 ### Concurrency tests
 
@@ -476,9 +640,9 @@ decision to an external system — does not exist and is not pretended to. There
 is no adapter, no credentials and no retry story for it. Adding one is listed in
 [`docs/requirement-coverage.md`](docs/requirement-coverage.md) under *Not done*.
 
-Other unfinished areas, stated in the same place: the candidate-facing portal
-pages, the rubric authoring screen, and the sourcing campaign detail screen. All
-three have working service and API layers; only the UI is missing.
+Other unfinished areas are listed in the same place. The larger ones: there is
+no screen for composing a bulk outreach batch or for creating an offboarding
+task, and the browser suite runs in Chromium only.
 
 ---
 
@@ -492,6 +656,7 @@ three have working service and API layers; only the UI is missing.
 | [`docs/workflow-states.md`](docs/workflow-states.md) | Every state machine, transition, and guard |
 | [`docs/requirement-coverage.md`](docs/requirement-coverage.md) | What was asked for, where it lives, and what is unfinished |
 | [`docs/limitations.md`](docs/limitations.md) | What this build does not do, and what would have to change |
+| [`docs/screenshots/`](docs/screenshots) | The principal screens at 1280px and 375px, captured by the browser suite |
 
 ---
 
@@ -529,10 +694,14 @@ claimed. No comparison is made to any commercial product.**
   does not touch external accounts.
 - **Duplicate detection is deliberately crude:** exact email, or exact name. It
   is a prompt for a human, not a resolution engine.
-- **Parts of the UI are unfinished.** The candidate portal pages, the rubric
-  authoring screen and the campaign detail screen do not exist; those flows are
-  API-only today. See
+- **A few flows are still API-only:** composing a bulk outreach batch, creating
+  an offboarding task, and moving an existing candidate between campaigns. See
   [`docs/requirement-coverage.md`](docs/requirement-coverage.md).
+- **Accessibility is checked mechanically, not audited.** The browser suite
+  asserts that pages do not scroll sideways at 375px, that every control has an
+  accessible name, that focus is visible, and that the candidate form can be
+  completed by keyboard. Nothing has been tested with a screen reader and colour
+  contrast has not been measured.
 - **Deliberately out of scope:** recruitment scraping, payroll, chatbots, and
   evaluation infrastructure.
 

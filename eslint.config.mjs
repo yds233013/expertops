@@ -11,7 +11,11 @@ export default tseslint.config(
     ignores: [
       'node_modules/**',
       '.next/**',
+      // The browser suite builds here so it cannot overwrite `.next`.
+      '.next-e2e/**',
       'dist/**',
+      'playwright-report/**',
+      'test-results/**',
       'coverage/**',
       'next-env.d.ts',
       'prisma/migrations/**',

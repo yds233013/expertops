@@ -4,9 +4,13 @@ import { formatDate, formatDateTime, formatRelative } from '@/lib/time';
 import { currentExpert } from '@/server/http/context';
 import { listAvailability } from '@/server/services/availability';
 import { listInvitationsForExpert } from '@/server/services/invitations';
+import { listSupportForExpert } from '@/server/services/support';
+import { listWorkItemsForExpert } from '@/server/services/work';
 import { AvailabilityPanel } from '@/components/portal/availability-panel';
 import { InvitationPanel } from '@/components/portal/invitation-panel';
 import { OnboardingPanel } from '@/components/portal/onboarding-panel';
+import { SupportPanel } from '@/components/portal/support-panel';
+import { WorkPanel } from '@/components/portal/work-panel';
 import { Badge, Card, EmptyState, FieldRow, StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -25,13 +29,15 @@ export default async function PortalHome() {
     );
   }
 
-  const [invitations, availability, onboardingCase] = await Promise.all([
+  const [invitations, availability, onboardingCase, supportThreads, workItems] = await Promise.all([
     listInvitationsForExpert(prisma, expert.id),
     listAvailability(prisma, expert.id),
     prisma.onboardingCase.findUnique({
       where: { expertId: expert.id },
       include: { items: { orderBy: { position: 'asc' } } },
     }),
+    listSupportForExpert(prisma, expert.id),
+    listWorkItemsForExpert(prisma, expert.id),
   ]);
 
   const openInvitations = invitations.filter((invitation) => invitation.status === 'SENT');
@@ -156,6 +162,58 @@ export default async function PortalHome() {
               }
             : null
         }
+      />
+
+      <WorkPanel
+        items={workItems.map((item) => {
+          const latestReview = item.reviews[0] ?? null;
+          return {
+            id: item.id,
+            reference: item.reference,
+            title: item.title,
+            instructions: item.instructions,
+            basis: item.basis,
+            status: item.status,
+            dueAt: item.dueAt?.toISOString() ?? null,
+            projectLabel: `${item.project.code} · ${item.project.title}`,
+            lastSubmission: item.submissions[0]
+              ? {
+                  revision: item.submissions[0].revision,
+                  summary: item.submissions[0].summary,
+                  content: item.submissions[0].content,
+                  hoursClaimed: item.submissions[0].hoursClaimed,
+                }
+              : null,
+            revisionRequest:
+              item.status === 'REVISION_REQUESTED' ? (latestReview?.revisionRequest ?? null) : null,
+            reviewSummary: latestReview?.summary ?? null,
+          };
+        })}
+      />
+
+      <SupportPanel
+        threads={supportThreads.map((thread) => ({
+          id: thread.id,
+          reference: thread.reference,
+          subject: thread.subject,
+          message: thread.message,
+          category: thread.category,
+          status: thread.status,
+          createdAt: thread.createdAt.toISOString(),
+          project: thread.project
+            ? { code: thread.project.code, title: thread.project.title }
+            : null,
+          replies: thread.replies.map((reply) => ({
+            id: reply.id,
+            authorType: reply.authorType,
+            body: reply.body,
+            createdAt: reply.createdAt.toISOString(),
+          })),
+        }))}
+        projects={[...acceptedInvitations, ...openInvitations].map((invitation) => ({
+          id: invitation.projectId,
+          label: `${invitation.project.code} · ${invitation.project.title}`,
+        }))}
       />
 
       {pastInvitations.length > 0 && (

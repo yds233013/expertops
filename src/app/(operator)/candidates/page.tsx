@@ -8,7 +8,8 @@ import {
   listCandidates,
   listOpenDuplicates,
 } from '@/server/services/candidates';
-import { sourceChannelEffectiveness } from '@/server/services/sourcing';
+import { listCampaigns, sourceChannelEffectiveness } from '@/server/services/sourcing';
+import { CandidateForm } from '@/components/candidate-form';
 import { ResolveDuplicate } from '@/components/resolve-duplicate';
 import { Badge, Card, EmptyState, StatTile, StatusBadge } from '@/components/ui';
 import { type CandidateStage } from '@prisma/client';
@@ -38,7 +39,7 @@ export default async function CandidatesPage({
     ? (params.stage as CandidateStage)
     : undefined;
 
-  const [candidates, counts, duplicates, channels] = await Promise.all([
+  const [candidates, counts, duplicates, channels, openCampaigns, operators] = await Promise.all([
     listCandidates(prisma, {
       stage,
       search: params.search,
@@ -48,6 +49,12 @@ export default async function CandidatesPage({
     candidateCountsByStage(prisma),
     listOpenDuplicates(prisma, 20),
     sourceChannelEffectiveness(prisma),
+    listCampaigns(prisma, { status: 'ACTIVE' }),
+    prisma.user.findMany({
+      where: { isActive: true, role: { in: ['OPERATOR', 'ADMIN'] } },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
   ]);
 
   const canWrite = roleHasCapability(operator.role, 'candidate:write');
@@ -138,6 +145,22 @@ export default async function CandidatesPage({
               </li>
             ))}
           </ul>
+        </Card>
+      )}
+
+      {canWrite && (
+        <Card
+          title="Add a candidate"
+          description="Duplicate detection runs on save. A possible duplicate goes on hold for a human decision; nothing is merged."
+        >
+          <CandidateForm
+            channels={channels.map((channel) => ({ id: channel.id, name: channel.name }))}
+            campaigns={openCampaigns.map((campaign) => ({
+              id: campaign.id,
+              label: `${campaign.code} · ${campaign.name}`,
+            }))}
+            owners={operators}
+          />
         </Card>
       )}
 

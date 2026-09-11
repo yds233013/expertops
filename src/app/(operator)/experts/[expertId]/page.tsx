@@ -6,6 +6,7 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { listActivity } from '@/server/services/activity';
 import { getExpert } from '@/server/services/experts';
+import { ExpertSkillsEditor } from '@/components/expert-skills-editor';
 import { VerifyPanel } from '@/components/verify-panel';
 import { Badge, Card, EmptyState, FieldRow, ProvenanceTag, StatusBadge } from '@/components/ui';
 
@@ -22,7 +23,12 @@ export default async function ExpertDetailPage({
   const activity = await listActivity(prisma, { expertId, limit: 40 });
 
   const canVerify = roleHasCapability(operator.role, 'onboarding:verify');
+  const canWrite = roleHasCapability(operator.role, 'expert:write');
   const onboardingCase = expert.onboardingCase;
+
+  const skillNames = (
+    await prisma.skill.findMany({ select: { name: true }, orderBy: { name: 'asc' } })
+  ).map((skill) => skill.name);
 
   return (
     <div className="space-y-5">
@@ -56,8 +62,21 @@ export default async function ExpertDetailPage({
           {expert.bio && <p className="mt-3 text-sm text-ink-600">{expert.bio}</p>}
         </Card>
 
-        <Card title="Skills" description="Self-reported, adjustable by an operator.">
-          {expert.skills.length === 0 ? (
+        <Card
+          title="Skills"
+          description="A project's required skills are a hard filter, so an expert with none recorded is excluded from every match."
+        >
+          {canWrite ? (
+            <ExpertSkillsEditor
+              expertId={expert.id}
+              skillNames={skillNames}
+              initial={expert.skills.map((link) => ({
+                name: link.skill.name,
+                proficiency: link.proficiency,
+                yearsUsed: link.yearsUsed,
+              }))}
+            />
+          ) : expert.skills.length === 0 ? (
             <EmptyState title="No skills recorded" />
           ) : (
             <ul className="space-y-1.5">

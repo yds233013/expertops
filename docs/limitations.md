@@ -197,17 +197,22 @@ provider with retries and a webhook for bounces, and a genuine suppression list.
   show what the worker just did.
 - **Error display is per-component.** There is no global toast or error boundary.
 - **Forms lose their contents** if a request fails after a navigation attempt.
-- **No mobile layout work.** Tables scroll horizontally; that is the extent of
-  it.
+- **Mobile layout is checked, not designed.** Every principal page is asserted
+  not to scroll sideways at 375px and wide tables scroll inside their own
+  container, but nothing was redesigned for a phone: the operator navigation
+  wraps to five rows and the data tables still need horizontal scrolling.
 - **No undo** on any action.
 
 ---
 
 ## Testing
 
-- **No browser-level end-to-end tests.** The UI was verified manually and the
-  workflow is covered by `scripts/smoke.ts` driving the real HTTP API, but there
-  is no Playwright or Cypress suite.
+- **The browser suite runs in Chromium only.** Firefox and WebKit are not
+  exercised, and neither is any real mobile browser: the narrow-viewport checks
+  resize desktop Chromium rather than driving a phone.
+- **Browser coverage is one journey, not every path.** The suite proves the
+  application can be operated end to end and that specific access attempts fail.
+  It does not enumerate every screen or every error state.
 - **No component tests.** React components have no unit coverage.
 - **No load or soak testing.** Concurrency is tested for correctness under a
   handful of simultaneous writers, not for behaviour under sustained load.

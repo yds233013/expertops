@@ -6,6 +6,7 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { listWorkItems, workCounts } from '@/server/services/work';
 import { listSupportRequests, supportCounts } from '@/server/services/support';
 import { listOffboardingTasks, offboardingCounts } from '@/server/services/offboarding';
+import { AssignWorkPanel } from '@/components/assign-work-panel';
 import { ReviewWorkPanel } from '@/components/review-work-panel';
 import { ConfirmOffboardingTask } from '@/components/confirm-offboarding-task';
 import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
@@ -43,6 +44,17 @@ export default async function DeliveryPage({
     ],
   );
 
+  const confirmedSeats = await prisma.assignment.findMany({
+    where: { status: 'CONFIRMED' },
+    include: {
+      project: { select: { code: true, title: true } },
+      expert: { select: { fullName: true } },
+    },
+    orderBy: { confirmedAt: 'desc' },
+    take: 100,
+  });
+
+  const canWrite = roleHasCapability(operator.role, 'work:write');
   const canReview = roleHasCapability(operator.role, 'work:review');
   const canConfirm = roleHasCapability(operator.role, 'offboarding:confirm');
 
@@ -71,6 +83,21 @@ export default async function DeliveryPage({
           tone={supportTotals.blocking > 0 ? 'danger' : 'neutral'}
         />
       </div>
+
+      {canWrite && (
+        <Card
+          title="Assign work"
+          description="Only a confirmed seat can receive work."
+          actions={<ProvenanceTag kind="operator" />}
+        >
+          <AssignWorkPanel
+            assignments={confirmedSeats.map((assignment) => ({
+              id: assignment.id,
+              label: `${assignment.project.code} · ${assignment.expert.fullName}`,
+            }))}
+          />
+        </Card>
+      )}
 
       <form className="card flex flex-wrap items-end gap-3 px-4 py-3" method="get">
         <div className="w-56">

@@ -7,10 +7,19 @@ import { assertCsrf, CSRF_COOKIE } from './csrf';
 import { type AuthenticatedOperator, resolveSession } from '@/server/services/auth';
 import { operatorActor, expertActor, type Actor } from '@/server/services/activity';
 import { resolvePortalSession } from '@/server/services/portal-access';
-import { type Expert } from '@prisma/client';
+import { resolveCandidateSession } from '@/server/services/candidate-portal';
+import { type Candidate, type Expert } from '@prisma/client';
 
 export const OPERATOR_COOKIE = 'expertops_session';
 export const PORTAL_COOKIE = 'expertops_portal';
+/**
+ * Candidates get their own cookie name.
+ *
+ * A candidate session must never be readable as an expert session: the two
+ * audiences see different data, and a candidate who is later converted into an
+ * expert must not carry old access across with them.
+ */
+export const CANDIDATE_COOKIE = 'expertops_candidate';
 
 export function sessionCookieOptions(expiresAt: Date) {
   return {
@@ -46,6 +55,17 @@ export async function requireCapability(
   const operator = await requireOperator();
   assertCapability(operator, capability);
   return { operator, actor: operatorActor(operator) };
+}
+
+export async function currentCandidate(): Promise<Candidate | null> {
+  const store = await cookies();
+  return resolveCandidateSession(prisma, store.get(CANDIDATE_COOKIE)?.value);
+}
+
+export async function requireCandidate(): Promise<Candidate> {
+  const candidate = await currentCandidate();
+  if (!candidate) throw unauthenticated('Open your screening link to continue.');
+  return candidate;
 }
 
 export async function currentExpert(): Promise<Expert | null> {
@@ -124,12 +144,34 @@ export async function requireExpertFromRequest(
   return { expert, actor: expertActor(expert) };
 }
 
+export async function candidateFromRequest(request: Request): Promise<Candidate | null> {
+  return resolveCandidateSession(prisma, readCookie(request, CANDIDATE_COOKIE));
+}
+
+/**
+ * Resolve the candidate for a request.
+ *
+ * There is no actor here on purpose: a candidate is not an operator and does
+ * not get an activity actor with a user id. Callers build a CANDIDATE actor
+ * from the returned record.
+ */
+export async function requireCandidateFromRequest(request: Request): Promise<Candidate> {
+  const candidate = await candidateFromRequest(request);
+  if (!candidate) throw unauthenticated('Open your screening link to continue.');
+  assertCsrf(request, readCookie(request, CSRF_COOKIE));
+  return candidate;
+}
+
 export function readSessionCookie(request: Request): string | undefined {
   return readCookie(request, OPERATOR_COOKIE);
 }
 
 export function readPortalCookie(request: Request): string | undefined {
   return readCookie(request, PORTAL_COOKIE);
+}
+
+export function readCandidateCookie(request: Request): string | undefined {
+  return readCookie(request, CANDIDATE_COOKIE);
 }
 
 export function readCsrfCookie(request: Request): string | undefined {

@@ -10,6 +10,8 @@ import 'dotenv/config';
 // `NODE_ENV` is declared readonly by @types/node. Tests genuinely do need to
 // set it before any module reads it, so the cast is deliberate and local.
 (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
+// globalSetup already set this and verified the target; repeated here because
+// each vitest worker is a fresh process that does not inherit that assignment.
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
   'postgresql://expertops:expertops@localhost:5433/expertops_test?schema=public';

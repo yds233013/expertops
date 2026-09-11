@@ -594,6 +594,62 @@ export async function assignReviewer(
 
   const dueAt = hoursFromNow(input.dueInHours ?? DEFAULT_REVIEW_TTL_HOURS, clockNow());
 
+  // A reviewer who already judged an earlier revision is re-opened against the
+  // new submission rather than refused. One person reviews one screening
+  // throughout; a resubmission is a new round, not a new reviewer.
+  const existing = await db.screeningReview.findUnique({
+    where: { screeningId_reviewerId: { screeningId: screening.id, reviewerId: input.reviewerId } },
+  });
+  if (existing) {
+    if (existing.state === 'ASSIGNED' && existing.submissionId === (submission?.id ?? null)) {
+      throw conflict(`${reviewer.name} is already reviewing ${screening.reference}.`);
+    }
+    if (existing.submissionId === (submission?.id ?? null)) {
+      throw conflict(
+        `${reviewer.name} has already reviewed this revision of ${screening.reference}.`,
+      );
+    }
+
+    const reopened = await db.screeningReview.update({
+      where: { id: existing.id },
+      data: {
+        state: 'ASSIGNED',
+        submissionId: submission?.id ?? null,
+        decision: null,
+        scores: {},
+        publicFeedback: '',
+        privateNotes: '',
+        submittedAt: null,
+        assignedAt: clockNow(),
+        dueAt,
+      },
+    });
+
+    await db.screening.update({
+      where: { id: screening.id },
+      data: { status: 'IN_REVIEW', reviewDueAt: dueAt },
+    });
+    await setCandidateStage(db, actor, screening.candidateId, 'IN_REVIEW', { silent: true });
+
+    await recordActivity(db, {
+      actor,
+      entityType: 'screening',
+      entityId: screening.id,
+      candidateId: screening.candidateId,
+      action: 'screening.review_reopened',
+      summary: `${reviewer.name} re-assigned to review the new submission on ${screening.reference}`,
+      // The superseded decision is kept here so the history still shows it,
+      // even though the review row now describes the current round.
+      metadata: {
+        reviewerId: reviewer.id,
+        supersededDecision: existing.decision,
+        revision: submission?.revision ?? null,
+      },
+    });
+
+    return reopened;
+  }
+
   try {
     const review = await db.screeningReview.create({
       data: {
@@ -808,6 +864,10 @@ export async function requestRevision(
       status: 'REVISION_REQUESTED',
       dueAt: hoursFromNow(input.extraHours ?? 72, clockNow()),
       reviewDueAt: null,
+      // Persisted so the candidate portal can show it without reading the
+      // operator activity log, which also carries notes they must not see.
+      revisionFeedback: input.feedback.trim(),
+      revisionRequestedAt: clockNow(),
     },
   });
   await setCandidateStage(db, actor, screening.candidateId, 'REVISION_REQUESTED', { silent: true });
@@ -906,13 +966,46 @@ export async function listScreenings(
       candidate: {
         select: { id: true, reference: true, fullName: true, email: true, stage: true },
       },
-      rubricVersion: { include: { template: { include: { domain: true } } } },
+      rubricVersion: {
+        include: {
+          // The review screen scores against these, so they come with the list
+          // rather than in a second round trip per row.
+          criteria: { orderBy: { position: 'asc' } },
+          template: { include: { domain: true } },
+        },
+      },
       reviews: { include: { reviewer: { select: { id: true, name: true } } } },
       conflict: true,
       submissions: { orderBy: { revision: 'desc' }, take: 1 },
     },
   });
 }
+
+/**
+ * What each status means to the person being assessed, in their words.
+ *
+ * Kept next to the projection it feeds so a new status cannot be added without
+ * deciding what the candidate is told about it.
+ */
+const CANDIDATE_STATUS_EXPLANATION: Record<ScreeningStatus, string | null> = {
+  INVITED: null,
+  REVISION_REQUESTED: null,
+  SUBMITTED: 'Your responses are with the review team.',
+  IN_REVIEW: 'A reviewer is reading your responses.',
+  DECIDED: 'A decision has been recorded on this screening.',
+  EXPIRED: 'This screening closed before a submission was received.',
+  WITHDRAWN: 'This screening was withdrawn.',
+};
+
+const CANDIDATE_NEXT_STEP: Record<ScreeningStatus, string> = {
+  INVITED: 'Write your responses below and submit them before the deadline.',
+  REVISION_REQUESTED: 'Read the feedback below, update your responses and submit again.',
+  SUBMITTED: 'Nothing is needed from you. We will contact you when the review is complete.',
+  IN_REVIEW: 'Nothing is needed from you while the review is in progress.',
+  DECIDED: 'Your ExpertOps contact will follow up with what happens next.',
+  EXPIRED: 'Contact your ExpertOps contact if you would still like to be considered.',
+  WITHDRAWN: 'No further action is needed.',
+};
 
 /**
  * The candidate-facing view of a screening.
@@ -937,6 +1030,9 @@ export async function getScreeningForCandidate(db: Db, screeningId: string, cand
   });
   if (!screening || screening.candidateId !== candidateId) throw notFound('Screening not found.');
 
+  const latest = screening.submissions[0] ?? null;
+  const open = ['INVITED', 'REVISION_REQUESTED'].includes(screening.status);
+
   return {
     id: screening.id,
     reference: screening.reference,
@@ -947,6 +1043,14 @@ export async function getScreeningForCandidate(db: Db, screeningId: string, cand
     domain: screening.rubricVersion.template.domain.name,
     rubricVersion: screening.rubricVersion.version,
     guidance: screening.rubricVersion.guidance,
+    /** Whether the candidate may submit right now, and why not when they cannot. */
+    canSubmit: open && screening.dueAt.getTime() > clockNow().getTime(),
+    closedReason: open
+      ? screening.dueAt.getTime() > clockNow().getTime()
+        ? null
+        : 'The submission window for this screening has closed.'
+      : CANDIDATE_STATUS_EXPLANATION[screening.status],
+    nextStep: CANDIDATE_NEXT_STEP[screening.status],
     criteria: screening.rubricVersion.criteria.map((criterion) => ({
       key: criterion.key,
       label: criterion.label,
@@ -954,15 +1058,52 @@ export async function getScreeningForCandidate(db: Db, screeningId: string, cand
       requiredEvidence: criterion.requiredEvidence,
       maxScore: criterion.maxScore,
     })),
+    // The candidate's own most recent answers, so a revision starts from what
+    // they wrote rather than from a blank form.
+    draft: latest
+      ? {
+          revision: latest.revision,
+          answers: (latest.answers ?? {}) as Record<string, string>,
+          workSampleLinks: (latest.workSampleLinks ?? []) as string[],
+          note: latest.note,
+        }
+      : null,
     submissions: screening.submissions.map((submission) => ({
       revision: submission.revision,
       submittedAt: submission.submittedAt,
       isComplete: submission.isComplete,
       missingEvidence: submission.missingEvidence,
     })),
+    // Feedback the operator deliberately addressed to the candidate.
+    revisionFeedback: screening.revisionFeedback || null,
+    revisionRequestedAt: screening.revisionRequestedAt,
     // Only feedback deliberately marked public is included.
     feedback: screening.reviews
       .filter((review) => review.state === 'SUBMITTED' && review.publicFeedback)
       .map((review) => ({ feedback: review.publicFeedback, submittedAt: review.submittedAt })),
   };
+}
+
+export type CandidateScreeningView = Awaited<ReturnType<typeof getScreeningForCandidate>>;
+
+/**
+ * Every screening belonging to one candidate, in the candidate-safe shape.
+ *
+ * Reuses `getScreeningForCandidate` rather than writing a second projection, so
+ * there is exactly one definition of what a candidate is allowed to see.
+ */
+export async function listScreeningsForCandidate(
+  db: Db,
+  candidateId: string,
+): Promise<CandidateScreeningView[]> {
+  const rows = await db.screening.findMany({
+    where: { candidateId },
+    orderBy: { invitedAt: 'desc' },
+    select: { id: true },
+  });
+  const views: CandidateScreeningView[] = [];
+  for (const row of rows) {
+    views.push(await getScreeningForCandidate(db, row.id, candidateId));
+  }
+  return views;
 }

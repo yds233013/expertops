@@ -2,9 +2,26 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { apiPost } from '@/lib/api-client';
+import { apiFetch } from '@/lib/api-client';
 
-export function SignOutButton() {
+/**
+ * Ends a session and returns to a safe page.
+ *
+ * Parameterised because the three audiences end their sessions at different
+ * endpoints: operators post to the auth route, portal users delete their own
+ * session cookie.
+ */
+export function SignOutButton({
+  url = '/api/auth/logout',
+  method = url === '/api/auth/logout' ? 'POST' : 'DELETE',
+  redirectTo = '/login',
+  label = 'Sign out',
+}: {
+  url?: string;
+  method?: 'POST' | 'DELETE';
+  redirectTo?: string;
+  label?: string;
+} = {}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -15,12 +32,12 @@ export function SignOutButton() {
       disabled={pending}
       onClick={async () => {
         setPending(true);
-        await apiPost('/api/auth/logout');
-        router.replace('/login');
+        await apiFetch(url, { method });
+        router.replace(redirectTo);
         router.refresh();
       }}
     >
-      Sign out
+      {pending ? 'Signing out…' : label}
     </button>
   );
 }

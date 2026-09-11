@@ -873,3 +873,76 @@ describe('duplicate people are never merged automatically', () => {
     );
   });
 });
+
+describe('a resubmission re-opens the reviewer who judged the previous revision', () => {
+  beforeAll(() => applyMigrations());
+  beforeEach(() => truncateAll());
+
+  it('re-assigns the same reviewer instead of refusing them', async () => {
+    const admin = await makeOperator({ role: 'ADMIN' });
+    const domain = await makeDomain();
+    const version = await makeRubricVersion(domain.id);
+    const candidate = await makeCandidate();
+
+    const screening = await startScreening(prisma, actorFor(admin), {
+      candidateId: candidate.id,
+      rubricVersionId: version.id,
+    });
+    await submitScreening(prisma, actorFor(admin), {
+      screeningId: screening.id,
+      answers: { depth: 'first attempt' },
+    });
+
+    const first = await assignReviewer(prisma, actorFor(admin), {
+      screeningId: screening.id,
+      reviewerId: admin.id,
+    });
+    await submitReview(prisma, actorFor(admin), {
+      reviewId: first.id,
+      decision: 'REQUEST_REVISION',
+      publicFeedback: 'Add a link.',
+      privateNotes: 'Internal only.',
+    });
+
+    // A second assignment against the same revision is still refused.
+    await expect(
+      assignReviewer(prisma, actorFor(admin), {
+        screeningId: screening.id,
+        reviewerId: admin.id,
+      }),
+    ).rejects.toThrow(/already reviewed this revision/);
+
+    await requestRevision(prisma, actorFor(admin), {
+      screeningId: screening.id,
+      feedback: 'Please add the link.',
+    });
+    await submitScreening(prisma, actorFor(admin), {
+      screeningId: screening.id,
+      answers: { depth: 'second attempt', evidence: 'see link' },
+      workSampleLinks: ['https://example.test/work'],
+    });
+
+    const reopened = await assignReviewer(prisma, actorFor(admin), {
+      screeningId: screening.id,
+      reviewerId: admin.id,
+    });
+
+    expect(reopened.id).toBe(first.id);
+    expect(reopened.state).toBe('ASSIGNED');
+    // The previous round's judgement no longer describes the current one.
+    expect(reopened.decision).toBeNull();
+    expect(reopened.privateNotes).toBe('');
+
+    // It is kept in the history instead, so nothing is lost.
+    const reopenEvents = await prisma.activityEvent.findMany({
+      where: { entityId: screening.id, action: 'screening.review_reopened' },
+    });
+    expect(reopenEvents).toHaveLength(1);
+    expect(reopenEvents[0]!.metadata).toMatchObject({ supersededDecision: 'REQUEST_REVISION' });
+
+    // And the reviewer can now record a decision on the new revision.
+    await submitReview(prisma, actorFor(admin), { reviewId: reopened.id, decision: 'APPROVE' });
+    const stored = await prisma.screeningReview.findUniqueOrThrow({ where: { id: first.id } });
+    expect(stored.decision).toBe('APPROVE');
+  });
+});

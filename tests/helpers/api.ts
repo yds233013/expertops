@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { type User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { login } from '@/server/services/auth';
-import { OPERATOR_COOKIE, PORTAL_COOKIE } from '@/server/http/context';
+import { CANDIDATE_COOKIE, OPERATOR_COOKIE, PORTAL_COOKIE } from '@/server/http/context';
 import { CSRF_COOKIE, CSRF_HEADER, generateCsrfToken, signCsrfToken } from '@/server/http/csrf';
 
 /**
@@ -19,6 +19,7 @@ export interface RequestOptions {
   searchParams?: Record<string, string>;
   operatorToken?: string;
   portalToken?: string;
+  candidateToken?: string;
   headers?: Record<string, string>;
   /**
    * CSRF behaviour. Requests default to a well-formed same-origin submission,
@@ -43,6 +44,7 @@ export function buildRequest(
   const cookies: string[] = [];
   if (options.operatorToken) cookies.push(`${OPERATOR_COOKIE}=${options.operatorToken}`);
   if (options.portalToken) cookies.push(`${PORTAL_COOKIE}=${options.portalToken}`);
+  if (options.candidateToken) cookies.push(`${CANDIDATE_COOKIE}=${options.candidateToken}`);
 
   const headers = new Headers(options.headers ?? {});
 

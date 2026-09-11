@@ -6,6 +6,7 @@ import { requireOperator } from '@/server/http/context';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { listBatches, listPaymentItems, paymentCounts } from '@/server/services/payments';
 import { ResolveDiscrepancy } from '@/components/resolve-discrepancy';
+import { CreateBatchPanel } from '@/components/create-batch-panel';
 import { PaymentBatchActions } from '@/components/payment-batch-actions';
 import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
 
@@ -169,6 +170,17 @@ export default async function PaymentsPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {canWrite && (
+          <CreateBatchPanel
+            items={readyItems.map((item) => ({
+              id: item.id,
+              reference: item.reference,
+              label: `${item.expert.fullName} · ${item.project.code}`,
+              amount: `${minorToPlainDecimal(item.amountMinor)} ${item.currency}`,
+            }))}
+          />
         )}
       </Card>
 

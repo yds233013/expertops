@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { assertDestructiveAllowed } from '@/lib/database-safety';
 
 /**
  * Test database lifecycle.
@@ -14,34 +15,16 @@ let migrated = false;
  * Refuse to run destructive test helpers against anything but a test database.
  *
  * The suite truncates every table between cases. Pointing it at a development
- * or production database would silently destroy real work, so the guard checks
- * the connection string before the first truncate and again on every call.
+ * or production database would silently destroy real work, so this delegates to
+ * the shared fail-closed guard rather than keeping a second, drifting copy of
+ * the rules.
  */
-const TEST_DATABASE_MARKERS = ['expertops_test', '_test', 'test_'];
-
 export function assertTestDatabase(url = process.env.DATABASE_URL ?? ''): void {
-  if (!url) {
-    throw new Error('DATABASE_URL is not set. Refusing to run destructive test helpers.');
-  }
-
-  let databaseName: string;
-  try {
-    databaseName = new URL(url).pathname.replace(/^\//, '');
-  } catch {
-    throw new Error(`DATABASE_URL is not a valid URL. Refusing to truncate: ${url}`);
-  }
-
-  const looksLikeTest = TEST_DATABASE_MARKERS.some((marker) => databaseName.includes(marker));
-  if (!looksLikeTest) {
-    throw new Error(
-      `Refusing to truncate "${databaseName}": the database name does not look like a test database. ` +
-        'Set TEST_DATABASE_URL to a dedicated database (its name must contain "test").',
-    );
-  }
-
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Refusing to run destructive test helpers with NODE_ENV=production.');
-  }
+  assertDestructiveAllowed({
+    operation: 'truncate every table',
+    allow: ['test', 'e2e'],
+    url,
+  });
 }
 
 export function applyMigrations(): void {

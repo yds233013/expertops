@@ -9,6 +9,7 @@ import { onboardingCounts } from '@/server/services/onboarding';
 import { attentionCounts } from '@/server/services/attention';
 import { candidateCountsByStage } from '@/server/services/candidates';
 import { workCounts } from '@/server/services/work';
+import { supportCounts } from '@/server/services/support';
 import { paymentCounts } from '@/server/services/payments';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Badge } from '@/components/ui';
@@ -19,10 +20,14 @@ const NAV = [
   { href: '/attention', label: 'Needs attention' },
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/candidates', label: 'Candidates' },
+  { href: '/campaigns', label: 'Campaigns' },
+  { href: '/screenings', label: 'Screening' },
+  { href: '/rubrics', label: 'Rubrics' },
   { href: '/projects', label: 'Projects' },
   { href: '/experts', label: 'Experts' },
   { href: '/onboarding', label: 'Verification' },
   { href: '/work', label: 'Delivery' },
+  { href: '/support', label: 'Support' },
   { href: '/payments', label: 'Payments' },
   { href: '/outbox', label: 'Outbox' },
   { href: '/activity', label: 'Activity' },
@@ -33,15 +38,17 @@ export default async function OperatorLayout({ children }: { children: React.Rea
   const operator = await currentOperator();
   if (!operator) redirect('/login');
 
-  const [outbox, jobs, onboarding, attention, candidates, work, payments] = await Promise.all([
-    outboxCounts(prisma),
-    jobCounts(prisma),
-    onboardingCounts(prisma),
-    attentionCounts(prisma),
-    candidateCountsByStage(prisma),
-    workCounts(prisma),
-    paymentCounts(prisma),
-  ]);
+  const [outbox, jobs, onboarding, attention, candidates, work, payments, support] =
+    await Promise.all([
+      outboxCounts(prisma),
+      jobCounts(prisma),
+      onboardingCounts(prisma),
+      attentionCounts(prisma),
+      candidateCountsByStage(prisma),
+      workCounts(prisma),
+      paymentCounts(prisma),
+      supportCounts(prisma),
+    ]);
 
   // Badges show work waiting on a person, not raw record counts.
   const badges: Record<string, number> = {
@@ -50,6 +57,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
       candidates.DUPLICATE_HOLD + candidates.SCREENING_SUBMITTED + candidates.IN_REVIEW,
     '/onboarding': onboarding.SUBMITTED,
     '/work': work.SUBMITTED + work.IN_REVIEW,
+    '/support': support.OPEN + support.WAITING_ON_OPS,
     '/payments': payments.withOpenDiscrepancies,
     '/outbox': outbox.QUEUED,
     '/jobs': jobs.DEAD + jobs.FAILED,

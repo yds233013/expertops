@@ -12,6 +12,8 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     setupFiles: ['./tests/setup.ts'],
+    // Guards the database target and holds a cross-process lock for the run.
+    globalSetup: ['./tests/global-setup.ts'],
     include: ['tests/**/*.test.ts'],
     // Integration and concurrency tests share one PostgreSQL database and
     // truncate between cases, so they must not run in parallel with each other.

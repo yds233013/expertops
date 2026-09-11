@@ -24,6 +24,17 @@ export function expertActor(expert: { id: string; fullName: string }): Actor {
   return { type: 'EXPERT', expertId: expert.id, label: expert.fullName };
 }
 
+/**
+ * A candidate acting in the application portal.
+ *
+ * Deliberately carries neither a user id nor an expert id. A candidate is not
+ * an operator and not yet an expert, and recording them as either would make
+ * the history lie about who did the work.
+ */
+export function candidateActor(candidate: { id: string; fullName: string }): Actor {
+  return { type: 'CANDIDATE', label: candidate.fullName };
+}
+
 export interface RecordActivityInput {
   actor: Actor;
   entityType: string;

@@ -503,6 +503,9 @@ model Assignment {
 enum ActorType {
   OPERATOR
   EXPERT
+  /// A candidate acting in the application portal. Carries no user or expert
+  /// id: a candidate is not yet either of those things.
+  CANDIDATE
   SYSTEM
 }
 
@@ -986,27 +989,32 @@ enum ScreeningOutcome {
 
 /// One candidate assessed against one immutable rubric version.
 model Screening {
-  id              String            @id @default(cuid())
-  reference       String            @unique
-  candidateId     String
-  rubricVersionId String
-  status          ScreeningStatus   @default(INVITED)
-  outcome         ScreeningOutcome?
-  invitedAt       DateTime          @default(now())
+  id                  String            @id @default(cuid())
+  reference           String            @unique
+  candidateId         String
+  rubricVersionId     String
+  status              ScreeningStatus   @default(INVITED)
+  outcome             ScreeningOutcome?
+  invitedAt           DateTime          @default(now())
   /// Candidate's deadline to submit.
-  dueAt           DateTime
-  submittedAt     DateTime?
+  dueAt               DateTime
+  submittedAt         DateTime?
   /// Reviewer's deadline once a submission exists.
-  reviewDueAt     DateTime?
-  decidedAt       DateTime?
-  decidedById     String?
-  decisionNote    String?
-  currentRevision Int               @default(0)
-  remindersSent   Int               @default(0)
-  lastRemindedAt  DateTime?
-  createdById     String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  reviewDueAt         DateTime?
+  decidedAt           DateTime?
+  decidedById         String?
+  decisionNote        String?
+  /// Feedback shown to the candidate when a revision is requested. Held on the
+  /// screening rather than only in the activity log, so the candidate portal
+  /// can render it without reading operator history.
+  revisionFeedback    String            @default("")
+  revisionRequestedAt DateTime?
+  currentRevision     Int               @default(0)
+  remindersSent       Int               @default(0)
+  lastRemindedAt      DateTime?
+  createdById         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   candidate      Candidate              @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   rubricVersion  ScreeningRubricVersion @relation(fields: [rubricVersionId], references: [id], onDelete: Restrict)
