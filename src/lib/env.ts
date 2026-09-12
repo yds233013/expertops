@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseDatabaseUrl } from './database-safety';
 
 /**
  * Environment parsing.
@@ -92,6 +93,15 @@ export function getEnv(): Env {
 export const DEMO_AUTH_SECRET = 'dev-only-insecure-secret-change-me-0000000000000000000000000000';
 export const DEMO_SEED_PASSWORD = 'demo-password-123';
 
+/**
+ * The database credentials `docker-compose.yml` hands the development
+ * container. Reaching a real deployment means somebody copied a developer's
+ * `.env`, and the password is the same one on every machine that ever ran this
+ * repository.
+ */
+const DEMO_DB_USER = 'expertops';
+const DEMO_DB_PASSWORD = 'expertops';
+
 export class InsecureConfigurationError extends Error {
   readonly problems: string[];
   constructor(problems: string[]) {
@@ -144,6 +154,29 @@ export function configurationProblems(env: Env): string[] {
       `APP_BASE_URL is plain HTTP (${env.APP_BASE_URL}). Session and portal links would travel unencrypted.`,
     );
   }
+
+  // A deployment pointed at a database this repository owns for development or
+  // testing. Both cases are somebody's `.env` travelling further than they
+  // meant it to, and both end with a truncating test run or a seed against the
+  // wrong server. `database-safety.ts` already refuses the destructive
+  // operations; this refuses the deployment.
+  try {
+    const target = parseDatabaseUrl(env.DATABASE_URL);
+    if (target.kind !== 'unknown') {
+      problems.push(
+        `DATABASE_URL points at the ${target.kind} database "${target.name}". A deployment needs its own database, separate from development and test.`,
+      );
+    }
+    const url = new URL(env.DATABASE_URL);
+    if (url.username === DEMO_DB_USER && url.password === DEMO_DB_PASSWORD) {
+      problems.push(
+        'DATABASE_URL still carries the development database credentials from docker-compose.yml. Give the deployment its own role and password.',
+      );
+    }
+  } catch {
+    problems.push('DATABASE_URL could not be parsed, so its target cannot be checked.');
+  }
+
   return problems;
 }
 

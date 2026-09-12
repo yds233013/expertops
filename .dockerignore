@@ -1,0 +1,26 @@
+# Build context for the staging image. Keep it to what the build actually needs:
+# a smaller context is faster, and it is the difference between shipping a
+# developer's .env and not.
+.git
+.gitignore
+node_modules
+.next
+.next-dev
+.next-prod
+.next-e2e
+out
+coverage
+test-results
+playwright-report
+backups
+docs
+tests
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+.DS_Store
+.vscode
+.idea
+deploy/*.env

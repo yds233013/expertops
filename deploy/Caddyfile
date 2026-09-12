@@ -1,0 +1,45 @@
+# TLS and the tester gate.
+#
+# Caddy gets a certificate from Let's Encrypt on first start and renews it
+# without being asked. The gate in front of everything is a shared credential:
+# this deployment is for invited testers, and the application's own sign-in
+# sits behind it rather than instead of it.
+{
+	email {$ACME_EMAIL}
+	# Staging carries synthetic data and a handful of testers. One server, one
+	# certificate, no clustering.
+	admin off
+}
+
+{$STAGING_HOSTNAME} {
+	encode zstd gzip
+
+	# Every path, including /api/health. An uptime monitor has to send the same
+	# credential, which is the trade for not publishing record counts to anyone
+	# who finds the host.
+	basic_auth {
+		{$TESTER_USERNAME} {$TESTER_PASSWORD_HASH}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		# A staging box has no business in a search index.
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		-Server
+	}
+
+	# The app container is on the `edge` network with caddy. The database is
+	# not, so nothing that gets through this proxy can reach it directly.
+	reverse_proxy app:3000 {
+		health_uri /api/health
+		health_interval 30s
+		health_timeout 5s
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

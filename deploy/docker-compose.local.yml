@@ -1,0 +1,22 @@
+# Local rehearsal of the staging stack.
+#
+# Everything the hosted deployment does, minus the two things that need a real
+# hostname: TLS and the Let's Encrypt certificate. The app is published on
+# 127.0.0.1 instead of going through Caddy, so this exercises the image, the
+# release step, the private database network, worker supervision and the health
+# checks on a laptop.
+#
+#   cd deploy
+#   docker compose -f docker-compose.staging.yml -f docker-compose.local.yml \
+#     --env-file staging.local.env up -d --build
+#
+# It is not a substitute for the hosted check: the gate, the certificate and
+# the public hostname are only exercised once this runs on the host.
+services:
+  caddy:
+    # Nothing to terminate locally.
+    profiles: ['never']
+
+  app:
+    ports:
+      - '127.0.0.1:${LOCAL_APP_PORT:-8080}:3000'

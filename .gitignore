@@ -52,3 +52,7 @@ logs/
 tmp/
 .pgdata/
 backups/
+
+# staging / deployment secrets, never committed
+deploy/*.env
+!deploy/*.env.example

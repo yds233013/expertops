@@ -1,0 +1,148 @@
+# ExpertOps staging: one host, four containers, one private network.
+#
+#   caddy    the only thing with a published port. TLS and the tester gate.
+#   app      Next.js, reachable from caddy only
+#   worker   the persistent background worker, reachable from nothing
+#   db       PostgreSQL, no published port at all
+#
+# Migrations are the `migrate` service: it runs once, exits, and the app and
+# worker refuse to start until it has succeeded. Neither long-running process
+# migrates anything itself, so two of them starting at once cannot race.
+#
+#   cd deploy
+#   docker compose -f docker-compose.staging.yml --env-file staging.env up -d --build
+#
+name: expertops-staging
+
+x-app: &app
+  image: ${EXPERTOPS_IMAGE:-expertops:staging}
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  environment:
+    # Composed here so the credentials exist in exactly one place. The app, the
+    # worker and the release step cannot drift apart.
+    DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+    # This is a deployment, not a build. It turns on the configuration guard in
+    # src/lib/env.ts, which refuses demo secrets, the demo password, exposed
+    # magic links, plain HTTP and the development database.
+    EXPERTOPS_ENV: production
+    APP_BASE_URL: ${APP_BASE_URL}
+    AUTH_SECRET: ${AUTH_SECRET}
+    SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD}
+    EXPOSE_PORTAL_LINKS_IN_UI: 'false'
+    LOG_FORMAT: ${LOG_FORMAT:-json}
+    SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+    PORTAL_TOKEN_TTL_HOURS: ${PORTAL_TOKEN_TTL_HOURS:-168}
+  networks: [internal]
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in staging.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in staging.env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in staging.env}
+      POSTGRES_INITDB_ARGS: '--locale=C --encoding=UTF8'
+    # No `ports`. The database has no route off this host: the only way in is a
+    # container on the internal network, or `docker compose exec` as root on
+    # the box.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # The release step. Runs to completion, then the rest of the stack starts.
+  migrate:
+    image: ${EXPERTOPS_IMAGE:-expertops:staging}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: 'no'
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+    networks: [internal]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  app:
+    <<: *app
+    restart: unless-stopped
+    # The binary directly, not `npm run start`. As PID 1, npm dies on SIGTERM
+    # and reports it as an error instead of passing it on, so `docker stop`
+    # killed the process rather than letting it close its connections. Running
+    # next itself makes PID 1 the process that has the signal handler.
+    command: ['node_modules/.bin/next', 'start', '--port', '3000']
+    init: true
+    networks: [internal, edge]
+    stop_grace_period: 20s
+
+  worker:
+    <<: *app
+    restart: unless-stopped
+    # Same reason as the app, and it matters more here: the worker's SIGTERM
+    # handler stops the poll loop and lets the job in flight finish inside its
+    # lease. Under npm that handler never ran, and every deploy abandoned a
+    # claim for the lease reaper to clean up.
+    command: ['node_modules/.bin/tsx', 'src/server/worker/main.ts']
+    init: true
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      EXPERTOPS_ENV: production
+      APP_BASE_URL: ${APP_BASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD}
+      EXPOSE_PORTAL_LINKS_IN_UI: 'false'
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      WORKER_NAME: ${WORKER_NAME:-staging-worker}
+    # The image's health check probes the HTTP port, which the worker does not
+    # open. Worker liveness is a heartbeat row, watched from the Worker screen
+    # and by deploy/staging-healthcheck.sh.
+    healthcheck:
+      disable: true
+    # SIGTERM stops the loop and lets the current job finish inside its lease.
+    stop_grace_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      STAGING_HOSTNAME: ${STAGING_HOSTNAME:?set STAGING_HOSTNAME in staging.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in staging.env}
+      TESTER_USERNAME: ${TESTER_USERNAME:?set TESTER_USERNAME in staging.env}
+      TESTER_PASSWORD_HASH: ${TESTER_PASSWORD_HASH:?set TESTER_PASSWORD_HASH in staging.env}
+    networks: [edge]
+    depends_on: [app]
+
+networks:
+  # Nothing on `internal` is published. `edge` exists only so caddy can reach
+  # the app without also being able to reach the database.
+  internal:
+    driver: bridge
+  edge:
+    driver: bridge
+
+volumes:
+  pgdata:
+  caddy-data:
+  caddy-config:

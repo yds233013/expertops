@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly ExpertOps staging backup
+
+[Timer]
+# 02:15 UTC, with a delay so every host does not hit the same minute.
+OnCalendar=*-*-* 02:15:00 UTC
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

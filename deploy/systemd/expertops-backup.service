@@ -1,0 +1,14 @@
+[Unit]
+Description=ExpertOps staging database backup
+After=expertops-staging.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/expertops/deploy
+Environment=BACKUP_DIR=/var/backups/expertops
+Environment=RETENTION_DAYS=14
+# Uncomment once an off-host destination exists. Until then the backup lives on
+# the same disk as the database it protects, which the log says out loud.
+# Environment=RCLONE_REMOTE=b2:expertops-staging-backups
+ExecStart=/opt/expertops/deploy/staging-backup.sh

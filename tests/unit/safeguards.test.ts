@@ -101,6 +101,35 @@ describe('production configuration guard', () => {
     expect(configurationProblems(development)).toEqual([]);
   });
 
+  it('refuses a deployment pointed at the development or test database', () => {
+    expect(
+      configurationProblems(
+        env({ DATABASE_URL: 'postgresql://ops:secret@db:5432/expertops?schema=public' }),
+      ).join(' '),
+    ).toMatch(/development database "expertops"/);
+
+    expect(
+      configurationProblems(env({ DATABASE_URL: 'postgresql://ops:secret@db:5432/expertops_test' }))
+        .join(' ')
+        .toLowerCase(),
+    ).toContain('test database');
+
+    // A database of its own is what it is asking for.
+    expect(
+      configurationProblems(
+        env({ DATABASE_URL: 'postgresql://ops:secret@db:5432/expertops_staging' }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('refuses the development database credentials', () => {
+    expect(
+      configurationProblems(
+        env({ DATABASE_URL: 'postgresql://expertops:expertops@db:5432/expertops_staging' }),
+      ).join(' '),
+    ).toMatch(/development database credentials/);
+  });
+
   it('reports every problem at once rather than one per restart', () => {
     const problems = configurationProblems(
       env({

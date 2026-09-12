@@ -126,10 +126,10 @@ means it needs something external; *owner* means somebody has to decide.
 
 | | |
 | --- | --- |
-| **Exists** | Docker Compose for PostgreSQL. A production build and start that serve the build. |
-| **Missing** | A host, TLS termination, a process supervisor for the worker, database hosting with its own backups, and any environment beyond one laptop. |
-| **Verified by** | Nothing. Not attempted; out of scope for this task. |
-| **Blocked by** | service, owner. |
+| **Exists** | Docker Compose for PostgreSQL. A production build and start that serve the build. A complete staging deployment package — image, compose stack, TLS and tester gate, worker supervision, backup timer, health checks — built and exercised locally: [`staging-deployment.md`](staging-deployment.md). |
+| **Missing** | A host. Nothing is deployed, so TLS issuance, reboot recovery, the scheduled backup and off-host copies are unexercised. Still one machine, no managed database and no failover, which is fine for synthetic staging and not for real participants. |
+| **Verified by** | The staging stack run locally against an isolated database: release-step migration, sign-in, worker job processing, crash restart, backup and restore, and every development-configuration refusal. |
+| **Blocked by** | owner (buy the server, point a hostname at it), then local. |
 
 ## 14. Account recovery
 
@@ -155,7 +155,10 @@ means it needs something external; *owner* means somebody has to decide.
 
 In order:
 
-1. **Hosting.** Everything else is downstream of somewhere to run.
+1. **Hosting.** Everything else is downstream of somewhere to run. A staging
+   arrangement is now packaged and priced at roughly $5–8/month
+   ([`staging-deployment.md`](staging-deployment.md)); what is left is the
+   decision to buy it.
 2. **Real email.** Without it, no participant is reachable and account recovery
    cannot exist. This is the largest untested area.
 3. **A decision on participant data.** Real people mean a lawful basis and a

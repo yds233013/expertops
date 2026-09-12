@@ -1,0 +1,21 @@
+# Bring the stack up at boot and keep it there.
+#
+# Docker's own restart policy handles a crashed container; this handles a
+# rebooted host. Both are needed: `restart: unless-stopped` does not survive a
+# machine that was powered off.
+[Unit]
+Description=ExpertOps staging stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/expertops/deploy
+ExecStart=/usr/bin/docker compose -f docker-compose.staging.yml --env-file staging.env up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f docker-compose.staging.yml --env-file staging.env down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
