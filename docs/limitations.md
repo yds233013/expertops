@@ -207,11 +207,16 @@ provider with retries and a webhook for bounces, and a genuine suppression list.
 
 ## Worker guarantees
 
-- **A handler can run more than once; only one run can commit.** A worker that
-  stalls past its lease may have its job taken over and both may execute. The
-  loser's completion matches no row, so its transaction rolls back. This holds
-  for database effects, which is all of them here; it would not extend to an
-  effect outside the database.
+- **A handler can run more than once; only one run can *commit to the
+  database*.** A worker that stalls past its lease may have its job taken over
+  and both may execute. The loser's completion matches no row, so its
+  transaction rolls back.
+- **That protection is database-only, and does not generalise.** Every effect in
+  this build is a row, so fencing makes each one exactly-once per claim. It
+  would do nothing for a real email, a payment call, or any other request that
+  has already left the process: a rollback removes the record and leaves the
+  side effect standing. Adding such a handler requires an idempotency mechanism
+  the remote side honours, and none exists here.
 - **The execution transaction is bounded by the lease.** A handler needing
   longer than its lease fails rather than commits. No handler in this build
   comes close, and the lease is configurable.

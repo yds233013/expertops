@@ -110,8 +110,8 @@ drains. The Worker screen in the app shows queue depth and schedule state.
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Next.js development server on port 3000 |
-| `npm run build` / `npm start` | Production build and server |
+| `npm run dev` | Next.js development server on port 3000, building into `.next-dev` |
+| `npm run build` / `npm start` | Production build and server, using `.next-prod` |
 | `npm run worker` | Worker with file watching |
 | `npm run worker:start` | Worker without watching |
 | `npm run worker:once` | One worker tick, then exit |
@@ -516,8 +516,11 @@ truncates its database on every run:
   not recognise as an end-to-end database.
 - **A separate port.** `E2E_PORT` defaults to 3100, so a development server on
   3000 is untouched.
-- **A separate build directory.** The e2e build writes to `.next-e2e`, so it
-  cannot overwrite `.next` underneath a running `npm run dev`.
+- **A separate build directory.** The e2e build writes to `.next-e2e`. Each mode
+  has its own: `.next-dev` for development, `.next-prod` for the production
+  build and server, `.next-e2e` for the browser suite. Building while developing
+  used to overwrite the running dev server's compiled routes, which made them
+  return 500 until it reloaded.
 
 It starts a real worker process of its own and stops only that process at the
 end. The suite covers one continuous fourteen-step journey through the browser,

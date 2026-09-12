@@ -239,6 +239,23 @@ change, and what the tests actually demonstrate.
 
 ---
 
+## Second review round
+
+Four further findings against `4872981`, each reproduced before repair.
+[`docs/review-repairs.md`](review-repairs.md) has the detail.
+
+| Finding | Status | Where | Proof |
+| --- | --- | --- | --- |
+| Pruning freed business-event deduplication keys | Fixed | `Job.dedupeScope`, explicit and defaulting to DURABLE | `dedupe-retention.test.ts` |
+| Replaying a pruned event repeated its effects | Fixed | Key retained, so the replay deduplicates | `dedupe-retention.test.ts` replays a real `onboarding.start` after a real sweep |
+| Dispatch counted work another request committed | Fixed | Per-recipient outcome; `takenByAnotherRequest` | `outreach-concurrency.test.ts` |
+| A stale failure could overwrite a sent recipient | Fixed | `recordDispatchFailure` compare-and-set | `outreach-concurrency.test.ts` |
+| Batch status came from the caller's tally | Fixed | `recipientTotals` read back from the rows | `outreach-concurrency.test.ts` |
+| `npm run build` overwrote the dev server's output | Fixed | `.next-dev`, `.next-prod`, `.next-e2e` | Build run against a live dev server; production start serves its own build id |
+| Worker guarantee stated too broadly | Corrected | Database-only, stated in three documents | No code change; no regression demonstrated one |
+
+---
+
 ## Not done
 
 Stated plainly rather than left to be discovered.

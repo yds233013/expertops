@@ -115,16 +115,17 @@ attempts left or declares it DEAD when it does not.
 
 ### Execution guarantees, stated accurately
 
-**At-least-once delivery, at-most-once committed effect per claim.** A handler
-may *run* more than once: a worker that stalls past its lease can have its job
-taken over and both may execute concurrently. What cannot happen is both
+**At-least-once execution. At-most-once *committed database effect* per claim.**
+A handler may *run* more than once: a worker that stalls past its lease can have
+its job taken over and both may execute concurrently. What cannot happen is both
 committing. The loser's completion matches no row, its transaction rolls back,
 and its writes disappear.
 
-This holds for effects written through the handler's transaction, which is every
-effect in this build — outbox rows, invitations, activity entries, attention
-items are all database writes. It would not hold for an effect outside the
-database, and there are none.
+This holds because the effect and the proof of it are the same transaction in
+the same database. Every effect in this build is a row. Fencing cannot undo a
+real email, a payment call or any other request that has already left the
+process; a rollback there removes the record and leaves the side effect
+standing. See *Worker guarantees, stated narrowly* at the end of this document.
 
 Two honest caveats. A handler that commits its own transaction internally would
 escape this, which is why `HandlerContext.client` is typed `Db` rather than
@@ -293,6 +294,162 @@ part of this repair.
 
 ---
 
+## Second review round
+
+Four further findings against `4872981`. Same discipline: reproduced, repaired,
+regression-tested.
+
+---
+
+### 7. Business-event deduplication lost to pruning
+
+**Reproduced.** Replaying the pruning rule as it stood:
+
+```
+enqueued business event:      onboarding.start:inv-repro-0001
+second enqueue:               refused by the unique index — correct
+maintenance sweep pruned:     1 job(s)
+replay of the same event:     CREATED  <-- no longer deduplicated
+```
+
+`pruneFinishedJobs` deleted any old SUCCEEDED or CANCELLED job and freed its
+`dedupeKey` with it. For a key that identifies a business event rather than a
+scheduler tick, the key *is* the record that the event happened. The
+`onboarding.start` handler issues a fresh portal token and queues another
+onboarding email on every run, so freeing its key re-armed a duplicate email and
+a second live magic link.
+
+The earlier round's architecture note claimed every key in use was time-scoped
+and therefore safe to free. That was simply wrong — `onboarding.start:<id>`,
+`payment.draft:<id>`, `project.offboarding_tasks:<id>` and others carry no time
+component — and the note has been corrected rather than quietly dropped.
+
+**Repaired.** `Job.dedupeScope` is an explicit column, never inferred from the
+shape of the key:
+
+| Scope | Meaning | Pruned? |
+| --- | --- | --- |
+| `DISPOSABLE` | Provably cannot recur: a tick bucket, or a one-shot keyed by the millisecond it was queued | Yes, with its history |
+| `DURABLE` (default) | Identifies a business event | Never |
+
+Pruning now touches only rows with no key at all or an explicitly disposable
+one. The default is `DURABLE` because a freed key fails silently; a caller who
+says nothing gets retention. The migration backfills the four existing key
+shapes that carry a timestamp, so accumulated scheduler history stays prunable
+without deleting anything.
+
+Growth is one retained row per business event — business volume, not tick
+frequency — and the Worker screen now shows the split between prunable history,
+rows kept for deduplication, and failures.
+
+**Tests** (`dedupe-retention.test.ts`, real PostgreSQL):
+
+| Test | Demonstrates |
+| --- | --- |
+| Disposable history | Scheduler ticks and keyless jobs are pruned |
+| Failures | FAILED and DEAD survive any age, with their error text |
+| An aged business event | Not pruned; a replay is still deduplicated |
+| An unmarked key | Defaults to DURABLE and is retained |
+| A real replay after a real sweep | An accepted invitation drives `onboarding.start`; after the maintenance sweep runs and the event is re-enqueued, the outbox count and the portal-token count do not move |
+| Retention reporting | The three counts the Worker screen displays |
+
+---
+
+### 8. Concurrent dispatch reported work it had not done
+
+**Reproduced.** Two overlapping dispatch requests on one batch of three, on
+separate connections:
+
+```
+request A reported dispatched: 3
+request B reported dispatched: 3
+reported total:                6
+invitations actually created:  3
+```
+
+Three distinct faults. A recipient transaction that returned early because
+another request had already settled the row still fell through to
+`dispatched += 1`. Failure recording updated the recipient unconditionally,
+outside the transaction that had just rolled back, so a slow failure could
+overwrite a recipient another request had since marked SENT — leaving somebody
+who *was* invited reading FAILED. And the batch's final status came from the
+request's own tally rather than from the rows.
+
+**Repaired.**
+
+- The per-recipient transaction returns an outcome (`sent`, `skipped`, `failed`,
+  `taken`), and only `sent` is counted. Work another request committed is
+  reported separately as `takenByAnotherRequest`.
+- `recordDispatchFailure` is a compare-and-set on `dispatchState IN (PENDING,
+  FAILED)`. A stale verdict against a settled recipient matches no row, changes
+  nothing, and reports `taken`. It is exported so the guard can be tested
+  directly rather than only through a race.
+- Final status and the totals returned come from `recipientTotals`, a `groupBy`
+  over the recipient rows, so both overlapping requests report the same
+  authoritative picture. The status update tolerates another request having
+  already reached the same state.
+
+After the repair, the same race reports 3 committed and 3 taken, against 3
+invitations.
+
+**Tests** (`outreach-concurrency.test.ts`, separate real connections):
+
+| Test | Demonstrates |
+| --- | --- |
+| Two overlapping requests | Reported committed work sums to the invitations created; each request accounts for every recipient as either done or taken; both report identical totals |
+| One request failing while the other succeeds | No recipient holding an invitation reads anything but SENT; no infrastructure fault became a permanent exclusion; a later dispatch finishes the batch |
+| The guard alone | A stale infrastructure failure *and* a stale eligibility refusal against a SENT recipient both change nothing, not even the attempt count |
+| Refusal versus fault | An infrastructure fault leaves FAILED and retryable; a domain refusal on that same row leaves SKIPPED with its reason and clears the error |
+| Status from the rows | A recipient settled out of band still counts towards completion; the batch reaches DISPATCHED with `dispatchedAt` stamped |
+| Repeating on a finished batch | Three concurrent repeats each report zero committed, and the invitation and audit counts do not move |
+
+---
+
+### 9. Development and production build output collided
+
+**Reproduced.** `npm run build` wrote to `.next`, the directory a running
+`next dev` serves from. During the previous round this left `/apply/enter`
+returning 500 until the dev server reloaded — the failure was observed twice,
+not theorised.
+
+**Repaired.** Three directories, one per mode, set explicitly by the scripts so
+the choice never depends on how `NODE_ENV` resolves:
+
+| Mode | Directory |
+| --- | --- |
+| `npm run dev` | `.next-dev` |
+| `npm run build`, `npm start` | `.next-prod` |
+| `npm run e2e` | `.next-e2e` |
+
+`next.config.ts` keeps a fallback that still separates development from
+production for a bare `npx next …`. All three are gitignored, excluded from
+lint, Prettier and `tsc`.
+
+**Verified.** With the development server serving on port 3000, a full
+production build ran to completion and the dev server answered `/dashboard`,
+`/jobs`, `/outreach` and `/apply/enter` with 200 immediately afterwards. A
+production server started from `.next-prod` served the build id recorded in
+`.next-prod/BUILD_ID`, which does not appear in anything the dev server serves.
+Database contents were untouched throughout; the temporary production server was
+pointed at the browser-test database and stopped afterwards.
+
+---
+
+### 10. Worker guarantees stated too broadly
+
+No defect, and the worker was not redesigned: no regression demonstrated one.
+The wording was too broad. "At-most-once committed effect" invited the reading
+that fencing prevents duplicate external calls.
+
+It now reads **at-least-once execution, at-most-once committed *database*
+effect per claim**, with the limit stated plainly: fencing cannot undo anything
+that has already left the process, and a rollback after a real email or payment
+call would remove the record while leaving the side effect standing. Adding such
+a handler requires an idempotency mechanism the remote side honours. Corrected
+in `docs/architecture.md`, `docs/limitations.md` and above.
+
+---
+
 ## Remaining limitations
 
 - **Links issued before this change no longer work.** They pointed at routes
@@ -316,3 +473,44 @@ part of this repair.
   failure mode, but it does mean the column is silent for unrecognised results.
 - **No load testing.** Concurrency is tested for correctness with a handful of
   simultaneous workers, not under sustained load.
+
+### From the second round
+
+- **Durable job rows accumulate.** One row per business event, kept forever so
+  its deduplication key survives. That is business volume rather than tick
+  frequency, and the Worker screen shows the count, but nothing archives them.
+- **Scope is a caller's judgement.** `DISPOSABLE` is honoured, not verified. A
+  caller that marks a genuinely reusable key disposable would reintroduce the
+  defect; the default protects only the caller who says nothing.
+- **The concurrency tests assert invariants, not interleavings.** Two
+  overlapping requests are genuinely raced on separate connections, and the
+  assertions hold for every ordering, but a specific ordering is not forced. The
+  compare-and-set guard is additionally tested directly, which is the part a
+  race might not reach.
+- **The running development server predates the directory change.** It was
+  started before `.next-dev` existed and still serves from `.next`; the next
+  `npm run dev` picks up the new directory. `.next` can be deleted once nothing
+  is serving from it.
+- **Worker guarantees are database-only.** Stated above, repeated here because
+  it is the easiest thing to over-read: nothing in the fencing design makes an
+  external call idempotent.
+
+---
+
+## Worker guarantees, stated narrowly
+
+**At-least-once execution. At-most-once committed database effect per claim.**
+
+A handler may run twice; only one run can commit. That works because the effect
+and the proof of the effect are the same transaction in the same database, and
+every effect in this build is a row: simulated outbox messages, invitations,
+activity entries, attention items, payment items. Nothing leaves the process.
+
+Transactional fencing does **not** make an external call idempotent. A real
+email, a payment authorisation or any other outbound request happens the moment
+it is made; rolling back afterwards deletes the record of it and leaves the side
+effect standing, which is worse than not rolling back. Adding such a handler
+means adding idempotency the remote side honours — an idempotency key, a
+provider-side deduplication window, or an outbox row marked sent only after a
+confirmed response. None of that exists here, because no such handler exists
+here.

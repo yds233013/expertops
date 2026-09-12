@@ -3,12 +3,26 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   /**
-   * The browser suite builds into its own directory.
+   * Three builds, three directories.
    *
-   * Without this, running the e2e build would overwrite `.next` underneath a
-   * development server that is already serving from it.
+   * `next build` used to write to `.next`, the very directory a running
+   * `next dev` serves from, so building while developing replaced the dev
+   * server's compiled routes with production output it could not use — routes
+   * started returning 500 until the dev server was reloaded.
+   *
+   * | Mode | Directory | Set by |
+   * | --- | --- | --- |
+   * | `npm run dev` | `.next-dev` | the `dev` script |
+   * | `npm run build` / `npm start` | `.next-prod` | the `build` and `start` scripts |
+   * | `npm run e2e` | `.next-e2e` | the `e2e:server` script |
+   *
+   * The scripts set `NEXT_DIST_DIR` explicitly so the choice does not depend on
+   * how `NODE_ENV` happens to be resolved. The fallback below covers a bare
+   * `npx next …` and still keeps development and production apart.
    */
-  distDir: process.env.NEXT_DIST_DIR ?? '.next',
+  distDir:
+    process.env.NEXT_DIST_DIR ??
+    (process.env.NODE_ENV === 'production' ? '.next-prod' : '.next-dev'),
   poweredByHeader: false,
   serverExternalPackages: ['@prisma/client', 'bcryptjs'],
   eslint: {

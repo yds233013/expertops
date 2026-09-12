@@ -413,6 +413,8 @@ export async function recordWithdrawal(
     payload: { projectId: input.projectId },
     priority: 20,
     dedupeKey: `staffing.propose_replacements:${input.projectId}:${clockNow().getTime()}`,
+    // Timestamped, so unique per call. See invitation.send.
+    dedupeScope: 'DISPOSABLE',
   });
 
   return { releasedAssignmentId, seatsFilled, gap };

@@ -244,6 +244,9 @@ export async function tickSchedules(
           payload: (schedule.payload as Prisma.InputJsonValue) ?? {},
           priority: 50,
           dedupeKey: `schedule:${schedule.name}:${bucket}`,
+          // A tick bucket cannot recur, so this key is safe to free with its
+          // history. Scheduler rows are the bulk of the table.
+          dedupeScope: 'DISPOSABLE',
         });
         if (result.deduplicated) deduplicated += 1;
         else enqueued += 1;

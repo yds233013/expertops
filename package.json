@@ -7,9 +7,9 @@
     "node": ">=20.11"
   },
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
-    "start": "next start --port 3000",
+    "dev": "NEXT_DIST_DIR=.next-dev next dev --port 3000",
+    "build": "NEXT_DIST_DIR=.next-prod next build",
+    "start": "NEXT_DIST_DIR=.next-prod next start --port ${PORT:-3000}",
     "worker": "tsx watch src/server/worker/main.ts",
     "worker:once": "tsx src/server/worker/main.ts --once",
     "worker:start": "tsx src/server/worker/main.ts",

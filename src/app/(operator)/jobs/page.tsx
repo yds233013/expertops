@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db';
 import { formatDateTime, formatRelative } from '@/lib/time';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
-import { jobCounts, listJobs } from '@/server/services/jobs';
+import { jobCounts, listJobs, retentionSummary } from '@/server/services/jobs';
 import { listSchedules, scheduleDescription } from '@/server/services/schedules';
 import { describeJobOutcome } from '@/lib/job-outcome';
 import { ActionButton } from '@/components/action-button';
@@ -24,10 +24,11 @@ export default async function JobsPage({
     ? (params.status as JobStatus)
     : undefined;
 
-  const [{ jobs }, counts, schedules] = await Promise.all([
+  const [{ jobs }, counts, schedules, retention] = await Promise.all([
     listJobs(prisma, { status, type: params.type || undefined, limit: 80 }),
     jobCounts(prisma),
     listSchedules(prisma),
+    retentionSummary(prisma),
   ]);
 
   const canManage = roleHasCapability(operator.role, 'jobs:manage');
@@ -56,6 +57,47 @@ export default async function JobsPage({
           />
         ))}
       </div>
+
+      <Card
+        title="History retention"
+        description="Job rows are the only thing this build deletes on a schedule. Everything else is kept."
+      >
+        <dl className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">Prunable</dt>
+            <dd className="mt-1 text-2xl font-semibold tabular-nums text-ink-900">
+              {retention.prunable}
+            </dd>
+            <p className="mt-1 text-xs text-ink-600">
+              Settled scheduler ticks and jobs with no deduplication key. Removed once older than
+              seven days.
+            </p>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+              Kept for deduplication
+            </dt>
+            <dd className="mt-1 text-2xl font-semibold tabular-nums text-ink-900">
+              {retention.retainedForDedupe}
+            </dd>
+            <p className="mt-1 text-xs text-ink-600">
+              Each row is the record that a business event already happened. Deleting one would let
+              that event run a second time, so they are kept whatever their age.
+            </p>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+              Failures kept
+            </dt>
+            <dd className="mt-1 text-2xl font-semibold tabular-nums text-ink-900">
+              {retention.failures}
+            </dd>
+            <p className="mt-1 text-xs text-ink-600">
+              Failed and dead jobs are never pruned by age. A failure is evidence.
+            </p>
+          </div>
+        </dl>
+      </Card>
 
       <Card
         title="Schedules"

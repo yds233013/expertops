@@ -376,6 +376,8 @@ export async function decideVerification(db: Db, actor: Actor, input: Verificati
     payload: { expertId: input.expertId },
     priority: 20,
     dedupeKey: `readiness.recheck:${onboardingCase.id}:${now.getTime()}`,
+    // Timestamped, so unique per call. See invitation.send.
+    dedupeScope: 'DISPOSABLE',
   });
 
   return db.onboardingCase.findUniqueOrThrow({

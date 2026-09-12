@@ -11,7 +11,9 @@ export default tseslint.config(
     ignores: [
       'node_modules/**',
       '.next/**',
-      // The browser suite builds here so it cannot overwrite `.next`.
+      // One build directory per mode; none of them is source. See next.config.ts.
+      '.next-dev/**',
+      '.next-prod/**',
       '.next-e2e/**',
       'dist/**',
       'playwright-report/**',

@@ -344,65 +344,11 @@ describe('job ownership and recovery', () => {
 });
 
 /**
- * Job history retention.
+ * Job history retention lives in `dedupe-retention.test.ts`.
  *
- * The table grows by roughly one row per scheduled tick per schedule, which at
- * the shipped intervals is a few thousand rows a day. The policy is pinned here
- * rather than left implicit, because the two things that must never be pruned —
- * failures, and the deduplication keys that make "enqueue once" a database
- * guarantee — are exactly the things a naive cleanup would remove first.
+ * It used to be asserted here on the premise that every deduplication key in
+ * use was time-scoped and therefore safe to free with its history. That premise
+ * was wrong: `onboarding.start:<invitationId>` and several others carry no time
+ * component at all, so pruning re-armed the effect. Scope is now explicit on
+ * the row, and the tests that pin it sit with the rest of that policy.
  */
-describe('job history retention', () => {
-  beforeAll(() => applyMigrations());
-  beforeEach(() => truncateAll());
-
-  it('keeps failures and dead letters, and prunes only settled successes', async () => {
-    const { pruneFinishedJobs } = await import('@/server/services/jobs');
-    const old = new Date(Date.now() - 30 * 86_400_000);
-    const recent = new Date();
-
-    await prisma.job.createMany({
-      data: [
-        { type: 'outbox.dispatch', status: 'SUCCEEDED', finishedAt: old },
-        { type: 'outbox.dispatch', status: 'CANCELLED', finishedAt: old },
-        { type: 'outbox.dispatch', status: 'DEAD', finishedAt: old },
-        { type: 'outbox.dispatch', status: 'FAILED', finishedAt: old },
-        { type: 'outbox.dispatch', status: 'SUCCEEDED', finishedAt: recent },
-      ],
-    });
-
-    const pruned = await pruneFinishedJobs(prisma, new Date(Date.now() - 7 * 86_400_000));
-    expect(pruned).toBe(2);
-
-    // A failure is evidence. It is never pruned by age, however old.
-    expect(await prisma.job.count({ where: { status: 'DEAD' } })).toBe(1);
-    expect(await prisma.job.count({ where: { status: 'FAILED' } })).toBe(1);
-    // A recent success is kept until it ages out.
-    expect(await prisma.job.count({ where: { status: 'SUCCEEDED' } })).toBe(1);
-  });
-
-  it('frees a deduplication key only when its job is pruned, which is why keys are time-scoped', async () => {
-    // Schedule keys carry a tick bucket, so a key freed by pruning can never
-    // collide with a live one. This test documents that dependency: if pruning
-    // ever removed a job whose key was still meaningful, the second enqueue
-    // below would create a duplicate rather than deduplicate.
-    const { pruneFinishedJobs } = await import('@/server/services/jobs');
-    const key = 'schedule:outbox-dispatch:1700000000';
-
-    const first = await enqueueJob(prisma, { type: 'outbox.dispatch', dedupeKey: key });
-    const second = await enqueueJob(prisma, { type: 'outbox.dispatch', dedupeKey: key });
-    expect(second.deduplicated).toBe(true);
-    expect(await prisma.job.count({ where: { dedupeKey: key } })).toBe(1);
-
-    await prisma.job.update({
-      where: { id: first.job!.id },
-      data: { status: 'SUCCEEDED', finishedAt: new Date(Date.now() - 30 * 86_400_000) },
-    });
-    expect(await pruneFinishedJobs(prisma, new Date(Date.now() - 7 * 86_400_000))).toBe(1);
-
-    // The key is now free. A future tick uses a different bucket, so this only
-    // matters if a caller reuses a key verbatim.
-    const third = await enqueueJob(prisma, { type: 'outbox.dispatch', dedupeKey: key });
-    expect(third.deduplicated).toBe(false);
-  });
-});

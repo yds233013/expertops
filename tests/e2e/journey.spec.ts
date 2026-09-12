@@ -206,7 +206,23 @@ test('6. the candidate reads the feedback and resubmits, without seeing private 
   await page.getByLabel('Work sample links').fill('https://example.test/annotation-pilot');
   await page.getByRole('button', { name: 'Submit revised responses' }).click();
 
-  await expect(page.getByText('Submitted. Nothing further is needed')).toBeVisible();
+  // Assert the recorded state rather than the form's own confirmation: a
+  // successful submission closes the window, which unmounts the form and takes
+  // its message with it.
+  await expect
+    .poll(
+      async () => {
+        await page.goto('/apply');
+        return page
+          .getByText(/Revision 2/)
+          .isVisible()
+          .catch(() => false);
+      },
+      { timeout: 30_000, intervals: [500, 1000, 2000] },
+    )
+    .toBe(true);
+  await expect(page.getByRole('heading', { name: 'Required evidence is missing' })).toHaveCount(0);
+  await expect(page.getByText(/Nothing is needed from you/)).toBeVisible();
 });
 
 test('7. an authorised operator qualifies the candidate', async () => {
@@ -404,9 +420,22 @@ test('12. the expert raises a support request and an operator replies', async ()
     page.getByText('Your access is restored').first(),
   );
 
-  // The expert sees the reply and not the note.
-  await portal.goto('/portal');
-  await expect(portal.getByText('Your access is restored, please try again.')).toBeVisible();
+  // The expert sees the reply and not the note. Re-read rather than trusting a
+  // single render: the operator's reply and this page load are two requests,
+  // and the portal can be rendered from the state just before the reply landed.
+  await expect
+    .poll(
+      async () => {
+        await portal.goto('/portal');
+        return portal
+          .getByText('Your access is restored, please try again.')
+          .isVisible()
+          .catch(() => false);
+      },
+      { timeout: 30_000, intervals: [500, 1000, 2000] },
+    )
+    .toBe(true);
+
   await expect(portal.getByText('account disabled for inactivity')).toHaveCount(0);
   expect(await portal.content()).not.toContain('disabled for inactivity');
 });

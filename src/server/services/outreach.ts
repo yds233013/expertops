@@ -306,15 +306,68 @@ export async function decideBatch(
 
 export interface DispatchResult {
   batch: OutreachBatch;
-  /** Invitations created by this call. */
+  /** Invitations this request committed. Work another request did is not counted. */
   dispatched: number;
-  /** Recipients a business rule permanently excluded. */
+  /** Recipients this request permanently excluded, by a business rule. */
   skipped: Array<{ expertId: string; reason: string }>;
-  /** Recipients an infrastructure failure left retryable. */
+  /** Recipients this request left retryable, after an infrastructure fault. */
   failed: Array<{ expertId: string; error: string }>;
-  /** Recipients already sent by an earlier call, left untouched. */
+  /** Outstanding recipients another overlapping request settled first. */
+  takenByAnotherRequest: number;
+  /** Authoritative totals, read back from the database after the loop. */
+  totals: { sent: number; skipped: number; failed: number; pending: number };
+  /** Recipients already sent before this request started. */
   alreadySent: number;
   complete: boolean;
+}
+
+/** What happened to one recipient in this request. */
+type RecipientOutcome =
+  | { kind: 'sent' }
+  | { kind: 'skipped'; reason: string }
+  | { kind: 'failed'; error: string }
+  /** Another request settled this recipient; this one did nothing to it. */
+  | { kind: 'taken' };
+
+/**
+ * Record a failed attempt without trampling a recipient somebody else settled.
+ *
+ * Compare-and-set on the state we believed the row was in. Two overlapping
+ * requests can both pass the claim, roll back, and arrive here; without the
+ * condition, the slower one's verdict would overwrite the faster one's success
+ * and a recipient who *was* invited would be left reading FAILED with no
+ * invitation. Exported so the guard can be tested directly rather than only
+ * through a race.
+ */
+export async function recordDispatchFailure(
+  db: Db,
+  itemId: string,
+  error: unknown,
+): Promise<'skipped' | 'failed' | 'taken'> {
+  const message = error instanceof Error ? error.message : String(error);
+  // An AppError is the domain saying no, which will not change on a retry.
+  // Anything else is the machinery failing, which says nothing about this
+  // person's eligibility.
+  const permanent = isAppError(error);
+
+  const updated = await db.outreachBatchItem.updateMany({
+    where: { id: itemId, dispatchState: { in: ['PENDING', 'FAILED'] } },
+    data: permanent
+      ? {
+          dispatchState: 'SKIPPED',
+          skippedReason: message,
+          lastError: null,
+          attempts: { increment: 1 },
+        }
+      : {
+          dispatchState: 'FAILED',
+          lastError: message.slice(0, 1000),
+          attempts: { increment: 1 },
+        },
+  });
+
+  if (updated.count === 0) return 'taken';
+  return permanent ? 'skipped' : 'failed';
 }
 
 /**
@@ -324,22 +377,22 @@ export interface DispatchResult {
  * so every project-eligibility rule still applies and there is no second
  * invitation implementation to keep in step.
  *
- * Three things this gets right that the earlier version did not:
+ * Each recipient commits in its own transaction — the invitation, its activity
+ * entry and the item's new state together. One transaction for a hundred
+ * invitations would mean one failure discarding ninety-nine successes.
  *
- *  * **Per-recipient progress.** Each recipient commits in its own transaction
- *    — the invitation, its activity entry, and the item's new state together.
- *    One failure costs one recipient, not the whole batch.
- *  * **A permanent exclusion and a transient fault are different.** A business
- *    rule refusing a recipient (already invited, archived, no seats left) is a
- *    decision and will not change on a retry, so the row is SKIPPED. An
- *    unexpected error says nothing about that person's eligibility, so the row
- *    is FAILED and stays retryable. Previously both were written into
- *    `skippedReason` and the recipient was dropped for good.
- *  * **A partly failed batch is not finished.** It lands in
- *    PARTIALLY_DISPATCHED, which says what happened and keeps dispatch
- *    available; it becomes DISPATCHED only when nothing retryable is left.
+ * Two overlapping dispatch requests are safe, and the counts stay honest:
  *
- * Calling dispatch again is safe: SENT and SKIPPED rows are not reconsidered,
+ *  * The per-recipient claim is a conditional update inside the transaction, so
+ *    the row is locked for the duration. A second request either claims it
+ *    first or finds it settled and reports `takenByAnotherRequest` — it does
+ *    not count work it did not do.
+ *  * Failure recording is a compare-and-set, so a request that rolled back
+ *    cannot overwrite a recipient another request has since marked SENT.
+ *  * The batch's final status and the totals returned come from reading the
+ *    recipient rows back, not from this request's own tally.
+ *
+ * Calling dispatch again is safe: SENT and SKIPPED rows are never reconsidered,
  * so no recipient is invited twice.
  */
 export async function dispatchBatch(
@@ -370,6 +423,7 @@ export async function dispatchBatch(
   const skipped: DispatchResult['skipped'] = [];
   const failed: DispatchResult['failed'] = [];
   let dispatched = 0;
+  let takenByAnotherRequest = 0;
   const alreadySent = batch.items.filter((item) => item.dispatchState === 'SENT').length;
 
   // Only work that is outstanding. SENT and SKIPPED are settled.
@@ -380,16 +434,18 @@ export async function dispatchBatch(
 
   for (const item of outstanding) {
     const expertId = item.expertId!;
+    let outcome: RecipientOutcome;
+
     try {
-      await withTransaction(client, async (tx) => {
-        // Claim under the transaction so two dispatch calls racing each other
-        // cannot both create an invitation for the same recipient. The claim is
-        // a no-op update whose row count tells us whether we got there first.
+      outcome = await withTransaction(client, async (tx): Promise<RecipientOutcome> => {
+        // Claim under the transaction, which locks the row for its duration. A
+        // concurrent request blocks here and then re-evaluates the condition,
+        // so exactly one of them proceeds.
         const claimed = await tx.outreachBatchItem.updateMany({
           where: { id: item.id, dispatchState: { in: ['PENDING', 'FAILED'] } },
           data: { dispatchedAt: null },
         });
-        if (claimed.count === 0) return;
+        if (claimed.count === 0) return { kind: 'taken' };
 
         const invitation = await createInvitation(tx, actor, {
           projectId,
@@ -408,48 +464,45 @@ export async function dispatchBatch(
             lastError: null,
           },
         });
+        return { kind: 'sent' };
       });
-      dispatched += 1;
     } catch (error) {
+      // Recorded outside the rolled-back transaction so the verdict and the
+      // attempt count survive, and conditionally so it cannot overwrite a
+      // recipient another request settled while this one was failing.
+      const recorded = await recordDispatchFailure(client, item.id, error);
       const message = error instanceof Error ? error.message : String(error);
-      // An AppError is the domain saying no. Anything else is the machinery
-      // failing, which is not a statement about this person.
-      const permanent = isAppError(error);
-
-      // Recorded outside the rolled-back transaction, so the verdict and the
-      // attempt count survive the rollback that just discarded the work.
-      await client.outreachBatchItem.update({
-        where: { id: item.id },
-        data: permanent
-          ? {
-              dispatchState: 'SKIPPED',
-              skippedReason: message,
-              lastError: null,
-              attempts: { increment: 1 },
-            }
-          : {
-              dispatchState: 'FAILED',
-              lastError: message.slice(0, 1000),
-              attempts: { increment: 1 },
-            },
-      });
-
-      if (permanent) skipped.push({ expertId, reason: message });
-      else failed.push({ expertId, error: message });
+      outcome =
+        recorded === 'taken'
+          ? { kind: 'taken' }
+          : recorded === 'skipped'
+            ? { kind: 'skipped', reason: message }
+            : { kind: 'failed', error: message };
     }
+
+    if (outcome.kind === 'sent') dispatched += 1;
+    else if (outcome.kind === 'skipped') skipped.push({ expertId, reason: outcome.reason });
+    else if (outcome.kind === 'failed') failed.push({ expertId, error: outcome.error });
+    else takenByAnotherRequest += 1;
   }
 
-  const complete = failed.length === 0;
+  // Authoritative: the batch's state follows the recipient rows as they now
+  // stand, not this request's tally of what it happened to see.
+  const totals = await recipientTotals(client, batchId);
+  const complete = totals.pending === 0 && totals.failed === 0;
   const finalStatus: OutreachBatchStatus = complete ? 'DISPATCHED' : 'PARTIALLY_DISPATCHED';
 
   const updated = await withTransaction(client, async (tx) => {
-    assertBatchTransition(batch.status, finalStatus);
+    const current = await tx.outreachBatch.findUniqueOrThrow({ where: { id: batchId } });
+    // Another request may have finished the batch already; that is not an error.
+    if (current.status === finalStatus) return current;
+    assertBatchTransition(current.status, finalStatus);
+
     const row = await tx.outreachBatch.update({
       where: { id: batchId },
       data: {
         status: finalStatus,
-        // Stamped once, when the batch actually finishes.
-        dispatchedAt: complete ? (batch.dispatchedAt ?? clockNow()) : batch.dispatchedAt,
+        dispatchedAt: complete ? (current.dispatchedAt ?? clockNow()) : current.dispatchedAt,
       },
     });
 
@@ -460,13 +513,12 @@ export async function dispatchBatch(
       projectId,
       action: complete ? 'outreach.batch_dispatched' : 'outreach.batch_partially_dispatched',
       summary: complete
-        ? `Batch ${batch.reference} dispatched: ${dispatched} invitation(s) created, ${skipped.length} skipped`
-        : `Batch ${batch.reference} partly dispatched: ${dispatched} created, ${skipped.length} skipped, ${failed.length} still to retry`,
+        ? `Batch ${batch.reference} dispatched: ${totals.sent} invitation(s) created, ${totals.skipped} skipped`
+        : `Batch ${batch.reference} partly dispatched: ${totals.sent} sent, ${totals.skipped} skipped, ${totals.pending + totals.failed} still to retry`,
       metadata: {
-        dispatched,
-        alreadySent,
-        skipped,
-        failed,
+        dispatchedByThisRequest: dispatched,
+        takenByAnotherRequest,
+        totals,
         approvedById: batch.approvedById,
         simulated: true,
       },
@@ -474,7 +526,33 @@ export async function dispatchBatch(
     return row;
   });
 
-  return { batch: updated, dispatched, skipped, failed, alreadySent, complete };
+  return {
+    batch: updated,
+    dispatched,
+    skipped,
+    failed,
+    takenByAnotherRequest,
+    totals,
+    alreadySent,
+    complete,
+  };
+}
+
+/** Recipient states as the database currently holds them. */
+export async function recipientTotals(db: Db, batchId: string) {
+  const grouped = await db.outreachBatchItem.groupBy({
+    by: ['dispatchState'],
+    where: { batchId },
+    _count: { _all: true },
+  });
+  const totals = { sent: 0, skipped: 0, failed: 0, pending: 0 };
+  for (const row of grouped) {
+    if (row.dispatchState === 'SENT') totals.sent = row._count._all;
+    else if (row.dispatchState === 'SKIPPED') totals.skipped = row._count._all;
+    else if (row.dispatchState === 'FAILED') totals.failed = row._count._all;
+    else totals.pending = row._count._all;
+  }
+  return totals;
 }
 
 /** Recipients a repeat dispatch would act on. Used by the UI to label the button. */

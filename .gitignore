@@ -4,7 +4,11 @@ node_modules/
 .pnp.js
 
 # next.js
+# Three build directories, one per mode, so a production build never lands on
+# top of a running development server. See next.config.ts.
 .next/
+.next-dev/
+.next-prod/
 .next-e2e/
 out/
 next-env.d.ts

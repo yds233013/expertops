@@ -224,17 +224,39 @@ open a transaction of its own and commit outside this one.
 
 ### Execution guarantees
 
-**At-least-once delivery, at-most-once committed effect per claim.**
+**At-least-once execution. At-most-once *committed database effect* per claim.**
+
+The second half of that sentence is deliberately narrow, and the narrowness is
+the point.
 
 A handler may *run* more than once. A worker that stalls past its lease can have
 its job taken over, and both processes may execute concurrently. What cannot
 happen is both committing: the loser's completion matches no row, its
 transaction rolls back, and its writes disappear with it.
 
-This holds for effects written through the handler's transaction, which is every
-effect in this build — outbox rows, invitations, activity entries and attention
-items are all database writes. It would not extend to an effect outside the
-database, and there are none.
+That works because the effect and the proof of the effect are the same
+transaction in the same database. Every effect in this build is a row —
+simulated outbox messages, invitations, activity entries, attention items,
+payment items. Nothing leaves the process.
+
+**What this does not give you.** Transactional fencing cannot undo anything that
+already happened outside the database. If a future handler sends a real email,
+charges a card, or calls any external API, that call is made the moment it is
+made; a rollback afterwards removes the record of it and leaves the side effect
+standing, which is worse than not rolling back at all. Adding such a handler
+means adding an idempotency mechanism the remote side honours — an idempotency
+key, a provider-side deduplication window, or an outbox row that is marked sent
+only after a confirmed response — and none of that exists here, because no such
+handler exists here.
+
+So the guarantee to carry forward is: *this build's effects are database writes,
+and fencing makes those exactly-once per claim.* It is not a general
+exactly-once delivery guarantee, and it should not be quoted as one.
+
+Two further caveats. A handler that opened and committed its own transaction
+would escape the fence entirely, which is why `HandlerContext.client` is typed
+`Db` rather than `Transactor`. And the execution transaction is bounded by the
+lease, so a handler that needs longer than its lease fails rather than commits.
 
 Recovery is bounded at both ends. The claim query requires `attempts <
 maxAttempts`, so a job whose worker is killed on every attempt stops being
@@ -299,12 +321,31 @@ policy is deliberately narrow:
 | `FAILED`, `DEAD` | Indefinitely — a failure is evidence |
 | `PENDING`, `RUNNING` | Never pruned; they are live |
 
-Pruning frees the `dedupeKey` of any row it removes. That is safe here because
-every key in use is time-scoped: schedule keys carry a tick bucket, and business
-keys carry the revision they belong to, so a freed key cannot collide with a
-live one. A caller that reused a key verbatim across a pruning boundary would
-get a second job rather than a deduplication, which is why keys are constructed
-this way. Both properties are pinned by tests in `worker-ownership.test.ts`.
+Pruning frees the `dedupeKey` of any row it removes, so what may be pruned is
+decided by an explicit `dedupeScope` on the row rather than inferred from the
+shape of the key:
+
+| Scope | Meaning | Examples |
+| --- | --- | --- |
+| `DISPOSABLE` | The key provably cannot recur | `schedule:<name>:<bucket>`, `invitation.send:<id>:<ms>` |
+| `DURABLE` (default) | The key *is* the record that a business event happened | `onboarding.start:<invitationId>`, `payment.draft:<reviewId>`, `screening.invite:<id>:<revision>` |
+
+An earlier version of this document claimed every key in use was time-scoped and
+therefore safe to free. That was wrong. `onboarding.start:<invitationId>` and
+most other business keys carry no time component at all, and the handler behind
+that one issues a fresh portal token and queues another onboarding email on
+every run — so freeing the key re-armed a duplicate email and a second live
+magic link.
+
+The default is `DURABLE` on purpose: a caller who says nothing gets retention,
+because a freed key fails silently and only shows up as a duplicate effect.
+Pinned by `dedupe-retention.test.ts`, which replays a real `onboarding.start`
+after a real maintenance sweep and asserts the outbox and token counts do not
+move.
+
+The growth this accepts is one retained row per business event, which is
+business volume rather than tick frequency. The Worker screen shows the split
+between prunable history, rows kept for deduplication, and failures.
 
 Nothing prunes activity history, outbox messages, or any business record. Job
 rows are the only thing this build deletes on a schedule.

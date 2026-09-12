@@ -8,7 +8,10 @@ export interface DispatchOutcome {
   dispatched: number;
   skipped: Array<{ expertId: string; reason: string }>;
   failed: Array<{ expertId: string; error: string }>;
+  takenByAnotherRequest: number;
   alreadySent: number;
+  /** Authoritative recipient states, read back from the database. */
+  totals: { sent: number; skipped: number; failed: number; pending: number };
   complete: boolean;
 }
 
@@ -134,8 +137,14 @@ export function OutreachBatchActions({
       {outcome && (
         <div role="status" className="rounded-md bg-ink-50 px-3 py-2 text-sm text-ink-800">
           <p>
-            {outcome.dispatched} invitation(s) created, {outcome.skipped.length} permanently
-            skipped, {outcome.failed.length} retryable, {outcome.alreadySent} already sent earlier.
+            This request created {outcome.dispatched} invitation(s), permanently skipped{' '}
+            {outcome.skipped.length}, and left {outcome.failed.length} retryable.
+          </p>
+          <p className="mt-1 text-xs text-ink-600">
+            The batch now stands at {outcome.totals.sent} sent, {outcome.totals.skipped} skipped,{' '}
+            {outcome.totals.failed + outcome.totals.pending} outstanding.
+            {outcome.takenByAnotherRequest > 0 &&
+              ` ${outcome.takenByAnotherRequest} recipient(s) were settled by another request running at the same time.`}
           </p>
           {!outcome.complete && (
             <p className="mt-1 text-xs text-amber-900">

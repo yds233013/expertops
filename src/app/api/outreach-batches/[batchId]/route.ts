@@ -62,12 +62,17 @@ export const POST = route(async (request: NextRequest, { params }: Params) => {
   });
   return ok({
     batch: result.batch,
+    // What this request committed, and separately what it found already done.
     dispatched: result.dispatched,
     skipped: result.skipped,
     // Reported separately from `skipped`: these are retryable, and calling
     // dispatch again picks up exactly these recipients.
     failed: result.failed,
+    takenByAnotherRequest: result.takenByAnotherRequest,
     alreadySent: result.alreadySent,
+    // Read back from the recipient rows, so the caller sees the batch as it
+    // actually stands rather than this request's own tally.
+    totals: result.totals,
     complete: result.complete,
     simulated: true,
   });

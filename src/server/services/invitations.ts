@@ -158,6 +158,9 @@ async function scheduleSend(db: Db, invitationId: string) {
     payload: { invitationId },
     priority: 20,
     dedupeKey: `invitation.send:${invitationId}:${clockNow().getTime()}`,
+    // Keyed by the instant it was queued, so the key is unique per call and
+    // deduplicates nothing beyond this moment.
+    dedupeScope: 'DISPOSABLE',
   });
 }
 

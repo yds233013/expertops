@@ -1,4 +1,4 @@
-import { type Job, type JobStatus, type Prisma } from '@prisma/client';
+import { type DedupeScope, type Job, type JobStatus, type Prisma } from '@prisma/client';
 import { type Db, isPrismaErrorCode, PG_UNIQUE_VIOLATION } from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
 import { forbidden, notFound } from '@/lib/errors';
@@ -77,6 +77,17 @@ export interface EnqueueInput {
   maxAttempts?: number;
   /** Unique key; a second enqueue with the same key is a no-op. */
   dedupeKey?: string | null;
+  /**
+   * Whether that key may be freed when this job's history is pruned.
+   *
+   * Omit it for anything that identifies a business event. The default is
+   * DURABLE, so forgetting retains the key rather than deleting it: a freed key
+   * silently re-arms an effect, and nothing notices until it happens twice.
+   *
+   * Pass DISPOSABLE only when the key provably cannot recur — a scheduler tick
+   * bucket, or a one-shot keyed by the millisecond it was queued.
+   */
+  dedupeScope?: DedupeScope;
 }
 
 export interface EnqueueResult {
@@ -94,6 +105,7 @@ export async function enqueueJob(db: Db, input: EnqueueInput): Promise<EnqueueRe
         priority: input.priority ?? 100,
         maxAttempts: input.maxAttempts ?? 5,
         dedupeKey: input.dedupeKey ?? null,
+        dedupeScope: input.dedupeScope ?? 'DURABLE',
         status: 'PENDING',
       },
     });
@@ -451,10 +463,55 @@ export async function cancelJob(db: Db, jobId: string): Promise<Job> {
   });
 }
 
-/** Housekeeping: drop old terminal jobs so the table does not grow forever. */
+/**
+ * Housekeeping: drop old terminal jobs so the table does not grow forever.
+ *
+ * Deleting a job row frees its `dedupeKey`, and for a key that identifies a
+ * business event that is not housekeeping — it re-arms the effect. A pruned
+ * `onboarding.start:<invitationId>` means the same invitation can enqueue that
+ * job again, and the handler issues a fresh portal token and queues another
+ * onboarding email every time it runs.
+ *
+ * So pruning is restricted to rows that hold nothing worth keeping: those with
+ * no key at all, and those a caller explicitly marked DISPOSABLE. Scope is
+ * never inferred from the shape of the key; a caller has to say so.
+ *
+ * Failures and dead letters are never pruned by age either, because a failure
+ * is evidence.
+ */
 export async function pruneFinishedJobs(db: Db, olderThan: Date): Promise<number> {
   const result = await db.job.deleteMany({
-    where: { status: { in: ['SUCCEEDED', 'CANCELLED'] }, finishedAt: { lt: olderThan } },
+    where: {
+      status: { in: ['SUCCEEDED', 'CANCELLED'] },
+      finishedAt: { lt: olderThan },
+      OR: [{ dedupeKey: null }, { dedupeScope: 'DISPOSABLE' }],
+    },
   });
   return result.count;
+}
+
+/**
+ * How much history is being retained, and why.
+ *
+ * Surfaced on the Worker screen so the growth this policy accepts is visible
+ * rather than something an operator discovers from disk usage.
+ */
+export async function retentionSummary(db: Db) {
+  const [prunable, retainedForDedupe, failures] = await Promise.all([
+    db.job.count({
+      where: {
+        status: { in: ['SUCCEEDED', 'CANCELLED'] },
+        OR: [{ dedupeKey: null }, { dedupeScope: 'DISPOSABLE' }],
+      },
+    }),
+    db.job.count({
+      where: {
+        status: { in: ['SUCCEEDED', 'CANCELLED'] },
+        dedupeKey: { not: null },
+        dedupeScope: 'DURABLE',
+      },
+    }),
+    db.job.count({ where: { status: { in: ['FAILED', 'DEAD'] } } }),
+  ]);
+  return { prunable, retainedForDedupe, failures };
 }
