@@ -10,7 +10,9 @@ built. The withdrawal and replacement sequence in
 that changed: a replacement now goes through invitation, acceptance,
 availability, onboarding and operator verification before a seat is confirmed,
 and only then can work be assigned. The same sequence is covered end to end by
-`tests/e2e/withdrawal.spec.ts`.
+`tests/e2e/withdrawal.spec.ts`, and [`flow-f-run.md`](flow-f-run.md) records what
+happened when a person walked Flow F by hand, including the two defects it
+found.
 
 ---
 
