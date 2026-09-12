@@ -643,6 +643,49 @@ model Job {
   @@index([status, dedupeScope, finishedAt])
 }
 
+/// One recorded sign-in attempt, successful or not.
+///
+/// Kept as rows rather than a counter on `User` so an attempt against an email
+/// that does not exist is still recorded — that is the shape most credential
+/// stuffing takes, and a counter on a row that does not exist cannot see it.
+/// Rows are pruned by the maintenance sweep once they are past the lockout
+/// window and no longer evidence of anything.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  /// Lower-cased, as supplied. May not match any user.
+  email     String
+  succeeded Boolean
+  /// Best-effort client address from the proxy headers. Absent behind some
+  /// setups, which is why it never gates on its own.
+  clientIp  String?
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([clientIp, createdAt])
+  @@index([createdAt])
+}
+
+/// A worker process reporting that it is alive.
+///
+/// The queue tables say what work exists; they cannot say whether anything is
+/// running. Without this, a worker that died looks exactly like a quiet queue
+/// until something overdue piles up.
+model WorkerHeartbeat {
+  /// The configured worker name. One row per worker, updated in place.
+  name       String   @id
+  pid        Int
+  startedAt  DateTime
+  lastSeenAt DateTime
+  /// Ticks completed since this process started, for a sense of progress.
+  ticks      Int      @default(0)
+  /// Last tick's outcome, so a worker that is alive but failing is visible.
+  lastError  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([lastSeenAt])
+}
+
 model Schedule {
   id              String    @id @default(cuid())
   name            String    @unique

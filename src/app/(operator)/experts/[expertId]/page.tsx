@@ -8,6 +8,7 @@ import { listActivity } from '@/server/services/activity';
 import { getExpert } from '@/server/services/experts';
 import { ExpertSkillsEditor } from '@/components/expert-skills-editor';
 import { VerifyPanel } from '@/components/verify-panel';
+import { SimulatedDeliveryBadge } from '@/components/delivery-note';
 import { Badge, Card, EmptyState, FieldRow, ProvenanceTag, StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -183,6 +184,7 @@ export default async function ExpertDetailPage({
                       </td>
                       <td>
                         <StatusBadge status={invitation.status} />
+                        {invitation.status === 'SENT' && <SimulatedDeliveryBadge />}
                       </td>
                       <td className="text-ink-600">{formatDateTime(invitation.expiresAt)}</td>
                       <td className="text-ink-600">

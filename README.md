@@ -126,6 +126,8 @@ drains. The Worker screen in the app shows queue depth and schedule state.
 | `npm run e2e` | Browser suite: production build on port 3100 against `expertops_e2e` |
 | `npm run e2e:report` | Open the last browser-suite HTML report |
 | `npm run smoke` | Scripted walkthrough against a running app |
+| `./scripts/backup.sh` | Back up the database, with a checksum sidecar |
+| `./scripts/restore-check.sh <dump>` | Restore into a disposable database and report what survived |
 | `npm run demo` | Repeatable cybersecurity demo, additive and run-tagged |
 | `npm run demo:clean` | The same, removing previous demo runs first |
 | `npm run lint` / `lint:fix` | ESLint |
@@ -665,6 +667,9 @@ Chromium only.
 | [`docs/playbook.md`](docs/playbook.md) | A short operator playbook: how to actually run a day |
 | [`docs/workflow-states.md`](docs/workflow-states.md) | Every state machine, transition, and guard |
 | [`docs/requirement-coverage.md`](docs/requirement-coverage.md) | What was asked for, where it lives, and what is unfinished |
+| [`docs/operations.md`](docs/operations.md) | Startup, shutdown, backup, restore, migration, rollback, and what to do when something breaks |
+| [`docs/pilot-readiness.md`](docs/pilot-readiness.md) | What a controlled pilot needs, what exists, what does not, and what blocks it |
+| [`docs/pilot-runbook.md`](docs/pilot-runbook.md) | How to run the pilot: access, the one project, monitoring, pausing, incidents, and how to judge it |
 | [`docs/review-repairs.md`](docs/review-repairs.md) | Each independent-review finding, how it was reproduced, and what the repair proves |
 | [`docs/limitations.md`](docs/limitations.md) | What this build does not do, and what would have to change |
 | [`docs/screenshots/`](docs/screenshots) | The principal screens at 1280px and 375px, captured by the browser suite |

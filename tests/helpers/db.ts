@@ -38,6 +38,8 @@ export function applyMigrations(): void {
 }
 
 const TABLES = [
+  'LoginAttempt',
+  'WorkerHeartbeat',
   'AttentionItem',
   'OffboardingTask',
   'PaymentItem',

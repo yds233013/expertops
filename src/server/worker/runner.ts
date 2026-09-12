@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { type Prisma } from '@prisma/client';
 import { type Transactor } from '@/lib/db';
 import { errorMessage } from '@/lib/errors';
-import { createLogger, type Logger } from '@/lib/logger';
+import { createLogger, newCorrelationId, withLogContext, type Logger } from '@/lib/logger';
 import {
   claimJobs,
   completeJob,
@@ -14,6 +14,7 @@ import {
   type ClaimedJob,
 } from '@/server/services/jobs';
 import { ensureDefaultSchedules, tickSchedules } from '@/server/services/schedules';
+import { recordHeartbeat } from '@/server/services/worker-health';
 import { handlerFor, type HandlerContext } from './handlers';
 
 /**
@@ -75,6 +76,8 @@ export class Worker {
   private readonly log: Logger;
   private running = false;
   private stopRequested = false;
+  private readonly startedAt = new Date();
+  private ticks = 0;
   private idleTimer: NodeJS.Timeout | null = null;
   private wake: (() => void) | null = null;
 
@@ -102,6 +105,13 @@ export class Worker {
 
   /** Run exactly one tick. This is what the tests drive. */
   async tick(now: Date = new Date()): Promise<TickSummary> {
+    return withLogContext(
+      { correlationId: newCorrelationId(), source: 'worker', operation: `${this.name}.tick` },
+      () => this.runTick(now),
+    );
+  }
+
+  private async runTick(now: Date): Promise<TickSummary> {
     const summary: TickSummary = { ...EMPTY_TICK };
 
     const scheduleResult = await tickSchedules(this.client, { now });
@@ -131,6 +141,8 @@ export class Worker {
       this.log.warn('recovered abandoned claims', { ...reaped });
     }
 
+    await this.heartbeat(null, now);
+
     return summary;
   }
 
@@ -153,6 +165,17 @@ export class Worker {
    *    write the handler made is rolled back with it.
    */
   private async runClaimedJob(job: ClaimedJob, summary: TickSummary, now: Date): Promise<void> {
+    // One correlation id per claim, so every line the handler produces — and
+    // every line the services it calls produce — can be gathered afterwards.
+    // The claim id is already unique per attempt, which makes it the right
+    // thing to correlate on: a retry is a separate story from its predecessor.
+    return withLogContext(
+      { correlationId: job.claimId.slice(0, 8), source: 'job', operation: job.type },
+      () => this.executeClaimedJob(job, summary, now),
+    );
+  }
+
+  private async executeClaimedJob(job: ClaimedJob, summary: TickSummary, now: Date): Promise<void> {
     const handler = handlerFor(job.type);
     if (!handler) {
       summary.unknownTypes += 1;
@@ -255,6 +278,35 @@ export class Worker {
     }
   }
 
+  /**
+   * Report that this process is alive.
+   *
+   * Written every tick, including ticks that did nothing, because "nothing to
+   * do" and "nobody running" are the two states an operator most needs to tell
+   * apart and they look identical from the queue alone.
+   *
+   * A failure to write the heartbeat is logged and swallowed: it must never be
+   * the reason a worker stops working.
+   */
+  private async heartbeat(lastError: string | null, now: Date): Promise<void> {
+    this.ticks += 1;
+    try {
+      await recordHeartbeat(
+        this.client,
+        {
+          name: this.name,
+          pid: process.pid,
+          startedAt: this.startedAt,
+          ticks: this.ticks,
+          lastError,
+        },
+        now,
+      );
+    } catch (error) {
+      this.log.warn('could not write heartbeat', { error: errorMessage(error) });
+    }
+  }
+
   /** Long-running loop. Returns when `stop()` is called. */
   async start(): Promise<void> {
     if (this.running) return;
@@ -278,7 +330,11 @@ export class Worker {
           await this.sleep(this.pollIntervalMs);
         }
       } catch (error) {
-        this.log.error('tick failed', { error: errorMessage(error) });
+        const message = errorMessage(error);
+        this.log.error('tick failed', { error: message });
+        // Still report in: a worker that is alive but failing every tick is a
+        // different problem from one that is gone, and the screen should say so.
+        await this.heartbeat(message, new Date());
         if (!this.stopRequested) await this.sleep(Math.max(this.pollIntervalMs, 2000));
       }
     }

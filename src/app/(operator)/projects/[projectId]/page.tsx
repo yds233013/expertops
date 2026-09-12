@@ -7,6 +7,7 @@ import { requireOperator } from '@/server/http/context';
 import { listActivity } from '@/server/services/activity';
 import { getProject } from '@/server/services/projects';
 import { listStaffingCandidates } from '@/server/services/staffing';
+import { SimulatedDeliveryBadge } from '@/components/delivery-note';
 import { ActionButton } from '@/components/action-button';
 import { InviteButton } from '@/components/invite-button';
 import { ProposeForm } from '@/components/propose-form';
@@ -338,6 +339,7 @@ export default async function ProjectDetailPage({
                     </td>
                     <td>
                       <StatusBadge status={invitation.status} />
+                      {invitation.status === 'SENT' && <SimulatedDeliveryBadge />}
                     </td>
                     <td className="text-ink-600">
                       {invitation.sentAt ? formatRelative(invitation.sentAt) : 'queued'}

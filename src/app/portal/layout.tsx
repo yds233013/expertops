@@ -10,7 +10,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       <main className="mx-auto max-w-3xl px-6 py-6">{children}</main>
       <footer className="mx-auto max-w-3xl px-6 pb-8 text-xs text-ink-500">
         Local development build. This portal is reached through a single-use link; no password is
-        ever created for an expert account.
+        ever created for an expert account. Messages about it are written to an in-app outbox and
+        are not emailed to anyone.
       </footer>
     </div>
   );

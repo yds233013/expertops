@@ -4,6 +4,8 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { jobCounts, listJobs, retentionSummary } from '@/server/services/jobs';
 import { listSchedules, scheduleDescription } from '@/server/services/schedules';
+import { workerHealth } from '@/server/services/worker-health';
+import { WorkerHealthPanel } from '@/components/worker-health-panel';
 import { describeJobOutcome } from '@/lib/job-outcome';
 import { ActionButton } from '@/components/action-button';
 import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
@@ -24,11 +26,12 @@ export default async function JobsPage({
     ? (params.status as JobStatus)
     : undefined;
 
-  const [{ jobs }, counts, schedules, retention] = await Promise.all([
+  const [{ jobs }, counts, schedules, retention, health] = await Promise.all([
     listJobs(prisma, { status, type: params.type || undefined, limit: 80 }),
     jobCounts(prisma),
     listSchedules(prisma),
     retentionSummary(prisma),
+    workerHealth(prisma),
   ]);
 
   const canManage = roleHasCapability(operator.role, 'jobs:manage');
@@ -46,6 +49,8 @@ export default async function JobsPage({
           or repeats work. Start one with <code>npm run worker</code>.
         </p>
       </header>
+
+      <WorkerHealthPanel health={health} />
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {STATUSES.map((value) => (

@@ -25,6 +25,9 @@ const E2E_DATABASE_URL =
 const serverEnv = {
   ...process.env,
   NODE_ENV: 'production',
+  // A production *build*, not a production *deployment*: this runs locally
+  // against a throwaway database with development settings on purpose.
+  EXPERTOPS_ENV: 'test',
   DATABASE_URL: E2E_DATABASE_URL,
   NEXT_DIST_DIR: '.next-e2e',
   APP_BASE_URL: E2E_BASE_URL,

@@ -6,6 +6,7 @@ import { OPERATOR_COOKIE, readCsrfCookie, sessionCookieOptions } from '@/server/
 import { assertCsrf } from '@/server/http/csrf';
 import { ok, parseJson, route } from '@/server/http/respond';
 import { login } from '@/server/services/auth';
+import { clientAddress } from '@/server/services/login-protection';
 
 const bodySchema = z.object({
   email: z.string().min(3),
@@ -18,7 +19,7 @@ export const POST = route(async (request: NextRequest) => {
   // is issued by middleware on the first page load.
   assertCsrf(request, readCsrfCookie(request));
   const body = await parseJson(request, bodySchema);
-  const result = await login(prisma, body);
+  const result = await login(prisma, { ...body, clientIp: clientAddress(request) });
 
   const response = ok({
     user: result.user,

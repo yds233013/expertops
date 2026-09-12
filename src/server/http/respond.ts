@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { AppError, isAppError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { logger, newCorrelationId, withLogContext } from '@/lib/logger';
 
 /**
  * The single place domain errors become HTTP responses.
@@ -66,16 +66,43 @@ export function noContent(): NextResponse {
   return new NextResponse(null, { status: 204 });
 }
 
-/** Wrap a handler so every thrown AppError lands on the right status code. */
+/** Header a caller can send to tie their own logs to ours, or read back. */
+export const CORRELATION_HEADER = 'x-correlation-id';
+
+/** Only accept an id that cannot smuggle anything into a log line. */
+function safeCorrelationId(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim().slice(0, 64);
+  return /^[A-Za-z0-9_-]+$/.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Wrap a handler so every thrown AppError lands on the right status code, and
+ * everything it logs carries one correlation id.
+ *
+ * The id is echoed back on the response, so a failure an operator reports can
+ * be found in the log without guessing at timestamps.
+ */
 export function route<Args extends unknown[]>(
   handler: (...args: Args) => Promise<NextResponse>,
 ): (...args: Args) => Promise<NextResponse> {
   return async (...args: Args) => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      return errorResponse(error);
-    }
+    const request = args[0] as Request | undefined;
+    const correlationId =
+      safeCorrelationId(request?.headers?.get?.(CORRELATION_HEADER) ?? null) ?? newCorrelationId();
+    const operation =
+      request instanceof Request ? `${request.method} ${new URL(request.url).pathname}` : undefined;
+
+    return withLogContext({ correlationId, source: 'http', operation }, async () => {
+      let response: NextResponse;
+      try {
+        response = await handler(...args);
+      } catch (error) {
+        response = errorResponse(error);
+      }
+      response.headers.set(CORRELATION_HEADER, correlationId);
+      return response;
+    });
   };
 }
 

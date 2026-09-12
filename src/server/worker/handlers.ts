@@ -7,6 +7,8 @@ import { REMINDER_POLICY } from '@/server/domain/automation';
 import { recordActivity, SYSTEM_ACTOR } from '@/server/services/activity';
 import { raiseAttention, resolveIfPresent } from '@/server/services/attention';
 import { purgeExpiredSessions } from '@/server/services/auth';
+import { pruneLoginAttempts } from '@/server/services/login-protection';
+import { pruneWorkerHeartbeats } from '@/server/services/worker-health';
 import { acknowledgeApplication } from '@/server/services/candidates';
 import {
   expireOverdueInvitations,
@@ -1290,8 +1292,18 @@ export const HANDLERS: Record<JobType, JobHandler> = {
       where: { expiresAt: { lte: ctx.now } },
     });
 
+    // Sign-in attempts stop being evidence once they are well past the lockout
+    // window; heartbeats from workers that are long gone stop being news.
+    const loginAttempts = await pruneLoginAttempts(ctx.db, ctx.now);
+    const staleWorkers = await pruneWorkerHeartbeats(
+      ctx.db,
+      new Date(ctx.now.getTime() - 7 * 86_400_000),
+    );
+
     return {
       ...sessions,
+      loginAttempts,
+      staleWorkers,
       prunedJobs,
       candidateTokens: candidateTokens.count,
       candidateSessions: candidateSessions.count,

@@ -4,6 +4,7 @@ import { formatDateTime, formatRelative } from '@/lib/time';
 import { requireOperator } from '@/server/http/context';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { attentionCounts, listAttention } from '@/server/services/attention';
+import { workerHealth } from '@/server/services/worker-health';
 import { AttentionActions } from '@/components/attention-actions';
 import { Badge, Card, EmptyState, StatTile } from '@/components/ui';
 import { type AttentionKind, type AttentionSeverity } from '@prisma/client';
@@ -35,7 +36,7 @@ export default async function AttentionPage({
   const kind = (params.kind as AttentionKind) || undefined;
   const severity = (params.severity as AttentionSeverity) || undefined;
 
-  const [items, counts, operators] = await Promise.all([
+  const [items, counts, operators, health] = await Promise.all([
     listAttention(prisma, {
       kind,
       severity,
@@ -49,6 +50,7 @@ export default async function AttentionPage({
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     }),
+    workerHealth(prisma),
   ]);
 
   const business = items.filter((item) => item.kind === 'BUSINESS_BLOCKER');
@@ -65,6 +67,43 @@ export default async function AttentionPage({
           conditions change, so an empty list means nothing is waiting.
         </p>
       </header>
+
+      {/* An empty queue means nothing is waiting only if something is running to
+          put things on it. A stalled worker is announced here, ahead of the
+          list, because this is the screen an operator starts their day on. */}
+      {health.warnings.length > 0 && (
+        <section
+          aria-labelledby="automation-health"
+          className={
+            health.noLiveWorker
+              ? 'rounded-lg border border-rose-200 bg-rose-50 px-4 py-3'
+              : 'rounded-lg border border-amber-200 bg-amber-50 px-4 py-3'
+          }
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2
+              id="automation-health"
+              className={
+                health.noLiveWorker
+                  ? 'text-sm font-semibold text-rose-900'
+                  : 'text-sm font-semibold text-amber-900'
+              }
+            >
+              {health.noLiveWorker ? 'Automation is not running' : 'Automation needs attention'}
+            </h2>
+            <Link className="text-xs font-medium text-accent-600 hover:underline" href="/jobs">
+              Worker screen →
+            </Link>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {health.warnings.map((warning) => (
+              <li key={warning.title} className="text-sm text-ink-800">
+                <span className="font-medium">{warning.title}.</span> {warning.nextAction}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatTile label="Open items" value={counts.total} />

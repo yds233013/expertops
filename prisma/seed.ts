@@ -222,6 +222,7 @@ async function reset() {
   // explicitly keeps the seed independent of cascade configuration.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      "LoginAttempt", "WorkerHeartbeat",
       "ActivityEvent", "OutboxMessage", "Job", "Schedule", "AttentionItem",
       "OffboardingTask", "PaymentItem", "PaymentBatch",
       "SupportReply", "SupportRequest",

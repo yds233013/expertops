@@ -15,6 +15,20 @@ const booleanish = z
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * Which environment this *deployment* is, as opposed to how the code was
+   * built.
+   *
+   * `next start` forces `NODE_ENV=production` for any production build,
+   * including the one the browser suite runs locally against a throwaway
+   * database. Those are not the same thing, and the safety checks below care
+   * about the deployment, not the build. Defaults to `NODE_ENV`, so a real
+   * deployment gets the checks without setting anything.
+   *
+   * Setting this to anything but `production` on a real deployment is an
+   * operator switching off their own safety check.
+   */
+  EXPERTOPS_ENV: z.enum(['development', 'test', 'production']).optional(),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   APP_BASE_URL: z.string().url().default('http://localhost:3000'),
   AUTH_SECRET: z.string().min(16, 'AUTH_SECRET must be at least 16 characters'),
@@ -38,6 +52,7 @@ export function getEnv(): Env {
 
   const parsed = schema.safeParse({
     NODE_ENV: process.env.NODE_ENV,
+    EXPERTOPS_ENV: process.env.EXPERTOPS_ENV,
     DATABASE_URL: process.env.DATABASE_URL,
     APP_BASE_URL: process.env.APP_BASE_URL,
     AUTH_SECRET: process.env.AUTH_SECRET,
@@ -61,8 +76,80 @@ export function getEnv(): Env {
     );
   }
 
+  assertSafeForMode(parsed.data);
   cached = parsed.data;
   return cached;
+}
+
+/**
+ * Values that ship in `.env.example` and must never reach a real deployment.
+ *
+ * The check is on the literal shipped values rather than on entropy: a secret
+ * chosen badly is the operator's decision to make, but a secret nobody chose at
+ * all is a packaging accident, and it is the one this build can recognise with
+ * certainty.
+ */
+export const DEMO_AUTH_SECRET = 'dev-only-insecure-secret-change-me-0000000000000000000000000000';
+export const DEMO_SEED_PASSWORD = 'demo-password-123';
+
+export class InsecureConfigurationError extends Error {
+  readonly problems: string[];
+  constructor(problems: string[]) {
+    super(
+      `Refusing to start in production with development configuration:\n${problems
+        .map((problem) => `  - ${problem}`)
+        .join('\n')}\n\nSee docs/operations.md for what each value needs to be.`,
+    );
+    this.name = 'InsecureConfigurationError';
+    this.problems = problems;
+  }
+}
+
+/**
+ * Refuse to start a production build on demo settings.
+ *
+ * Each of these is safe in development and dangerous in production, and none of
+ * them announces itself at runtime: a demo secret signs real sessions perfectly
+ * well, and an exposed portal link looks like a feature until somebody forwards
+ * one. Failing at boot is the only point where it is cheap.
+ */
+export function deploymentEnvironment(env: Env): 'development' | 'test' | 'production' {
+  return env.EXPERTOPS_ENV ?? env.NODE_ENV;
+}
+
+export function configurationProblems(env: Env): string[] {
+  if (deploymentEnvironment(env) !== 'production') return [];
+  const problems: string[] = [];
+
+  if (env.AUTH_SECRET === DEMO_AUTH_SECRET) {
+    problems.push(
+      'AUTH_SECRET is still the placeholder from .env.example. Generate one with `openssl rand -hex 32`.',
+    );
+  }
+  if (env.AUTH_SECRET.length < 32) {
+    problems.push('AUTH_SECRET must be at least 32 characters in production.');
+  }
+  if (env.SEED_DEMO_PASSWORD === DEMO_SEED_PASSWORD) {
+    problems.push(
+      'SEED_DEMO_PASSWORD is the shared demo password. Seeded demo accounts must not exist in production.',
+    );
+  }
+  if (env.EXPOSE_PORTAL_LINKS_IN_UI) {
+    problems.push(
+      'EXPOSE_PORTAL_LINKS_IN_UI prints single-use magic links in the operator UI. It must be false in production.',
+    );
+  }
+  if (env.APP_BASE_URL.startsWith('http://') && !env.APP_BASE_URL.includes('localhost')) {
+    problems.push(
+      `APP_BASE_URL is plain HTTP (${env.APP_BASE_URL}). Session and portal links would travel unencrypted.`,
+    );
+  }
+  return problems;
+}
+
+function assertSafeForMode(env: Env): void {
+  const problems = configurationProblems(env);
+  if (problems.length > 0) throw new InsecureConfigurationError(problems);
 }
 
 /** Test helper: forget the memoised env so a test can change process.env. */
