@@ -16,9 +16,13 @@ import { SYSTEM_ACTOR } from '@/server/services/activity';
 import { listAttention } from '@/server/services/attention';
 import { enqueueJob } from '@/server/services/jobs';
 import { runMatching } from '@/server/services/matching';
-import { dispatchBatch } from '@/server/services/outreach';
+import { buildReplacementBatch, dispatchBatch } from '@/server/services/outreach';
 import { confirmAssignment, proposeAssignment } from '@/server/services/staffing';
-import { recordWithdrawal, listExpertCommitments } from '@/server/services/staffing-gaps';
+import {
+  listExpertCommitments,
+  recommendReplacements,
+  recordWithdrawal,
+} from '@/server/services/staffing-gaps';
 import { createWorkItem, reviewWork, submitWork } from '@/server/services/work';
 import { Worker } from '@/server/worker/runner';
 
@@ -548,6 +552,68 @@ describe('expert withdrawal: reminders and delivery records', () => {
   });
 });
 
+describe('expert withdrawal: re-staffing the seat afterwards', () => {
+  beforeAll(() => applyMigrations());
+  beforeEach(() => truncateAll());
+
+  it('lets an expert be proposed again after their seat was released', async () => {
+    const { operator, project, expert, assignment } = await staffed(1);
+
+    await recordWithdrawal(prisma, actorForExpert(expert), {
+      projectId: project.id,
+      expertId: expert.id,
+      reason: 'Changed my mind, then changed it back.',
+    });
+    expect(
+      (await prisma.assignment.findUniqueOrThrow({ where: { id: assignment.id } })).status,
+    ).toBe('RELEASED');
+
+    // The operator re-invites them and they accept again, which is the only way
+    // back onto the project.
+    await prisma.invitation.update({
+      where: { projectId_expertId: { projectId: project.id, expertId: expert.id } },
+      data: { status: 'ACCEPTED', withdrawReason: null, respondedAt: new Date() },
+    });
+
+    // The staffing screen offers the propose form for a released assignment, so
+    // proposing has to work rather than colliding with the row that is already
+    // there.
+    const reproposed = await proposeAssignment(prisma, actorFor(operator), {
+      projectId: project.id,
+      expertId: expert.id,
+      allocationHoursPerWeek: 12,
+    });
+
+    // The same seat record, revived — not a second one.
+    expect(reproposed.id).toBe(assignment.id);
+    expect(reproposed.status).toBe('PROPOSED');
+    expect(reproposed.releasedAt).toBeNull();
+    expect(reproposed.releaseReason).toBeNull();
+    expect(reproposed.allocationHoursPerWeek).toBe(12);
+    expect(
+      await prisma.assignment.count({ where: { projectId: project.id, expertId: expert.id } }),
+    ).toBe(1);
+
+    // And it can be confirmed, which is the point of re-proposing it.
+    const confirmed = await confirmAssignment(prisma, actorFor(operator), reproposed.id);
+    expect(confirmed.seatsFilled).toBe(1);
+  });
+
+  it('still refuses a second proposal while one is live', async () => {
+    const { operator, project, expert } = await staffed(2);
+
+    await expectAppError(
+      proposeAssignment(prisma, actorFor(operator), {
+        projectId: project.id,
+        expertId: expert.id,
+        allocationHoursPerWeek: 10,
+      }),
+      'CONFLICT',
+      /already has a confirmed assignment/,
+    );
+  });
+});
+
 describe('expert withdrawal: the replacement path', () => {
   beforeAll(() => applyMigrations());
   beforeEach(() => truncateAll());
@@ -603,6 +669,81 @@ describe('expert withdrawal: the replacement path', () => {
     expect(
       await prisma.invitation.count({ where: { projectId: project.id, status: 'SENT' } }),
     ).toBe(0);
+  });
+
+  it('never proposes the expert who just withdrew as their own replacement', async () => {
+    const operator = await makeOperator();
+    const project = await makeProject(operator.id, { status: 'STAFFING', seatsRequested: 1 });
+
+    // Ranked before anybody is invited, which is the order an operator actually
+    // works in: match first, then invite from the ranking. The expert who later
+    // withdraws is therefore a candidate on the latest match run, and nothing
+    // about withdrawing removes them from it.
+    const leaver = await makeExpert({
+      status: 'VERIFIED',
+      skills: [{ name: 'Distributed Systems', proficiency: 4 }],
+    });
+    const spare = await makeExpert({
+      status: 'VERIFIED',
+      skills: [{ name: 'Distributed Systems', proficiency: 4 }],
+    });
+    await runMatching(prisma, actorFor(operator), project.id, { limit: 10 });
+    const ranked = await prisma.matchCandidate.findMany({
+      where: { matchRun: { projectId: project.id } },
+      select: { expertId: true },
+    });
+    expect(ranked.map((row) => row.expertId)).toContain(leaver.id);
+
+    // They accept, take the seat, and then leave it.
+    await prisma.invitation.create({
+      data: {
+        projectId: project.id,
+        expertId: leaver.id,
+        status: 'ACCEPTED',
+        expiresAt: new Date(Date.now() + 86_400_000),
+        sentAt: new Date(),
+        respondedAt: new Date(),
+      },
+    });
+    await prisma.availabilityWindow.create({
+      data: {
+        expertId: leaver.id,
+        projectId: project.id,
+        startAt: new Date(Date.now() - 86_400_000),
+        endAt: new Date(Date.now() + 60 * 86_400_000),
+        hoursPerWeek: 20,
+      },
+    });
+    const proposal = await proposeAssignment(prisma, actorFor(operator), {
+      projectId: project.id,
+      expertId: leaver.id,
+      allocationHoursPerWeek: 10,
+    });
+    await confirmAssignment(prisma, actorFor(operator), proposal.id);
+
+    await recordWithdrawal(prisma, actorForExpert(leaver), {
+      projectId: project.id,
+      expertId: leaver.id,
+      reason: 'A clashing engagement.',
+    });
+
+    const recommendations = await recommendReplacements(prisma, project.id, 5);
+    const ids = recommendations.map((row) => row.expertId);
+    expect(ids).not.toContain(leaver.id);
+    expect(ids).toContain(spare.id);
+
+    // And the batch the worker assembles from that list, which is what would
+    // actually re-invite them once an operator approved it.
+    const built = await buildReplacementBatch(prisma, SYSTEM_ACTOR, {
+      projectId: project.id,
+      reason: 'Seat vacated.',
+    });
+    const items = await prisma.outreachBatchItem.findMany({
+      where: { batchId: built.batch!.id },
+      select: { expertId: true },
+    });
+    expect(items.map((row) => row.expertId)).not.toContain(leaver.id);
+    expect(items.map((row) => row.expertId)).toContain(spare.id);
   });
 
   it('reopens a fully staffed project so a replacement can be invited at all', async () => {

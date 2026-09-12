@@ -708,12 +708,20 @@ export async function recommendReplacements(
 
   if (!latestRun) return [];
 
+  // Anyone whose story on this project is already written. `WITHDRAWN` and
+  // `RELEASED` are here because of what this list is for: proposing a
+  // replacement for a seat somebody just left. Without them the expert who
+  // withdrew an hour ago comes back at the top of their own replacement list,
+  // described as "qualified and ready", and an approved batch re-invites the
+  // person who just said they could not do it. An operator who does want them
+  // back can still invite them by hand from the project screen; what is wrong
+  // is the system proposing it.
   const excluded = await db.invitation.findMany({
-    where: { projectId, status: { in: ['DRAFT', 'SENT', 'ACCEPTED'] } },
+    where: { projectId, status: { in: ['DRAFT', 'SENT', 'ACCEPTED', 'WITHDRAWN'] } },
     select: { expertId: true },
   });
   const assigned = await db.assignment.findMany({
-    where: { projectId, status: { in: ['PROPOSED', 'CONFIRMED', 'COMPLETED'] } },
+    where: { projectId, status: { in: ['PROPOSED', 'CONFIRMED', 'COMPLETED', 'RELEASED'] } },
     select: { expertId: true },
   });
   const skip = new Set([...excluded, ...assigned].map((row) => row.expertId));

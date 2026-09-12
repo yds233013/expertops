@@ -243,6 +243,10 @@ Withdrawal works from an accepted invitation before any assignment exists, and
 from a proposed or confirmed assignment. It releases only the commitment on that
 one project; seats the expert holds elsewhere are untouched.
 
+Withdrawing is not a ban. If the same expert becomes available again, invite
+them to the project as usual: accepting re-opens their released seat record and
+the *Staffing* table offers **Propose** again.
+
 ### What the operator sees
 
 5. **[Operator]** *Needs attention* carries a high-severity item, *<name>
@@ -261,9 +265,11 @@ one project; seats the expert holds elsewhere are untouched.
 ### The replacement outreach
 
 8. **[Worker]** A replacement batch is assembled from the project's latest match
-   run, excluding anyone already invited, assigned or archived. It is a draft.
-   Nobody has been contacted. If there is nobody left to approach, you get a
-   *No replacement candidates* item instead.
+   run, excluding anyone already invited or assigned, anyone archived, and
+   anyone whose own time on this project has ended: a withdrawn invitation or a
+   released seat. The person who just left is not proposed as their own
+   replacement. It is a draft. Nobody has been contacted. If there is nobody
+   left to approach, you get a *No replacement candidates* item instead.
 9. **[Operator]** *Outreach*. The batch is in the table with kind *replacement*,
    created by *the worker*. Open it. Each recipient shows a rationale and
    *not attempted yet*. There is no dispatch control in this state.

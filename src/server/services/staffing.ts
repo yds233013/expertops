@@ -108,19 +108,68 @@ export async function proposeAssignment(
   const rateCents = input.rateCents ?? expert.hourlyRateCents;
   if (rateCents < 0) throw badRequest('Rate cannot be negative.');
 
-  try {
-    const assignment = await db.assignment.create({
-      data: {
-        projectId: input.projectId,
-        expertId: input.expertId,
-        status: 'PROPOSED',
+  const seat = {
+    status: 'PROPOSED' as const,
+    allocationHoursPerWeek: input.allocationHoursPerWeek,
+    rateCents,
+    currency: expert.currency,
+    startDate: input.startDate ?? project.startDate,
+    endDate: input.endDate ?? project.endDate,
+    createdById: actor.userId ?? null,
+  };
+
+  /**
+   * A released seat can be offered to the same person again.
+   *
+   * `RELEASED -> PROPOSED` is in the transition table, and the staffing screen
+   * offers the propose form to anyone whose assignment is released — which is
+   * exactly the state an expert is left in after they withdraw. There is one
+   * assignment row per (project, expert), enforced by a unique index, so
+   * re-proposing has to revive that row. Creating unconditionally made the
+   * offered action fail with "already has an assignment record", and nobody who
+   * had ever left a project could be staffed onto it again.
+   */
+  const existing = await db.assignment.findUnique({
+    where: { projectId_expertId: { projectId: input.projectId, expertId: input.expertId } },
+  });
+
+  if (existing) {
+    if (existing.status !== 'RELEASED') {
+      throw conflict(
+        `${expert.fullName} already has a ${existing.status.toLowerCase()} assignment on ${project.code}.`,
+        { assignmentId: existing.id, status: existing.status },
+      );
+    }
+    assertTransition('Assignment', ASSIGNMENT_TRANSITIONS, existing.status, 'PROPOSED');
+
+    const revived = await db.assignment.update({
+      where: { id: existing.id },
+      data: { ...seat, releasedAt: null, releaseReason: null, confirmedAt: null },
+    });
+
+    await recordActivity(db, {
+      actor,
+      entityType: 'assignment',
+      entityId: revived.id,
+      projectId: input.projectId,
+      expertId: input.expertId,
+      action: 'assignment.proposed',
+      summary: `${actor.label} proposed ${expert.fullName} for a seat on ${project.code}`,
+      metadata: {
         allocationHoursPerWeek: input.allocationHoursPerWeek,
         rateCents,
-        currency: expert.currency,
-        startDate: input.startDate ?? project.startDate,
-        endDate: input.endDate ?? project.endDate,
-        createdById: actor.userId ?? null,
+        // Said plainly in the history: this is the same seat record coming back,
+        // not a second one.
+        revivedFrom: 'RELEASED',
       },
+    });
+
+    return revived;
+  }
+
+  try {
+    const assignment = await db.assignment.create({
+      data: { projectId: input.projectId, expertId: input.expertId, ...seat },
     });
 
     await recordActivity(db, {
@@ -136,6 +185,8 @@ export async function proposeAssignment(
 
     return assignment;
   } catch (error) {
+    // Two operators proposing the same person at once: the loser reports a
+    // conflict rather than a unique-violation stack trace.
     if (isPrismaErrorCode(error, PG_UNIQUE_VIOLATION)) {
       throw conflict(`${expert.fullName} already has an assignment record on ${project.code}.`);
     }

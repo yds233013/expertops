@@ -212,7 +212,12 @@ is what lets an operator line up several candidates for one seat and then pick.
 3. Expert has an `ACCEPTED` invitation for this project.
 4. Expert has declared availability.
 5. Allocation is 1–60 h/week and does not exceed what they declared.
-6. One assignment row per `(projectId, expertId)`.
+6. One assignment row per `(projectId, expertId)`. Proposing someone whose
+   assignment is `RELEASED` revives that row rather than creating a second one,
+   which is what makes `RELEASED → PROPOSED` reachable: an expert who withdrew,
+   or whose seat an operator released, can be staffed onto the project again
+   after they accept a fresh invitation. Any other existing status is a
+   conflict.
 
 **Guards on confirming** — all inside a transaction holding a `FOR UPDATE` lock
 on the project row:

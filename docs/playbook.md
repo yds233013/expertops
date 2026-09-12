@@ -203,7 +203,8 @@ What has already happened by the time you read it:
   reviewing, and any payment already prepared for approved work is unaffected.
 - A project that had gone *active* on being fully staffed is back to *staffing*,
   so the seat can be filled again.
-- A replacement batch is being assembled from the project's latest ranking.
+- A replacement batch is being assembled from the project's latest ranking. The
+  person who just withdrew is not on it.
 
 What is left to you: approve or reject that batch on *Outreach*, then dispatch
 it. Nobody has been contacted before you do. A replacement who accepts still has
