@@ -238,3 +238,153 @@ describe('overlapping outreach dispatch', () => {
     expect(await prisma.activityEvent.count({ where: { action: 'invitation.created' } })).toBe(2);
   });
 });
+
+/**
+ * Finalisation while another request is finishing the same batch.
+ *
+ * The totals that decide a batch's final status used to be read *before* the
+ * transaction that wrote that status opened. A second request could complete
+ * the outstanding recipients and finalise the batch inside that gap, and the
+ * first request would arrive holding numbers that were already history: it
+ * tried to move a DISPATCHED batch back to PARTIALLY_DISPATCHED, which the
+ * transition table refuses, so a request whose own work had entirely succeeded
+ * failed with an error about a state it had not caused.
+ *
+ * The interleaving is forced with promise gates rather than sleeps, so the test
+ * asserts an ordering rather than hoping for one.
+ */
+describe('batch finalisation under a concurrent finish', () => {
+  beforeAll(() => applyMigrations());
+  beforeEach(() => truncateAll());
+
+  /** A promise plus the function that settles it. */
+  function gate() {
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { opened, open };
+  }
+
+  it('lets both requests finish, with a status that matches the recipients', async () => {
+    const { approver, project, experts, batch } = await approvedBatch(2);
+    const blocked = experts[0]!;
+
+    // One recipient cannot be invited yet. Request A will therefore leave the
+    // batch incomplete and compute totals that say so.
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "Invitation" ADD CONSTRAINT tmp_block_one_expert CHECK ("expertId" <> '${blocked.id}')`,
+    );
+
+    const reachedFinalisation = gate();
+    const bHasFinished = gate();
+
+    // Request A: invites the other recipient, fails on the blocked one, then
+    // stops at the point where it would finalise.
+    const requestA = dispatchBatch(client(), actorFor(approver), batch.id, {
+      onBeforeFinalize: async () => {
+        reachedFinalisation.open();
+        await bHasFinished.opened;
+      },
+    });
+
+    await reachedFinalisation.opened;
+
+    // A is now holding totals that read "one sent, one still to retry". While it
+    // waits, the obstruction clears and request B finishes the batch.
+    expect((await recipientTotals(prisma, batch.id)).failed).toBe(1);
+    await prisma.$executeRawUnsafe('ALTER TABLE "Invitation" DROP CONSTRAINT tmp_block_one_expert');
+
+    const resultB = await dispatchBatch(client(), actorFor(approver), batch.id);
+    expect(resultB.dispatched).toBe(1);
+    expect(resultB.complete).toBe(true);
+    expect((await prisma.outreachBatch.findUniqueOrThrow({ where: { id: batch.id } })).status).toBe(
+      'DISPATCHED',
+    );
+
+    // Resume A. Before the repair this threw INVALID_STATE: A tried to move a
+    // DISPATCHED batch back to PARTIALLY_DISPATCHED on the strength of totals
+    // read before B existed.
+    bHasFinished.open();
+    const resultA = await requestA;
+
+    // Both requests finished, and both report the batch as it actually stands.
+    expect(resultA.dispatched).toBe(1);
+    expect(resultA.complete).toBe(true);
+    expect(resultA.totals).toEqual(resultB.totals);
+
+    // The final status agrees with the recipient rows.
+    const totals = await recipientTotals(prisma, batch.id);
+    const finalBatch = await prisma.outreachBatch.findUniqueOrThrow({ where: { id: batch.id } });
+    expect(totals).toEqual({ sent: 2, skipped: 0, failed: 0, pending: 0 });
+    expect(finalBatch.status).toBe('DISPATCHED');
+    expect(finalBatch.dispatchedAt).not.toBeNull();
+
+    // Nobody was invited twice.
+    expect(await prisma.invitation.count({ where: { projectId: project.id } })).toBe(2);
+    expect(await prisma.activityEvent.count({ where: { action: 'invitation.created' } })).toBe(2);
+
+    // Exactly one transition event says the batch was dispatched; a second
+    // would claim a change that never happened.
+    expect(
+      await prisma.activityEvent.count({ where: { action: 'outreach.batch_dispatched' } }),
+    ).toBe(1);
+
+    // And no transition event contradicts the state the batch ended in: every
+    // "partly dispatched" entry was written before the batch completed.
+    const dispatchedAt = (
+      await prisma.activityEvent.findFirstOrThrow({
+        where: { action: 'outreach.batch_dispatched' },
+      })
+    ).createdAt.getTime();
+    const partials = await prisma.activityEvent.findMany({
+      where: { action: 'outreach.batch_partially_dispatched' },
+    });
+    for (const event of partials) {
+      expect(event.createdAt.getTime()).toBeLessThanOrEqual(dispatchedAt);
+    }
+  });
+
+  it('reports the same authoritative totals to the request that was held', async () => {
+    const { approver, batch } = await approvedBatch(3);
+
+    const reached = gate();
+    const released = gate();
+
+    const held = dispatchBatch(client(), actorFor(approver), batch.id, {
+      onBeforeFinalize: async () => {
+        reached.open();
+        await released.opened;
+      },
+    });
+    await reached.opened;
+
+    // While A is held, mark one recipient as permanently refused, exactly as an
+    // overlapping request recording an eligibility refusal would.
+    const item = await prisma.outreachBatchItem.findFirstOrThrow({
+      where: { batchId: batch.id },
+      orderBy: { id: 'asc' },
+    });
+    await prisma.outreachBatchItem.update({
+      where: { id: item.id },
+      data: { dispatchState: 'SKIPPED', skippedReason: 'archived', invitationId: null },
+    });
+
+    released.open();
+    const result = await held;
+
+    // A reports what the database holds now, not what it saw before the pause.
+    expect(result.totals.skipped).toBe(1);
+    expect(result.totals.sent).toBe(2);
+    expect(result.complete).toBe(true);
+
+    const stored = await prisma.outreachBatch.findUniqueOrThrow({ where: { id: batch.id } });
+    expect(stored.status).toBe('DISPATCHED');
+
+    // The audit entry carries the fresh figures too.
+    const event = await prisma.activityEvent.findFirstOrThrow({
+      where: { action: 'outreach.batch_dispatched' },
+    });
+    expect(event.metadata).toMatchObject({ totals: { sent: 2, skipped: 1 } });
+  });
+});

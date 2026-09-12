@@ -450,6 +450,67 @@ in `docs/architecture.md`, `docs/limitations.md` and above.
 
 ---
 
+### 11. Batch finalisation raced a concurrent finish
+
+**Reproduced.** `dispatchBatch` read `recipientTotals` *before* opening the
+transaction that wrote the batch's status. Forcing the interleaving with promise
+gates rather than sleeps:
+
+1. A batch of two. One recipient is blocked by a check constraint naming that
+   expert, so it cannot be invited yet.
+2. Request A dispatches: it invites the other recipient, records an
+   infrastructure failure on the blocked one, and computes totals reading
+   *one sent, one still to retry*. It stops at the point where it would
+   finalise.
+3. The obstruction clears. Request B dispatches, invites the remaining
+   recipient, and finalises the batch as DISPATCHED.
+4. Request A resumes and finalises using the totals it read in step 2.
+
+Against the pre-repair code both new tests fail, the first with exactly the
+symptom the review described:
+
+```
+AppError: Outreach batch cannot move from DISPATCHED to PARTIALLY_DISPATCHED.
+          Allowed: DISPATCHED.
+```
+
+A request whose own work had entirely succeeded failed with an error about a
+state it had not caused. Where the transition happened to be permitted the
+outcome was quieter and worse: the batch took a status and an audit entry
+describing a snapshot that was already history.
+
+**Repaired.** Finalisation moved into `finaliseBatch`, which opens with
+`SELECT … FOR UPDATE` on the batch row. Everything that decides the outcome is
+read after that lock and inside the same transaction: the current batch, the
+recipient totals, the derived status and completion flag, the status update and
+its audit entry. A second request blocks on the lock until the first commits,
+then reads totals that already include everything the first did. The totals and
+completion flag returned to the caller come from that transaction, so what a
+caller is told matches what was committed.
+
+A request that finds the batch already where it would have put it makes no
+change and writes no transition event — a second "dispatched" entry would claim
+a change that did not happen.
+
+Unchanged: per-recipient transactions, the approval requirement, the
+compare-and-set that stops a stale failure overwriting a sent recipient, the
+claim that prevents duplicate invitations, and per-request dispatch counts.
+
+`DispatchOptions.onBeforeFinalize` was added as a test seam. It is called after
+the recipients are settled and before finalisation, and nothing in the
+application passes it; it exists because this race cannot be reproduced with a
+sleep without making the test depend on timing.
+
+**Tests** (`outreach-concurrency.test.ts`, real PostgreSQL, separate
+connections):
+
+| Test | Demonstrates |
+| --- | --- |
+| Both requests finish | No invalid-transition error; both report the same totals; final status DISPATCHED agrees with the recipient rows; two invitations and two `invitation.created` events; exactly one `outreach.batch_dispatched`; every `partly dispatched` entry precedes it |
+| The held request reports fresh figures | A recipient refused while the request was held appears in the totals it returns and in its audit entry, not the pre-pause snapshot |
+
+---
+
 ## Remaining limitations
 
 - **Links issued before this change no longer work.** They pointed at routes
@@ -494,6 +555,20 @@ in `docs/architecture.md`, `docs/limitations.md` and above.
 - **Worker guarantees are database-only.** Stated above, repeated here because
   it is the easiest thing to over-read: nothing in the fencing design makes an
   external call idempotent.
+
+### From the finalisation fix
+
+- **Finalisation is serialised per batch.** Concurrent dispatches of the *same*
+  batch queue behind one row lock at the end. Different batches are unaffected,
+  and the lock is held only for the final read-and-write, not for the recipient
+  loop.
+- **`onBeforeFinalize` is a test seam in production code.** It is inert unless a
+  caller passes it, and nothing in the application does, but it is a hook that
+  exists for tests rather than for the product.
+- **A no-op finalisation writes no audit entry.** A request that finds the batch
+  already in the state it computed records nothing about having run. What it did
+  to individual recipients is still in the `invitation.created` events and in
+  the result returned to the caller.
 
 ---
 

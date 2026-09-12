@@ -395,11 +395,25 @@ export async function recordDispatchFailure(
  * Calling dispatch again is safe: SENT and SKIPPED rows are never reconsidered,
  * so no recipient is invited twice.
  */
+export interface DispatchOptions {
+  ttlHours?: number;
+  message?: string;
+  /**
+   * Called after every recipient has been settled and before the batch is
+   * finalised. Exists for tests only.
+   *
+   * Reproducing the finalisation race needs a request held at exactly that
+   * point while another one finishes; a sleep would make the test depend on
+   * timing rather than on ordering. Nothing in the application passes it.
+   */
+  onBeforeFinalize?: () => Promise<void>;
+}
+
 export async function dispatchBatch(
   client: MaybeTransactor,
   actor: Actor,
   batchId: string,
-  options: { ttlHours?: number; message?: string } = {},
+  options: DispatchOptions = {},
 ): Promise<DispatchResult> {
   const batch = await client.outreachBatch.findUnique({
     where: { id: batchId },
@@ -486,22 +500,85 @@ export async function dispatchBatch(
     else takenByAnotherRequest += 1;
   }
 
-  // Authoritative: the batch's state follows the recipient rows as they now
-  // stand, not this request's tally of what it happened to see.
-  const totals = await recipientTotals(client, batchId);
-  const complete = totals.pending === 0 && totals.failed === 0;
-  const finalStatus: OutreachBatchStatus = complete ? 'DISPATCHED' : 'PARTIALLY_DISPATCHED';
+  // A seam for tests that need to hold a request here, between finishing its
+  // recipients and finalising the batch. That is the window the finalisation
+  // lock below exists to close, and a test cannot reproduce it with a sleep.
+  await options.onBeforeFinalize?.();
 
-  const updated = await withTransaction(client, async (tx) => {
+  const finalised = await finaliseBatch(client, actor, batchId, {
+    reference: batch.reference,
+    projectId,
+    approvedById: batch.approvedById,
+    dispatchedByThisRequest: dispatched,
+    takenByAnotherRequest,
+  });
+
+  return {
+    batch: finalised.batch,
+    dispatched,
+    skipped,
+    failed,
+    takenByAnotherRequest,
+    totals: finalised.totals,
+    alreadySent,
+    complete: finalised.complete,
+  };
+}
+
+interface FinaliseContext {
+  reference: string;
+  projectId: string;
+  approvedById: string | null;
+  dispatchedByThisRequest: number;
+  takenByAnotherRequest: number;
+}
+
+/**
+ * Settle the batch's status, under a lock, from totals read inside that lock.
+ *
+ * The race this closes: the totals used to be read *before* this transaction
+ * opened. A second request could finish the remaining recipients and finalise
+ * the batch in between, and the first request would then arrive holding numbers
+ * that were already history. It would try to move a DISPATCHED batch back to
+ * PARTIALLY_DISPATCHED — refused as an invalid transition, so a request whose
+ * own work had entirely succeeded failed with an error about a state it had not
+ * caused. When the transition happened to be allowed, the outcome was worse
+ * than an error: the batch took a status and an audit entry describing a
+ * snapshot nobody was looking at any more.
+ *
+ * `SELECT … FOR UPDATE` on the batch row makes finalisation one-at-a-time. The
+ * second request blocks until the first commits, then reads totals that already
+ * include everything the first did. Status, completion and the audit entry all
+ * derive from that one read, and commit with it.
+ */
+async function finaliseBatch(
+  client: MaybeTransactor,
+  actor: Actor,
+  batchId: string,
+  context: FinaliseContext,
+): Promise<{ batch: OutreachBatch; totals: RecipientTotals; complete: boolean }> {
+  return withTransaction(client, async (tx) => {
+    // Serialise on the batch row. Everything below is read after this returns,
+    // so no other finalisation can interleave with it.
+    await tx.$queryRaw`SELECT "id" FROM "OutreachBatch" WHERE "id" = ${batchId} FOR UPDATE`;
+
     const current = await tx.outreachBatch.findUniqueOrThrow({ where: { id: batchId } });
-    // Another request may have finished the batch already; that is not an error.
-    if (current.status === finalStatus) return current;
-    assertBatchTransition(current.status, finalStatus);
+    const totals = await recipientTotals(tx, batchId);
+    const complete = totals.pending === 0 && totals.failed === 0;
+    const target: OutreachBatchStatus = complete ? 'DISPATCHED' : 'PARTIALLY_DISPATCHED';
+
+    // Another request already left the batch where this one would put it. No
+    // transition happened, so no transition event is written: a second
+    // "dispatched" entry would claim a change that did not occur.
+    if (current.status === target) {
+      return { batch: current, totals, complete };
+    }
+    assertBatchTransition(current.status, target);
 
     const row = await tx.outreachBatch.update({
       where: { id: batchId },
       data: {
-        status: finalStatus,
+        status: target,
         dispatchedAt: complete ? (current.dispatchedAt ?? clockNow()) : current.dispatchedAt,
       },
     });
@@ -510,42 +587,38 @@ export async function dispatchBatch(
       actor,
       entityType: 'outreach_batch',
       entityId: batchId,
-      projectId,
+      projectId: context.projectId,
       action: complete ? 'outreach.batch_dispatched' : 'outreach.batch_partially_dispatched',
       summary: complete
-        ? `Batch ${batch.reference} dispatched: ${totals.sent} invitation(s) created, ${totals.skipped} skipped`
-        : `Batch ${batch.reference} partly dispatched: ${totals.sent} sent, ${totals.skipped} skipped, ${totals.pending + totals.failed} still to retry`,
+        ? `Batch ${context.reference} dispatched: ${totals.sent} invitation(s) created, ${totals.skipped} skipped`
+        : `Batch ${context.reference} partly dispatched: ${totals.sent} sent, ${totals.skipped} skipped, ${totals.pending + totals.failed} still to retry`,
       metadata: {
-        dispatchedByThisRequest: dispatched,
-        takenByAnotherRequest,
-        totals,
-        approvedById: batch.approvedById,
+        dispatchedByThisRequest: context.dispatchedByThisRequest,
+        takenByAnotherRequest: context.takenByAnotherRequest,
+        totals: { ...totals },
+        approvedById: context.approvedById,
         simulated: true,
       },
     });
-    return row;
+    return { batch: row, totals, complete };
   });
+}
 
-  return {
-    batch: updated,
-    dispatched,
-    skipped,
-    failed,
-    takenByAnotherRequest,
-    totals,
-    alreadySent,
-    complete,
-  };
+export interface RecipientTotals {
+  sent: number;
+  skipped: number;
+  failed: number;
+  pending: number;
 }
 
 /** Recipient states as the database currently holds them. */
-export async function recipientTotals(db: Db, batchId: string) {
+export async function recipientTotals(db: Db, batchId: string): Promise<RecipientTotals> {
   const grouped = await db.outreachBatchItem.groupBy({
     by: ['dispatchState'],
     where: { batchId },
     _count: { _all: true },
   });
-  const totals = { sent: 0, skipped: 0, failed: 0, pending: 0 };
+  const totals: RecipientTotals = { sent: 0, skipped: 0, failed: 0, pending: 0 };
   for (const row of grouped) {
     if (row.dispatchState === 'SENT') totals.sent = row._count._all;
     else if (row.dispatchState === 'SKIPPED') totals.skipped = row._count._all;

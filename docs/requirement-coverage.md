@@ -253,6 +253,7 @@ Four further findings against `4872981`, each reproduced before repair.
 | Batch status came from the caller's tally | Fixed | `recipientTotals` read back from the rows | `outreach-concurrency.test.ts` |
 | `npm run build` overwrote the dev server's output | Fixed | `.next-dev`, `.next-prod`, `.next-e2e` | Build run against a live dev server; production start serves its own build id |
 | Worker guarantee stated too broadly | Corrected | Database-only, stated in three documents | No code change; no regression demonstrated one |
+| Batch finalisation raced a concurrent finish | Fixed | `finaliseBatch` locks the batch row, then reads totals inside that transaction | `outreach-concurrency.test.ts`; both new tests fail against the pre-fix code with `DISPATCHED → PARTIALLY_DISPATCHED` |
 
 ---
 
