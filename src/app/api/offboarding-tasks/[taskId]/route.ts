@@ -3,23 +3,43 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireCapabilityFromRequest } from '@/server/http/context';
 import { ok, parseJson, route } from '@/server/http/respond';
-import { confirmTask } from '@/server/services/offboarding';
+import { assignOffboardingTask, confirmTask } from '@/server/services/offboarding';
 
 type Params = { params: Promise<{ taskId: string }> };
 
-const bodySchema = z.object({
-  note: z.string().min(1).max(2000),
-  notApplicable: z.boolean().optional(),
-});
+const bodySchema = z.union([
+  z.object({
+    action: z.literal('assign'),
+    ownerId: z.string().min(1).nullable(),
+  }),
+  z.object({
+    action: z.literal('confirm').optional(),
+    note: z.string().min(1).max(2000),
+    notApplicable: z.boolean().optional(),
+  }),
+]);
 
 /**
- * HUMAN CONFIRMATION. The note is required because ExpertOps has no way to
- * verify that an external account was actually removed.
+ * Confirming needs the confirmation capability, because it is a statement of
+ * fact the system cannot verify. Assigning an owner is bookkeeping about who is
+ * responsible, so it needs the weaker write capability.
  */
 export const POST = route(async (request: NextRequest, { params }: Params) => {
-  const { actor } = await requireCapabilityFromRequest(request, 'offboarding:confirm');
   const { taskId } = await params;
   const body = await parseJson(request, bodySchema);
-  const task = await confirmTask(prisma, actor, { taskId, ...body });
+
+  if ('action' in body && body.action === 'assign') {
+    const { actor } = await requireCapabilityFromRequest(request, 'offboarding:assign');
+    return ok({
+      task: await assignOffboardingTask(prisma, actor, { taskId, ownerId: body.ownerId }),
+    });
+  }
+
+  const { actor } = await requireCapabilityFromRequest(request, 'offboarding:confirm');
+  const task = await confirmTask(prisma, actor, {
+    taskId,
+    note: body.note,
+    notApplicable: body.notApplicable,
+  });
   return ok({ task, verifiedBySystem: false });
 });

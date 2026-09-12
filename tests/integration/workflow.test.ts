@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
+import { tokenFromMagicLink } from '../helpers/api';
 
 import { applyMigrations, truncateAll } from '../helpers/db';
 import { actorFor, makeExpert, makeOperator, makeSkill } from '../helpers/factories';
@@ -115,7 +116,9 @@ describe('end-to-end staffing workflow', () => {
     // Sending is the worker's job; it renders into the simulated outbox.
     const sent = await sendInvitation(prisma, SYSTEM_ACTOR, invitation.id);
     expect(sent).not.toBeNull();
-    expect(sent!.portalUrl).toContain('/portal/enter/');
+    // The token lives in the fragment, so the path carries nothing secret.
+    expect(sent!.portalUrl).toContain('/portal/enter#t=');
+    expect(new URL(sent!.portalUrl).pathname).toBe('/portal/enter');
 
     const message = await prisma.outboxMessage.findUniqueOrThrow({
       where: { id: sent!.outboxMessageId },
@@ -135,7 +138,7 @@ describe('end-to-end staffing workflow', () => {
     );
 
     // --- 4. expert acceptance (through a redeemed portal link) --------------
-    const rawToken = sent!.portalUrl.split('/').pop()!;
+    const rawToken = tokenFromMagicLink(sent!.portalUrl);
     const portalSession = await redeemPortalToken(prisma, rawToken);
     expect(portalSession.expert.id).toBe(strong.id);
 

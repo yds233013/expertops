@@ -64,6 +64,11 @@ export const POST = route(async (request: NextRequest, { params }: Params) => {
     batch: result.batch,
     dispatched: result.dispatched,
     skipped: result.skipped,
+    // Reported separately from `skipped`: these are retryable, and calling
+    // dispatch again picks up exactly these recipients.
+    failed: result.failed,
+    alreadySent: result.alreadySent,
+    complete: result.complete,
     simulated: true,
   });
 });

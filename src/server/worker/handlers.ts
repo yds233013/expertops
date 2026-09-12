@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type Db, type Transactor } from '@/lib/db';
+import { type Db } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { badRequest } from '@/lib/errors';
 import { hoursBetween } from '@/lib/time';
@@ -52,9 +52,18 @@ import { renderOnboardingNudgeEmail, renderOnboardingStartEmail } from '@/server
  *     `REMINDER_POLICY` and are applied by the claiming update, so two workers
  *     cannot both send the same nudge.
  */
+/**
+ * What a handler is given.
+ *
+ * `db` and `client` are the *same* transaction. The worker runs each handler
+ * inside one, so that the work and the job's completion commit or roll back
+ * together: a worker that loses its lease mid-flight cannot leave half a side
+ * effect behind. A handler must therefore not open a transaction of its own,
+ * which is why `client` is a `Db` rather than a `Transactor`.
+ */
 export interface HandlerContext {
   db: Db;
-  client: Transactor;
+  client: Db;
   now: Date;
 }
 
@@ -1290,8 +1299,29 @@ export const HANDLERS: Record<JobType, JobHandler> = {
   },
 };
 
+/**
+ * Handler overrides, used only by tests.
+ *
+ * Ownership and lease behaviour has to be exercised with a handler that can be
+ * made slow or made to block on demand, which no real handler can be. The
+ * override table is separate from `HANDLERS` so a test cannot accidentally
+ * leave a production handler replaced, and `unregisterTestHandler` restores the
+ * real one.
+ */
+const TEST_OVERRIDES = new Map<string, JobHandler>();
+
+export function registerTestHandler(type: string, handler: JobHandler): void {
+  TEST_OVERRIDES.set(type, handler);
+}
+
+export function unregisterTestHandler(type: string): void {
+  TEST_OVERRIDES.delete(type);
+}
+
 export function handlerFor(type: string): JobHandler | null {
-  return (HANDLERS as Record<string, JobHandler | undefined>)[type] ?? null;
+  return (
+    TEST_OVERRIDES.get(type) ?? (HANDLERS as Record<string, JobHandler | undefined>)[type] ?? null
+  );
 }
 
 export function workerConfig() {

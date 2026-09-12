@@ -11,6 +11,25 @@ import { secondsFromNow } from '@/lib/time';
  * statement, which is the standard way to let N workers share one table
  * without ever handing the same row to two of them. There is no external broker
  * and no in-memory state: restart the worker and it picks up where it left off.
+ *
+ * ## Ownership
+ *
+ * Two workers can still end up believing they own the same job, because a lease
+ * has to expire eventually or a crashed worker would block a job forever. What
+ * must never happen is that both of them *act* on it.
+ *
+ * Every claim mints a fresh `claimId`. That value is a fencing token: it is
+ * required to renew the lease, to complete the job, and to fail it. A worker
+ * whose lease expired and was taken over still holds the old `claimId`, so
+ * every one of those operations matches zero rows and it is told it has lost
+ * the job. The worker runs the handler and the completion inside one
+ * transaction, so losing the claim at completion rolls the handler's writes
+ * back rather than leaving a half-applied side effect behind.
+ *
+ * The lease is bounded and renewed while a handler runs, so a legitimately slow
+ * handler does not get taken over in the first place. Renewal alone would not be
+ * enough — a paused process renews nothing and notices nothing — which is why
+ * the fencing check exists as well.
  */
 export const JOB_TYPES = [
   // Invitations
@@ -94,45 +113,80 @@ interface ClaimedRow {
   payload: Prisma.JsonValue;
   attempts: number;
   max_attempts: number;
+  claim_id: string;
+  lease_expires_at: Date;
 }
+
+export interface ClaimedJob {
+  id: string;
+  type: JobType;
+  payload: unknown;
+  attempts: number;
+  maxAttempts: number;
+  /** Fencing token for this claim. Required to renew, complete or fail. */
+  claimId: string;
+  leaseExpiresAt: Date;
+}
+
+/** Default lease length. Deliberately short relative to the renewal interval. */
+export const DEFAULT_LEASE_SECONDS = 120;
 
 /**
  * Atomically claim up to `limit` runnable jobs for `workerName`.
  *
- * A job is runnable when it is PENDING/FAILED and due, or when it is RUNNING
- * but its lock is older than `lockTimeoutSeconds` (the worker that held it
- * crashed).
+ * A job is runnable when it is PENDING or FAILED and due, or when it is RUNNING
+ * with an expired lease — the worker that held it crashed, was paused, or lost
+ * its connection.
+ *
+ * Two conditions bound recovery. `attempts < maxAttempts` is checked here, so a
+ * job whose worker is killed on every attempt stops being re-offered instead of
+ * looping forever; `reapAbandonedJobs` then declares it dead. And the attempt
+ * counter is incremented by the claim itself, so an abandoned attempt counts
+ * exactly like a failed one.
  */
 export async function claimJobs(
   db: Db,
-  options: { workerName: string; limit: number; lockTimeoutSeconds: number; now?: Date },
-): Promise<
-  Array<{ id: string; type: JobType; payload: unknown; attempts: number; maxAttempts: number }>
-> {
+  options: {
+    workerName: string;
+    limit: number;
+    /** How long this claim is valid before another worker may take over. */
+    leaseSeconds?: number;
+    now?: Date;
+  },
+): Promise<ClaimedJob[]> {
   const now = options.now ?? clockNow();
-  const staleBefore = new Date(now.getTime() - options.lockTimeoutSeconds * 1000);
+  const leaseSeconds = options.leaseSeconds ?? DEFAULT_LEASE_SECONDS;
+  const leaseExpiresAt = new Date(now.getTime() + leaseSeconds * 1000);
 
   const rows = await db.$queryRaw<ClaimedRow[]>`
     UPDATE "Job" AS j
     SET "status" = 'RUNNING',
         "lockedAt" = ${now},
         "lockedBy" = ${options.workerName},
+        "claimId" = gen_random_uuid()::text,
+        "leaseExpiresAt" = ${leaseExpiresAt},
         "startedAt" = COALESCE(j."startedAt", ${now}),
         "attempts" = j."attempts" + 1,
         "updatedAt" = ${now}
     FROM (
       SELECT "id"
       FROM "Job"
-      WHERE (
+      WHERE "attempts" < "maxAttempts"
+        AND (
               ("status" IN ('PENDING', 'FAILED') AND "runAt" <= ${now})
-              OR ("status" = 'RUNNING' AND "lockedAt" IS NOT NULL AND "lockedAt" < ${staleBefore})
+              OR (
+                   "status" = 'RUNNING'
+                   AND "leaseExpiresAt" IS NOT NULL
+                   AND "leaseExpiresAt" < ${now}
+                 )
             )
       ORDER BY "priority" ASC, "runAt" ASC, "createdAt" ASC
       LIMIT ${options.limit}
       FOR UPDATE SKIP LOCKED
     ) AS candidate
     WHERE j."id" = candidate."id"
-    RETURNING j."id", j."type", j."payload", j."attempts", j."maxAttempts" AS max_attempts
+    RETURNING j."id", j."type", j."payload", j."attempts", j."maxAttempts" AS max_attempts,
+              j."claimId" AS claim_id, j."leaseExpiresAt" AS lease_expires_at
   `;
 
   return rows.map((row) => ({
@@ -141,25 +195,73 @@ export async function claimJobs(
     payload: row.payload,
     attempts: row.attempts,
     maxAttempts: row.max_attempts,
+    claimId: row.claim_id,
+    leaseExpiresAt: row.lease_expires_at,
   }));
 }
 
+/**
+ * Extend the lease on a job this worker still owns.
+ *
+ * Returns false when the claim is gone, which means another worker has taken
+ * the job over and this one must stop. Callers use it both as a heartbeat
+ * during a slow handler and once before starting work, because a job claimed in
+ * a batch may sit behind several others and reach the front with very little
+ * lease left.
+ */
+export async function renewLease(
+  db: Db,
+  jobId: string,
+  claimId: string,
+  options: { leaseSeconds?: number; now?: Date } = {},
+): Promise<boolean> {
+  const now = options.now ?? clockNow();
+  const leaseSeconds = options.leaseSeconds ?? DEFAULT_LEASE_SECONDS;
+  const updated = await db.job.updateMany({
+    where: { id: jobId, claimId, status: 'RUNNING' },
+    data: { leaseExpiresAt: new Date(now.getTime() + leaseSeconds * 1000) },
+  });
+  return updated.count === 1;
+}
+
+/** Thrown when a worker discovers mid-flight that its claim is no longer valid. */
+export class LostClaimError extends Error {
+  readonly jobId: string;
+  constructor(jobId: string) {
+    super(`Job ${jobId} is no longer owned by this worker; its lease was taken over.`);
+    this.name = 'LostClaimError';
+    this.jobId = jobId;
+  }
+}
+
+/**
+ * Mark a job succeeded, but only if this worker still owns it.
+ *
+ * Returns false when the claim has been taken over. Callers run this inside the
+ * same transaction as the handler's writes, so a false result can be turned
+ * into a rollback: the stale worker's business effects disappear along with its
+ * claim to have done the work.
+ */
 export async function completeJob(
   db: Db,
   jobId: string,
+  claimId: string,
   result: Prisma.InputJsonValue,
-): Promise<void> {
-  await db.job.update({
-    where: { id: jobId },
+): Promise<boolean> {
+  const updated = await db.job.updateMany({
+    where: { id: jobId, claimId, status: 'RUNNING' },
     data: {
       status: 'SUCCEEDED',
       finishedAt: clockNow(),
       lockedAt: null,
       lockedBy: null,
+      claimId: null,
+      leaseExpiresAt: null,
       lastError: null,
       result,
     },
   });
+  return updated.count === 1;
 }
 
 /** Exponential backoff with a cap, so a broken handler does not hot-loop. */
@@ -167,27 +269,103 @@ export function backoffSeconds(attempts: number): number {
   return Math.min(2 ** Math.max(attempts - 1, 0) * 5, 600);
 }
 
+/**
+ * Record a failure, but only if this worker still owns the job.
+ *
+ * Returns null when the claim has been taken over: a worker that lost its lease
+ * must not reset the attempt schedule, overwrite the error, or push a job the
+ * new owner is currently running back into the queue.
+ */
 export async function failJob(
   db: Db,
   jobId: string,
+  claimId: string,
   error: string,
   options: { attempts: number; maxAttempts: number; now?: Date },
-): Promise<JobStatus> {
+): Promise<JobStatus | null> {
   const now = options.now ?? clockNow();
   const exhausted = options.attempts >= options.maxAttempts;
   const status: JobStatus = exhausted ? 'DEAD' : 'FAILED';
-  await db.job.update({
-    where: { id: jobId },
+  const updated = await db.job.updateMany({
+    where: { id: jobId, claimId },
     data: {
       status,
       lastError: error.slice(0, 2000),
       lockedAt: null,
       lockedBy: null,
+      claimId: null,
+      leaseExpiresAt: null,
       finishedAt: exhausted ? now : null,
       runAt: exhausted ? now : secondsFromNow(backoffSeconds(options.attempts), now),
     },
   });
-  return status;
+  return updated.count === 1 ? status : null;
+}
+
+export interface ReapResult {
+  /** Abandoned claims that still had attempts left and were released to retry. */
+  released: number;
+  /** Abandoned claims with no attempts left, declared dead. */
+  died: number;
+}
+
+/**
+ * Deal with claims whose worker never came back.
+ *
+ * Claiming already recovers an expired lease while attempts remain. This closes
+ * the other end: a job whose worker is killed on every single attempt would
+ * otherwise sit RUNNING forever, invisible to both the claim query (attempts
+ * exhausted) and to `failJob` (nobody is left to call it). Recovery is bounded
+ * by the same `maxAttempts` as ordinary failure.
+ */
+export async function reapAbandonedJobs(
+  db: Db,
+  options: { now?: Date; graceSeconds?: number } = {},
+): Promise<ReapResult> {
+  const now = options.now ?? clockNow();
+  // A small grace period keeps this from racing a lease renewal that is in
+  // flight at the moment the sweep runs.
+  const cutoff = new Date(now.getTime() - (options.graceSeconds ?? 30) * 1000);
+
+  const abandoned = await db.job.findMany({
+    where: { status: 'RUNNING', leaseExpiresAt: { lt: cutoff } },
+    select: { id: true, attempts: true, maxAttempts: true, lockedBy: true },
+    take: 200,
+  });
+
+  let released = 0;
+  let died = 0;
+  for (const job of abandoned) {
+    const exhausted = job.attempts >= job.maxAttempts;
+    const claimed = await db.job.updateMany({
+      // Re-checking status and expiry makes two sweeps racing each other safe.
+      where: { id: job.id, status: 'RUNNING', leaseExpiresAt: { lt: cutoff } },
+      data: exhausted
+        ? {
+            status: 'DEAD',
+            finishedAt: now,
+            lockedAt: null,
+            lockedBy: null,
+            claimId: null,
+            leaseExpiresAt: null,
+            lastError: `Abandoned by ${job.lockedBy ?? 'a worker'} after ${job.attempts} attempt(s); no attempts remain.`,
+          }
+        : {
+            status: 'FAILED',
+            lockedAt: null,
+            lockedBy: null,
+            claimId: null,
+            leaseExpiresAt: null,
+            runAt: secondsFromNow(backoffSeconds(job.attempts), now),
+            lastError: `Abandoned by ${job.lockedBy ?? 'a worker'}; lease expired without a result.`,
+          },
+    });
+    if (claimed.count === 0) continue;
+    if (exhausted) died += 1;
+    else released += 1;
+  }
+
+  return { released, died };
 }
 
 export interface JobQuery {
@@ -248,6 +426,8 @@ export async function retryJob(db: Db, jobId: string): Promise<Job> {
       lastError: null,
       lockedAt: null,
       lockedBy: null,
+      claimId: null,
+      leaseExpiresAt: null,
       finishedAt: null,
       startedAt: null,
     },
@@ -260,7 +440,14 @@ export async function cancelJob(db: Db, jobId: string): Promise<Job> {
   if (job.status === 'SUCCEEDED') throw forbidden('A succeeded job cannot be cancelled.');
   return db.job.update({
     where: { id: jobId },
-    data: { status: 'CANCELLED', lockedAt: null, lockedBy: null, finishedAt: clockNow() },
+    data: {
+      status: 'CANCELLED',
+      lockedAt: null,
+      lockedBy: null,
+      claimId: null,
+      leaseExpiresAt: null,
+      finishedAt: clockNow(),
+    },
   });
 }
 

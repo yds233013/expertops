@@ -19,8 +19,10 @@ const VIEWPORTS = [
 ];
 
 async function shoot(page: Page, name: string, viewport: string) {
-  // The URL is checked rather than trusted: a screenshot taken on an /enter/
-  // page would embed a live token in an image committed to the repository.
+  // Belt and braces. Tokens now arrive in the fragment and are stripped before
+  // anything renders, but a screenshot is committed to the repository, so the
+  // URL is checked rather than trusted.
+  expect(page.url()).not.toContain('#t=');
   expect(page.url()).not.toContain('/enter/');
   await page.screenshot({ path: `${OUT}/${name}-${viewport}.png`, fullPage: true });
 }

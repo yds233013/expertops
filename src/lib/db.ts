@@ -62,6 +62,39 @@ export function isPrismaErrorCode(error: unknown, code: string): boolean {
 export type Transactor = Pick<PrismaClient, '$transaction'> & Db;
 
 /**
+ * A client that may or may not already be inside a transaction.
+ *
+ * Services take this so the same function works from a route handler (which
+ * owns the transaction) and from a worker job (which is already running inside
+ * one). Nesting a Prisma interactive transaction is not possible, so the shape
+ * of the client is what decides.
+ */
+export type MaybeTransactor = Db | Transactor;
+
+function canStartTransaction(client: MaybeTransactor): client is Transactor {
+  return typeof (client as Transactor).$transaction === 'function';
+}
+
+/**
+ * Run `fn` inside a transaction, joining one that is already open.
+ *
+ * This is what makes "state, audit and follow-up work commit together" true no
+ * matter who calls. A caller that already holds a transaction gets its own
+ * client back, so the whole unit still commits or rolls back as one; a caller
+ * that does not gets a fresh transaction opened for it.
+ */
+export async function withTransaction<T>(
+  client: MaybeTransactor,
+  fn: (tx: Db) => Promise<T>,
+  options?: { timeout?: number; maxWait?: number },
+): Promise<T> {
+  if (canStartTransaction(client)) {
+    return client.$transaction((tx) => fn(tx), options);
+  }
+  return fn(client);
+}
+
+/**
  * Which column(s) a unique violation was on.
  *
  * Prisma puts the target in `meta.target`. Reporting it stops a conflict on one

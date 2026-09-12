@@ -4,9 +4,9 @@ import {
   type OutreachBatchStatus,
   type Prisma,
 } from '@prisma/client';
-import { type Db } from '@/lib/db';
+import { type Db, type MaybeTransactor, withTransaction } from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
-import { badRequest, forbidden, invalidState, notFound } from '@/lib/errors';
+import { badRequest, forbidden, invalidState, isAppError, notFound } from '@/lib/errors';
 import { formatReference, parseReferenceSequence } from '@/lib/ids';
 import { type Actor, recordActivity } from './activity';
 import { resolveIfPresent } from './attention';
@@ -22,6 +22,19 @@ import { recommendReplacements } from './staffing-gaps';
  *
  * This is the boundary that keeps bulk outreach a human decision: assembling a
  * list is cheap and automatic, sending it is neither.
+ *
+ * ## Atomicity
+ *
+ * Each operation here changes business state, writes the activity event that
+ * explains it, and sometimes enqueues follow-up work. Those belong together: a
+ * status that moved without its audit entry is a batch nobody can account for,
+ * and an approval recorded without the job that acts on it is an approval that
+ * never happens. Every one of these functions therefore takes a `Transactor`
+ * and does its writes inside a single transaction.
+ *
+ * Dispatch is the exception, and deliberately so. One transaction for a hundred
+ * invitations would mean one failure discards ninety-nine successes, so each
+ * recipient commits on its own and the batch records how far it got.
  */
 export const BATCH_REFERENCE_PREFIX = 'BAT';
 
@@ -44,11 +57,29 @@ async function nextBatchReference(db: Db): Promise<string> {
 const BATCH_TRANSITIONS: Record<OutreachBatchStatus, OutreachBatchStatus[]> = {
   DRAFT: ['PENDING_APPROVAL', 'CANCELLED'],
   PENDING_APPROVAL: ['APPROVED', 'REJECTED', 'CANCELLED'],
-  APPROVED: ['DISPATCHED', 'CANCELLED'],
+  APPROVED: ['PARTIALLY_DISPATCHED', 'DISPATCHED', 'CANCELLED'],
   REJECTED: ['DRAFT'],
-  DISPATCHED: [],
+  // A partially dispatched batch can be dispatched again: the retryable
+  // recipients are picked up and the ones already sent are left alone.
+  PARTIALLY_DISPATCHED: ['PARTIALLY_DISPATCHED', 'DISPATCHED', 'CANCELLED'],
+  // Self-transition only, so a repeated dispatch request is a harmless no-op
+  // rather than an error. Nothing is outstanding, so nothing happens.
+  DISPATCHED: ['DISPATCHED'],
   CANCELLED: [],
 };
+
+/**
+ * Statuses from which dispatch may run.
+ *
+ * DISPATCHED is included on purpose: a repeated request must be safe, and a
+ * finished batch has nothing left to act on, so the call does nothing and says
+ * so rather than failing.
+ */
+export const DISPATCHABLE_STATUSES: OutreachBatchStatus[] = [
+  'APPROVED',
+  'PARTIALLY_DISPATCHED',
+  'DISPATCHED',
+];
 
 export interface BatchItemInput {
   expertId: string;
@@ -65,67 +96,70 @@ export interface CreateBatchInput {
 }
 
 export async function createBatch(
-  db: Db,
+  client: MaybeTransactor,
   actor: Actor,
   input: CreateBatchInput,
 ): Promise<OutreachBatch> {
   if (input.items.length === 0) throw badRequest('A batch needs at least one recipient.');
   if (input.items.length > 100) throw badRequest('A batch is limited to 100 recipients.');
 
-  if (input.projectId) {
-    const project = await db.project.findUnique({ where: { id: input.projectId } });
-    if (!project) throw notFound('Project not found.');
-  }
-
   const uniqueIds = new Set(input.items.map((item) => item.expertId));
   if (uniqueIds.size !== input.items.length) {
     throw badRequest('The same expert is listed twice in this batch.');
   }
 
-  const batch = await db.outreachBatch.create({
-    data: {
-      reference: await nextBatchReference(db),
-      kind: input.kind,
-      status: 'DRAFT',
-      projectId: input.projectId ?? null,
-      reason: input.reason?.trim() ?? '',
-      note: input.note?.trim() ?? '',
-      createdById: actor.userId ?? null,
-      items: {
-        create: input.items.map((item) => ({
-          expertId: item.expertId,
-          rationale: item.rationale?.trim() ?? '',
-          matchScore: item.matchScore ?? null,
-        })),
+  // The batch and the activity entry that explains it are written together.
+  return withTransaction(client, async (tx) => {
+    if (input.projectId) {
+      const project = await tx.project.findUnique({ where: { id: input.projectId } });
+      if (!project) throw notFound('Project not found.');
+    }
+
+    const batch = await tx.outreachBatch.create({
+      data: {
+        reference: await nextBatchReference(tx),
+        kind: input.kind,
+        status: 'DRAFT',
+        projectId: input.projectId ?? null,
+        reason: input.reason?.trim() ?? '',
+        note: input.note?.trim() ?? '',
+        createdById: actor.userId ?? null,
+        items: {
+          create: input.items.map((item) => ({
+            expertId: item.expertId,
+            rationale: item.rationale?.trim() ?? '',
+            matchScore: item.matchScore ?? null,
+          })),
+        },
       },
-    },
-  });
+    });
 
-  await recordActivity(db, {
-    actor,
-    entityType: 'outreach_batch',
-    entityId: batch.id,
-    projectId: batch.projectId,
-    action: 'outreach.batch_created',
-    summary: `${actor.label} drafted outreach batch ${batch.reference} with ${input.items.length} recipient(s)`,
-    metadata: { kind: input.kind, recipients: input.items.length, awaitingApproval: true },
-  });
+    await recordActivity(tx, {
+      actor,
+      entityType: 'outreach_batch',
+      entityId: batch.id,
+      projectId: batch.projectId,
+      action: 'outreach.batch_created',
+      summary: `${actor.label} drafted outreach batch ${batch.reference} with ${input.items.length} recipient(s)`,
+      metadata: { kind: input.kind, recipients: input.items.length, awaitingApproval: true },
+    });
 
-  return batch;
+    return batch;
+  });
 }
 
 /** Build a replacement batch from the recommendation engine. Still needs approval. */
 export async function buildReplacementBatch(
-  db: Db,
+  client: MaybeTransactor,
   actor: Actor,
   input: { projectId: string; reason: string; limit?: number },
 ): Promise<{ batch: OutreachBatch | null; recommendations: number }> {
-  const recommendations = await recommendReplacements(db, input.projectId, input.limit ?? 5);
+  const recommendations = await recommendReplacements(client, input.projectId, input.limit ?? 5);
   if (recommendations.length === 0) {
     return { batch: null, recommendations: 0 };
   }
 
-  const batch = await createBatch(db, actor, {
+  const batch = await createBatch(client, actor, {
     kind: 'REPLACEMENT',
     projectId: input.projectId,
     reason: input.reason,
@@ -140,33 +174,39 @@ export async function buildReplacementBatch(
 }
 
 export async function submitBatchForApproval(
-  db: Db,
+  client: MaybeTransactor,
   actor: Actor,
   batchId: string,
 ): Promise<OutreachBatch> {
-  const batch = await db.outreachBatch.findUnique({
-    where: { id: batchId },
-    include: { items: true },
-  });
-  if (!batch) throw notFound('Outreach batch not found.');
-  assertBatchTransition(batch.status, 'PENDING_APPROVAL');
-  if (batch.items.length === 0) throw invalidState('An empty batch cannot be submitted.');
+  return withTransaction(client, async (tx) => {
+    const batch = await tx.outreachBatch.findUnique({
+      where: { id: batchId },
+      include: { items: true },
+    });
+    if (!batch) throw notFound('Outreach batch not found.');
+    assertBatchTransition(batch.status, 'PENDING_APPROVAL');
+    if (batch.items.length === 0) throw invalidState('An empty batch cannot be submitted.');
 
-  const updated = await db.outreachBatch.update({
-    where: { id: batchId },
-    data: { status: 'PENDING_APPROVAL' },
-  });
+    // Conditional on the status we checked, so two submits cannot both win.
+    const claimed = await tx.outreachBatch.updateMany({
+      where: { id: batchId, status: batch.status },
+      data: { status: 'PENDING_APPROVAL' },
+    });
+    if (claimed.count === 0) {
+      throw invalidState('This batch was changed by someone else. Reload and try again.');
+    }
 
-  await recordActivity(db, {
-    actor,
-    entityType: 'outreach_batch',
-    entityId: batchId,
-    projectId: batch.projectId,
-    action: 'outreach.batch_submitted',
-    summary: `${actor.label} submitted batch ${batch.reference} for approval`,
-    metadata: { recipients: batch.items.length },
+    await recordActivity(tx, {
+      actor,
+      entityType: 'outreach_batch',
+      entityId: batchId,
+      projectId: batch.projectId,
+      action: 'outreach.batch_submitted',
+      summary: `${actor.label} submitted batch ${batch.reference} for approval`,
+      metadata: { recipients: batch.items.length },
+    });
+    return tx.outreachBatch.findUniqueOrThrow({ where: { id: batchId } });
   });
-  return updated;
 }
 
 function assertBatchTransition(from: OutreachBatchStatus, to: OutreachBatchStatus) {
@@ -195,102 +235,128 @@ export interface ApprovalInput {
 export const SELF_APPROVAL_LIMIT = 5;
 
 export async function decideBatch(
-  db: Db,
+  client: MaybeTransactor,
   actor: Actor,
   input: ApprovalInput,
 ): Promise<OutreachBatch> {
-  const batch = await db.outreachBatch.findUnique({
-    where: { id: input.batchId },
-    include: { items: true, project: true },
-  });
-  if (!batch) throw notFound('Outreach batch not found.');
-  assertBatchTransition(batch.status, input.approve ? 'APPROVED' : 'REJECTED');
+  return withTransaction(client, async (tx) => {
+    const batch = await tx.outreachBatch.findUnique({
+      where: { id: input.batchId },
+      include: { items: true, project: true },
+    });
+    if (!batch) throw notFound('Outreach batch not found.');
+    assertBatchTransition(batch.status, input.approve ? 'APPROVED' : 'REJECTED');
 
-  if (!input.approve && !input.note?.trim()) {
-    throw badRequest('A reason is required when rejecting a batch.');
-  }
-  if (
-    input.approve &&
-    batch.createdById &&
-    batch.createdById === actor.userId &&
-    batch.items.length > SELF_APPROVAL_LIMIT
-  ) {
-    throw forbidden(
-      `A batch of ${batch.items.length} recipients needs a second operator to approve it. You created this one.`,
+    if (!input.approve && !input.note?.trim()) {
+      throw badRequest('A reason is required when rejecting a batch.');
+    }
+    if (
+      input.approve &&
+      batch.createdById &&
+      batch.createdById === actor.userId &&
+      batch.items.length > SELF_APPROVAL_LIMIT
+    ) {
+      throw forbidden(
+        `A batch of ${batch.items.length} recipients needs a second operator to approve it. You created this one.`,
+      );
+    }
+
+    const at = clockNow();
+    const claimed = await tx.outreachBatch.updateMany({
+      where: { id: input.batchId, status: 'PENDING_APPROVAL' },
+      data: input.approve
+        ? {
+            status: 'APPROVED',
+            approvedById: actor.userId ?? null,
+            approvedAt: at,
+            note: input.note?.trim() ?? batch.note,
+          }
+        : {
+            status: 'REJECTED',
+            rejectedById: actor.userId ?? null,
+            rejectedAt: at,
+            note: input.note!.trim(),
+          },
+    });
+    if (claimed.count === 0) {
+      throw invalidState('This batch was already decided by someone else.');
+    }
+
+    await resolveIfPresent(
+      tx,
+      `outreach:awaiting_approval:${input.batchId}`,
+      input.approve ? 'The batch was approved.' : 'The batch was rejected.',
     );
-  }
 
-  const at = clockNow();
-  const claimed = await db.outreachBatch.updateMany({
-    where: { id: input.batchId, status: 'PENDING_APPROVAL' },
-    data: input.approve
-      ? {
-          status: 'APPROVED',
-          approvedById: actor.userId ?? null,
-          approvedAt: at,
-          note: input.note?.trim() ?? batch.note,
-        }
-      : {
-          status: 'REJECTED',
-          rejectedById: actor.userId ?? null,
-          rejectedAt: at,
-          note: input.note!.trim(),
-        },
+    await recordActivity(tx, {
+      actor,
+      entityType: 'outreach_batch',
+      entityId: input.batchId,
+      projectId: batch.projectId,
+      action: input.approve ? 'outreach.batch_approved' : 'outreach.batch_rejected',
+      summary: input.approve
+        ? `${actor.label} approved batch ${batch.reference} (${batch.items.length} recipients)`
+        : `${actor.label} rejected batch ${batch.reference}`,
+      metadata: { recipients: batch.items.length, note: input.note?.trim() ?? null },
+    });
+
+    return tx.outreachBatch.findUniqueOrThrow({ where: { id: input.batchId } });
   });
-  if (claimed.count === 0) {
-    throw invalidState('This batch was already decided by someone else.');
-  }
-
-  await resolveIfPresent(
-    db,
-    `outreach:awaiting_approval:${input.batchId}`,
-    input.approve ? 'The batch was approved.' : 'The batch was rejected.',
-  );
-
-  await recordActivity(db, {
-    actor,
-    entityType: 'outreach_batch',
-    entityId: input.batchId,
-    projectId: batch.projectId,
-    action: input.approve ? 'outreach.batch_approved' : 'outreach.batch_rejected',
-    summary: input.approve
-      ? `${actor.label} approved batch ${batch.reference} (${batch.items.length} recipients)`
-      : `${actor.label} rejected batch ${batch.reference}`,
-    metadata: { recipients: batch.items.length, note: input.note?.trim() ?? null },
-  });
-
-  return db.outreachBatch.findUniqueOrThrow({ where: { id: input.batchId } });
 }
 
 export interface DispatchResult {
   batch: OutreachBatch;
+  /** Invitations created by this call. */
   dispatched: number;
+  /** Recipients a business rule permanently excluded. */
   skipped: Array<{ expertId: string; reason: string }>;
+  /** Recipients an infrastructure failure left retryable. */
+  failed: Array<{ expertId: string; error: string }>;
+  /** Recipients already sent by an earlier call, left untouched. */
+  alreadySent: number;
+  complete: boolean;
 }
 
 /**
  * AUTOMATED, but only after approval.
  *
  * Creates an invitation per recipient through the existing invitation service,
- * so every project-eligibility rule still applies. A recipient who has become
- * ineligible since the batch was assembled is skipped with the reason recorded,
- * not silently dropped.
+ * so every project-eligibility rule still applies and there is no second
+ * invitation implementation to keep in step.
+ *
+ * Three things this gets right that the earlier version did not:
+ *
+ *  * **Per-recipient progress.** Each recipient commits in its own transaction
+ *    — the invitation, its activity entry, and the item's new state together.
+ *    One failure costs one recipient, not the whole batch.
+ *  * **A permanent exclusion and a transient fault are different.** A business
+ *    rule refusing a recipient (already invited, archived, no seats left) is a
+ *    decision and will not change on a retry, so the row is SKIPPED. An
+ *    unexpected error says nothing about that person's eligibility, so the row
+ *    is FAILED and stays retryable. Previously both were written into
+ *    `skippedReason` and the recipient was dropped for good.
+ *  * **A partly failed batch is not finished.** It lands in
+ *    PARTIALLY_DISPATCHED, which says what happened and keeps dispatch
+ *    available; it becomes DISPATCHED only when nothing retryable is left.
+ *
+ * Calling dispatch again is safe: SENT and SKIPPED rows are not reconsidered,
+ * so no recipient is invited twice.
  */
 export async function dispatchBatch(
-  db: Db,
+  client: MaybeTransactor,
   actor: Actor,
   batchId: string,
   options: { ttlHours?: number; message?: string } = {},
 ): Promise<DispatchResult> {
-  const batch = await db.outreachBatch.findUnique({
+  const batch = await client.outreachBatch.findUnique({
     where: { id: batchId },
     include: { items: true, project: true },
   });
   if (!batch) throw notFound('Outreach batch not found.');
 
-  if (batch.status !== 'APPROVED') {
+  if (!DISPATCHABLE_STATUSES.includes(batch.status)) {
     throw invalidState(
-      `Batch ${batch.reference} is ${batch.status}. Only an APPROVED batch can be dispatched, and approval is a human decision.`,
+      `Batch ${batch.reference} is ${batch.status}. Only an approved batch can be dispatched, and approval is a human decision.`,
       { status: batch.status },
     );
   }
@@ -299,52 +365,123 @@ export async function dispatchBatch(
       'This batch is not attached to a project, so invitations cannot be created.',
     );
   }
+  const projectId = batch.projectId;
 
   const skipped: DispatchResult['skipped'] = [];
+  const failed: DispatchResult['failed'] = [];
   let dispatched = 0;
+  const alreadySent = batch.items.filter((item) => item.dispatchState === 'SENT').length;
 
-  for (const item of batch.items) {
-    if (!item.expertId) continue;
-    if (item.invitationId) continue; // already dispatched by an earlier attempt
+  // Only work that is outstanding. SENT and SKIPPED are settled.
+  const outstanding = batch.items.filter(
+    (item) =>
+      item.expertId && (item.dispatchState === 'PENDING' || item.dispatchState === 'FAILED'),
+  );
 
+  for (const item of outstanding) {
+    const expertId = item.expertId!;
     try {
-      const invitation = await createInvitation(db, actor, {
-        projectId: batch.projectId,
-        expertId: item.expertId,
-        message: options.message ?? batch.reason,
-        ttlHours: options.ttlHours,
-      });
-      await db.outreachBatchItem.update({
-        where: { id: item.id },
-        data: { invitationId: invitation.id, skippedReason: null },
+      await withTransaction(client, async (tx) => {
+        // Claim under the transaction so two dispatch calls racing each other
+        // cannot both create an invitation for the same recipient. The claim is
+        // a no-op update whose row count tells us whether we got there first.
+        const claimed = await tx.outreachBatchItem.updateMany({
+          where: { id: item.id, dispatchState: { in: ['PENDING', 'FAILED'] } },
+          data: { dispatchedAt: null },
+        });
+        if (claimed.count === 0) return;
+
+        const invitation = await createInvitation(tx, actor, {
+          projectId,
+          expertId,
+          message: options.message ?? batch.reason,
+          ttlHours: options.ttlHours,
+        });
+        await tx.outreachBatchItem.update({
+          where: { id: item.id },
+          data: {
+            invitationId: invitation.id,
+            dispatchState: 'SENT',
+            dispatchedAt: clockNow(),
+            attempts: { increment: 1 },
+            skippedReason: null,
+            lastError: null,
+          },
+        });
       });
       dispatched += 1;
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      await db.outreachBatchItem.update({
+      const message = error instanceof Error ? error.message : String(error);
+      // An AppError is the domain saying no. Anything else is the machinery
+      // failing, which is not a statement about this person.
+      const permanent = isAppError(error);
+
+      // Recorded outside the rolled-back transaction, so the verdict and the
+      // attempt count survive the rollback that just discarded the work.
+      await client.outreachBatchItem.update({
         where: { id: item.id },
-        data: { skippedReason: reason },
+        data: permanent
+          ? {
+              dispatchState: 'SKIPPED',
+              skippedReason: message,
+              lastError: null,
+              attempts: { increment: 1 },
+            }
+          : {
+              dispatchState: 'FAILED',
+              lastError: message.slice(0, 1000),
+              attempts: { increment: 1 },
+            },
       });
-      skipped.push({ expertId: item.expertId, reason });
+
+      if (permanent) skipped.push({ expertId, reason: message });
+      else failed.push({ expertId, error: message });
     }
   }
 
-  const updated = await db.outreachBatch.update({
-    where: { id: batchId },
-    data: { status: 'DISPATCHED', dispatchedAt: clockNow() },
+  const complete = failed.length === 0;
+  const finalStatus: OutreachBatchStatus = complete ? 'DISPATCHED' : 'PARTIALLY_DISPATCHED';
+
+  const updated = await withTransaction(client, async (tx) => {
+    assertBatchTransition(batch.status, finalStatus);
+    const row = await tx.outreachBatch.update({
+      where: { id: batchId },
+      data: {
+        status: finalStatus,
+        // Stamped once, when the batch actually finishes.
+        dispatchedAt: complete ? (batch.dispatchedAt ?? clockNow()) : batch.dispatchedAt,
+      },
+    });
+
+    await recordActivity(tx, {
+      actor,
+      entityType: 'outreach_batch',
+      entityId: batchId,
+      projectId,
+      action: complete ? 'outreach.batch_dispatched' : 'outreach.batch_partially_dispatched',
+      summary: complete
+        ? `Batch ${batch.reference} dispatched: ${dispatched} invitation(s) created, ${skipped.length} skipped`
+        : `Batch ${batch.reference} partly dispatched: ${dispatched} created, ${skipped.length} skipped, ${failed.length} still to retry`,
+      metadata: {
+        dispatched,
+        alreadySent,
+        skipped,
+        failed,
+        approvedById: batch.approvedById,
+        simulated: true,
+      },
+    });
+    return row;
   });
 
-  await recordActivity(db, {
-    actor,
-    entityType: 'outreach_batch',
-    entityId: batchId,
-    projectId: batch.projectId,
-    action: 'outreach.batch_dispatched',
-    summary: `Batch ${batch.reference} dispatched: ${dispatched} invitation(s) created, ${skipped.length} skipped`,
-    metadata: { dispatched, skipped, approvedById: batch.approvedById, simulated: true },
-  });
+  return { batch: updated, dispatched, skipped, failed, alreadySent, complete };
+}
 
-  return { batch: updated, dispatched, skipped };
+/** Recipients a repeat dispatch would act on. Used by the UI to label the button. */
+export async function retryableRecipients(db: Db, batchId: string): Promise<number> {
+  return db.outreachBatchItem.count({
+    where: { batchId, dispatchState: { in: ['PENDING', 'FAILED'] } },
+  });
 }
 
 export async function listBatches(

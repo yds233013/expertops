@@ -23,14 +23,14 @@ describe('simulated email templates', () => {
         clientName: 'Northwind',
         message: '',
         expiresAt: EXPIRES,
-        portalUrl: 'http://localhost:3000/portal/enter/abc',
+        portalUrl: 'http://localhost:3000/portal/enter#t=abc',
       }),
       renderInvitationReminderEmail({
         expertName: 'Avery Okafor',
         projectTitle: 'Settlement review',
         projectCode: 'PRJ-0001',
         expiresAt: EXPIRES,
-        portalUrl: 'http://localhost:3000/portal/enter/abc',
+        portalUrl: 'http://localhost:3000/portal/enter#t=abc',
       }),
       renderInvitationExpiredEmail({
         expertName: 'Avery Okafor',
@@ -39,7 +39,7 @@ describe('simulated email templates', () => {
       }),
       renderOnboardingStartEmail({
         expertName: 'Avery Okafor',
-        portalUrl: 'http://localhost:3000/portal/enter/abc',
+        portalUrl: 'http://localhost:3000/portal/enter#t=abc',
         outstandingItems: ['Accept the mutual non-disclosure terms'],
       }),
       renderOnboardingVerifiedEmail({ expertName: 'Avery Okafor', operatorName: 'Sam' }),
@@ -59,11 +59,11 @@ describe('simulated email templates', () => {
       clientName: 'Northwind',
       message: 'Looking forward to it.',
       expiresAt: EXPIRES,
-      portalUrl: 'http://localhost:3000/portal/enter/abc',
+      portalUrl: 'http://localhost:3000/portal/enter#t=abc',
     });
     expect(message.subject).toContain('PRJ-0007');
     expect(message.bodyText).toContain('Looking forward to it.');
-    expect(message.bodyText).toContain('http://localhost:3000/portal/enter/abc');
+    expect(message.bodyText).toContain('http://localhost:3000/portal/enter#t=abc');
   });
 
   it('omits the operator note block when there is no note', () => {
@@ -74,7 +74,7 @@ describe('simulated email templates', () => {
       clientName: 'Northwind',
       message: '',
       expiresAt: EXPIRES,
-      portalUrl: 'http://localhost:3000/portal/enter/abc',
+      portalUrl: 'http://localhost:3000/portal/enter#t=abc',
     });
     expect(message.bodyText).not.toContain('Note from the ExpertOps team');
   });
@@ -87,7 +87,7 @@ describe('simulated email templates', () => {
       clientName: 'Northwind',
       message: '',
       expiresAt: EXPIRES,
-      portalUrl: 'http://localhost:3000/portal/enter/abc',
+      portalUrl: 'http://localhost:3000/portal/enter#t=abc',
       maxHourlyRateCents: 32_000,
       currency: 'USD',
     });
@@ -97,7 +97,7 @@ describe('simulated email templates', () => {
   it('lists every outstanding item in an onboarding nudge', () => {
     const message = renderOnboardingNudgeEmail({
       expertName: 'Avery Okafor',
-      portalUrl: 'http://localhost:3000/portal/enter/abc',
+      portalUrl: 'http://localhost:3000/portal/enter#t=abc',
       outstandingItems: ['Billing reference', 'Declare any conflicts of interest'],
     });
     expect(message.bodyText).toContain('- Billing reference');

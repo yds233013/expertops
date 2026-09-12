@@ -56,6 +56,7 @@ export const CAPABILITIES = [
   'payment:write',
   'payment:approve',
   'offboarding:read',
+  'offboarding:assign',
   'offboarding:confirm',
   'import:run',
 ] as const;
@@ -107,6 +108,7 @@ const OPERATOR: Capability[] = [
   'work:review',
   'support:respond',
   'payment:write',
+  'offboarding:assign',
   'offboarding:confirm',
   'import:run',
 ];

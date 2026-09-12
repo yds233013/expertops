@@ -205,6 +205,21 @@ provider with retries and a webhook for bounces, and a genuine suppression list.
 
 ---
 
+## Worker guarantees
+
+- **A handler can run more than once; only one run can commit.** A worker that
+  stalls past its lease may have its job taken over and both may execute. The
+  loser's completion matches no row, so its transaction rolls back. This holds
+  for database effects, which is all of them here; it would not extend to an
+  effect outside the database.
+- **The execution transaction is bounded by the lease.** A handler needing
+  longer than its lease fails rather than commits. No handler in this build
+  comes close, and the lease is configurable.
+- **Abandoned-claim recovery runs once per worker tick.** A single worker that is
+  down entirely does not sweep; another worker, or its own restart, does.
+
+---
+
 ## Testing
 
 - **The browser suite runs in Chromium only.** Firefox and WebKit are not

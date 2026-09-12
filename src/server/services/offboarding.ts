@@ -1,5 +1,5 @@
 import { type OffboardingTask, type OffboardingTaskStatus } from '@prisma/client';
-import { type Db } from '@/lib/db';
+import { type Db, type MaybeTransactor, withTransaction } from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
 import { badRequest, invalidState, notFound } from '@/lib/errors';
 import { daysFromNow } from '@/lib/time';
@@ -256,8 +256,67 @@ export async function offboardingCounts(db: Db) {
     NOT_APPLICABLE: 0,
   };
   for (const row of grouped) counts[row.status] = row._count._all;
-  const overdue = await db.offboardingTask.count({
-    where: { status: 'PENDING', dueAt: { lte: clockNow() } },
+  const [overdue, unassigned] = await Promise.all([
+    db.offboardingTask.count({ where: { status: 'PENDING', dueAt: { lte: clockNow() } } }),
+    // Counted separately because a checklist the worker opened has no owner:
+    // nobody chose to create it, so nobody was implicitly made responsible.
+    db.offboardingTask.count({ where: { status: 'PENDING', ownerId: null } }),
+  ]);
+  return { ...counts, overdue, unassigned };
+}
+
+/**
+ * Give an offboarding task an accountable owner, or move it to someone else.
+ *
+ * Tasks opened automatically when a project closes have no owner, because the
+ * worker is not a person who can be accountable for one. Rather than guessing,
+ * they sit in a visible unassigned queue until someone takes them. Assignment
+ * is recorded in the activity history like every other decision.
+ */
+export async function assignOffboardingTask(
+  client: MaybeTransactor,
+  actor: Actor,
+  input: { taskId: string; ownerId: string | null },
+) {
+  return withTransaction(client, async (tx) => {
+    const task = await tx.offboardingTask.findUnique({
+      where: { id: input.taskId },
+      include: { expert: true, project: true, owner: { select: { name: true } } },
+    });
+    if (!task) throw notFound('Offboarding task not found.');
+    if (task.status !== 'PENDING') {
+      throw invalidState(`This task is already ${task.status.toLowerCase().replace(/_/g, ' ')}.`);
+    }
+
+    let ownerName = 'nobody';
+    if (input.ownerId) {
+      const owner = await tx.user.findUnique({ where: { id: input.ownerId } });
+      if (!owner) throw notFound('That operator does not exist.');
+      if (!owner.isActive) throw invalidState('That operator account is deactivated.');
+      ownerName = owner.name;
+    }
+
+    const updated = await tx.offboardingTask.update({
+      where: { id: input.taskId },
+      data: { ownerId: input.ownerId },
+    });
+
+    await recordActivity(tx, {
+      actor,
+      entityType: 'offboarding',
+      entityId: input.taskId,
+      projectId: task.projectId,
+      expertId: task.expertId,
+      action: input.ownerId ? 'offboarding.assigned' : 'offboarding.unassigned',
+      summary: input.ownerId
+        ? `${actor.label} made ${ownerName} responsible for "${task.label}" (${task.expert.fullName}, ${task.project.code})`
+        : `${actor.label} returned "${task.label}" to the unassigned queue`,
+      metadata: {
+        previousOwner: task.owner?.name ?? null,
+        newOwner: input.ownerId ? ownerName : null,
+      },
+    });
+
+    return updated;
   });
-  return { ...counts, overdue };
 }

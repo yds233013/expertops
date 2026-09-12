@@ -63,8 +63,11 @@ export async function portalLinkFor(
 
   // Read the address out of the message body, exactly as a person reading the
   // simulated email would. The token is never written to the test log.
+  //
+  // The link is `/apply/enter#t=<token>`: the secret is in the fragment, which
+  // the browser keeps to itself.
   const body = (await card.locator('pre').first().innerText()) ?? '';
-  const match = /https?:\/\/\S+\/(?:apply|portal)\/enter\/\S+/.exec(body);
+  const match = /https?:\/\/\S+\/(?:apply|portal)\/enter#t=\S+/.exec(body);
   if (!match) {
     throw new Error(`No portal link in the outbox message matching "${subjectFragment}"`);
   }

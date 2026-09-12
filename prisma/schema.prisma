@@ -588,29 +588,37 @@ enum JobStatus {
 }
 
 model Job {
-  id          String    @id @default(cuid())
-  type        String
-  payload     Json      @default("{}")
-  status      JobStatus @default(PENDING)
-  priority    Int       @default(100) // lower runs first
-  runAt       DateTime  @default(now())
-  attempts    Int       @default(0)
-  maxAttempts Int       @default(5)
-  lockedAt    DateTime?
-  lockedBy    String?
-  startedAt   DateTime?
-  finishedAt  DateTime?
-  lastError   String?
-  result      Json?
+  id             String    @id @default(cuid())
+  type           String
+  payload        Json      @default("{}")
+  status         JobStatus @default(PENDING)
+  priority       Int       @default(100) // lower runs first
+  runAt          DateTime  @default(now())
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  lockedAt       DateTime?
+  lockedBy       String?
+  /// Fencing token. Every successful claim mints a new one, so a worker that
+  /// lost its job to a lease takeover can be told apart from the worker that
+  /// now owns it. Completion and failure are scoped to this value.
+  claimId        String?
+  /// When the current claim stops being valid. A worker renews this while it
+  /// works; another worker may only take the job over once it has passed.
+  leaseExpiresAt DateTime?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  lastError      String?
+  result         Json?
   // Optional idempotency key. A unique index means "enqueue once" is a
   // database guarantee rather than an application convention.
-  dedupeKey   String?   @unique
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  dedupeKey      String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([status, runAt, priority])
   @@index([type, status])
   @@index([lockedAt])
+  @@index([status, leaseExpiresAt])
 }
 
 model Schedule {
@@ -1261,6 +1269,9 @@ enum OutreachBatchStatus {
   PENDING_APPROVAL
   APPROVED
   REJECTED
+  /// Dispatch ran but some recipients are still retryable. The batch is not
+  /// finished, and calling dispatch again picks up exactly those recipients.
+  PARTIALLY_DISPATCHED
   DISPATCHED
   CANCELLED
 }
@@ -1296,16 +1307,36 @@ model OutreachBatch {
   @@index([projectId])
 }
 
+/// How far dispatch has got with one recipient.
+///
+/// The distinction that matters is SKIPPED versus FAILED. A business rule said
+/// no (already invited, no seats left, archived) — that is a decision, it will
+/// not change on a retry, and the recipient is permanently excluded. Anything
+/// else is infrastructure, which says nothing about the recipient's
+/// eligibility, so the row stays retryable.
+enum OutreachItemState {
+  PENDING
+  SENT
+  SKIPPED
+  FAILED
+}
+
 model OutreachBatchItem {
-  id            String  @id @default(cuid())
+  id            String            @id @default(cuid())
   batchId       String
   expertId      String?
   candidateId   String?
   /// Populated once dispatch actually created the invitation.
-  invitationId  String? @unique
+  invitationId  String?           @unique
   /// Why the system proposed this person.
-  rationale     String  @default("")
+  rationale     String            @default("")
   matchScore    Int?
+  dispatchState OutreachItemState @default(PENDING)
+  /// How many dispatch attempts this recipient has had.
+  attempts      Int               @default(0)
+  /// The infrastructure error from the last failed attempt, if any.
+  lastError     String?
+  dispatchedAt  DateTime?
   /// Set when dispatch skipped this row, e.g. the person opted out meanwhile.
   skippedReason String?
 
@@ -1314,6 +1345,7 @@ model OutreachBatchItem {
 
   @@unique([batchId, expertId])
   @@index([batchId])
+  @@index([batchId, dispatchState])
 }
 
 // ---------------------------------------------------------------------------

@@ -21,8 +21,12 @@ export interface IssuedCandidateToken {
   expiresAt: Date;
 }
 
+/**
+ * The candidate equivalent of `buildPortalUrl`, and for the same reason: the
+ * token travels in the fragment so it never reaches a request log.
+ */
 export function buildCandidatePortalUrl(token: string): string {
-  return `${getEnv().APP_BASE_URL.replace(/\/$/, '')}/apply/enter/${token}`;
+  return `${getEnv().APP_BASE_URL.replace(/\/$/, '')}/apply/enter#t=${encodeURIComponent(token)}`;
 }
 
 export async function issueCandidatePortalToken(

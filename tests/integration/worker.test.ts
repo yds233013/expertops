@@ -10,6 +10,7 @@ import {
 import { SYSTEM_ACTOR } from '@/server/services/activity';
 import { readFile } from 'node:fs/promises';
 import {
+  claimJobs,
   enqueueJob,
   failJob,
   jobCounts,
@@ -224,7 +225,7 @@ describe('worker: job execution', () => {
       where: { template: 'onboarding.start', expertId: expert.id },
     });
     expect(onboardingEmail).not.toBeNull();
-    expect(onboardingEmail!.devPortalUrl).toContain('/portal/enter/');
+    expect(onboardingEmail!.devPortalUrl).toContain('/portal/enter#t=');
   });
 
   it('nudges a stalled onboarding case once per interval', async () => {
@@ -471,7 +472,11 @@ describe('worker: failure handling', () => {
 
   it('records the failure reason on the job for the operator UI', async () => {
     const { job } = await enqueueJob(prisma, { type: 'outbox.dispatch' });
-    await failJob(prisma, job!.id, 'connection reset by peer', { attempts: 1, maxAttempts: 5 });
+    const [claimed] = await claimJobs(prisma, { workerName: 'failer', limit: 1 });
+    await failJob(prisma, job!.id, claimed!.claimId, 'connection reset by peer', {
+      attempts: 1,
+      maxAttempts: 5,
+    });
 
     const listed = await listJobs(prisma, { status: 'FAILED' });
     expect(listed.jobs).toHaveLength(1);

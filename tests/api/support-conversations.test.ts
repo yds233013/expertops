@@ -1,7 +1,13 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { applyMigrations, truncateAll } from '../helpers/db';
-import { buildRequest, callRoute, cookieValue, operatorToken } from '../helpers/api';
+import {
+  buildRequest,
+  callRoute,
+  cookieValue,
+  operatorToken,
+  tokenFromMagicLink,
+} from '../helpers/api';
 import { makeExpert, makeOperator, makeProject } from '../helpers/factories';
 import { PORTAL_COOKIE } from '@/server/http/context';
 import { SYSTEM_ACTOR } from '@/server/services/activity';
@@ -36,7 +42,7 @@ async function fixture() {
   const session = await callRoute(
     portalSession,
     buildRequest('POST', '/api/portal/session', {
-      body: { token: sent!.portalUrl.split('/').pop()! },
+      body: { token: tokenFromMagicLink(sent!.portalUrl) },
     }),
   );
   return {

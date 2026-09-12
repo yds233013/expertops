@@ -25,6 +25,7 @@ import {
   submitBatchForApproval,
 } from '@/server/services/outreach';
 import { listAttention, raiseAttention, resolveIfPresent } from '@/server/services/attention';
+import { SYSTEM_ACTOR } from '@/server/services/activity';
 import { enqueueJob } from '@/server/services/jobs';
 import { runMatching } from '@/server/services/matching';
 import { Worker } from '@/server/worker/runner';
@@ -240,7 +241,7 @@ describe('withdrawal and replacement', () => {
     await expectAppError(
       dispatchBatch(prisma, actorFor(operator), batch.id),
       'INVALID_STATE',
-      /Only an APPROVED batch can be dispatched/,
+      /Only an approved batch can be dispatched/,
     );
     expect(await prisma.invitation.count({ where: { projectId: project.id } })).toBe(1); // only the original
   });
@@ -597,5 +598,82 @@ describe('jobs are safe under duplicate delivery and stale state', () => {
     expect(
       await prisma.attentionItem.count({ where: { category: 'delivery.no_work_assigned' } }),
     ).toBe(1);
+  });
+});
+
+describe('offboarding tasks have an accountable owner', () => {
+  beforeAll(() => applyMigrations());
+  beforeEach(() => truncateAll());
+
+  it('leaves worker-opened tasks unassigned, and lets an operator take them', async () => {
+    const operator = await makeOperator({ role: 'ADMIN' });
+    const project = await makeProject(operator.id, { status: 'ACTIVE' });
+    const expert = await makeStaffableExpert(project.id);
+
+    // The worker opens the checklist, so there is no person to be accountable.
+    const { openOffboarding, assignOffboardingTask, offboardingCounts } =
+      await import('@/server/services/offboarding');
+    const opened = await openOffboarding(prisma, SYSTEM_ACTOR, {
+      projectId: project.id,
+      expertId: expert.id,
+    });
+    expect(opened.created).toBeGreaterThan(0);
+
+    const unowned = await prisma.offboardingTask.findMany({ where: { ownerId: null } });
+    expect(unowned.length).toBe(opened.created);
+
+    // The queue makes that visible rather than leaving it implicit.
+    const counts = await offboardingCounts(prisma);
+    expect(counts.unassigned).toBe(opened.created);
+
+    // An operator takes one, and the decision is recorded.
+    const task = unowned[0]!;
+    const assigned = await assignOffboardingTask(prisma, actorFor(operator), {
+      taskId: task.id,
+      ownerId: operator.id,
+    });
+    expect(assigned.ownerId).toBe(operator.id);
+    expect((await offboardingCounts(prisma)).unassigned).toBe(opened.created - 1);
+
+    const events = await prisma.activityEvent.findMany({
+      where: { action: 'offboarding.assigned' },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.summary).toContain(operator.name);
+
+    // Reassigning back to nobody is allowed and recorded too.
+    await assignOffboardingTask(prisma, actorFor(operator), { taskId: task.id, ownerId: null });
+    expect((await offboardingCounts(prisma)).unassigned).toBe(opened.created);
+    expect(await prisma.activityEvent.count({ where: { action: 'offboarding.unassigned' } })).toBe(
+      1,
+    );
+  });
+
+  it('refuses to assign a task that is already settled, or to a missing operator', async () => {
+    const operator = await makeOperator({ role: 'ADMIN' });
+    const project = await makeProject(operator.id, { status: 'ACTIVE' });
+    const expert = await makeStaffableExpert(project.id);
+    const { openOffboarding, assignOffboardingTask, confirmTask } =
+      await import('@/server/services/offboarding');
+    await openOffboarding(prisma, SYSTEM_ACTOR, { projectId: project.id, expertId: expert.id });
+    const task = await prisma.offboardingTask.findFirstOrThrow({});
+
+    await expect(
+      assignOffboardingTask(prisma, actorFor(operator), {
+        taskId: task.id,
+        ownerId: 'no-such-operator',
+      }),
+    ).rejects.toThrow(/does not exist/);
+
+    await confirmTask(prisma, actorFor(operator), {
+      taskId: task.id,
+      note: 'Removed the account.',
+    });
+    await expect(
+      assignOffboardingTask(prisma, actorFor(operator), {
+        taskId: task.id,
+        ownerId: operator.id,
+      }),
+    ).rejects.toThrow(/already confirmed/);
   });
 });

@@ -321,7 +321,7 @@ async function main() {
   check('the simulated email is marked delivered', true);
 
   section('Expert acceptance');
-  const rawToken = portalUrl.split('/').pop()!;
+  const rawToken = new URLSearchParams(new URL(portalUrl).hash.replace(/^#/, '')).get('t')!;
   const portalJar: Jar = {};
   const session = await api('POST', '/api/portal/session', {
     jar: portalJar,

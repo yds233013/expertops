@@ -42,8 +42,20 @@ export async function issuePortalToken(
   return { token, url, expiresAt };
 }
 
+/**
+ * A magic link that keeps its token out of the HTTP request.
+ *
+ * The token lives in the URL *fragment*. Browsers never send a fragment to the
+ * server, so the landing request's path, the access log, and any `Referer`
+ * derived from this page all contain `/portal/enter` and nothing else. The
+ * client reads the fragment, strips it, and posts the token to the session
+ * endpoint.
+ *
+ * The previous form put the token in the path, where the very first GET wrote
+ * it verbatim into the request log; no later redirect could take that back.
+ */
 export function buildPortalUrl(token: string): string {
-  return `${getEnv().APP_BASE_URL.replace(/\/$/, '')}/portal/enter/${token}`;
+  return `${getEnv().APP_BASE_URL.replace(/\/$/, '')}/portal/enter#t=${encodeURIComponent(token)}`;
 }
 
 export interface PortalSessionResult {

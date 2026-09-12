@@ -215,6 +215,30 @@ browser.
 
 ---
 
+## Independent review repairs
+
+An independent review of `1d34bbc` raised six findings. Each was reproduced
+before it was repaired, and each repair carries a regression test.
+[`docs/review-repairs.md`](review-repairs.md) has the reproduction output, the
+change, and what the tests actually demonstrate.
+
+| Finding | Status | Where | Proof |
+| --- | --- | --- | --- |
+| Access tokens in initial request URLs | Fixed | Token moved to the URL fragment; `/apply/enter`, `/portal/enter`; `Referrer-Policy` | `token-exposure.test.ts`, browser log verification |
+| A running job reclaimed while its worker was alive | Fixed | `claimId` fencing token, bounded lease with renewal | `worker-ownership.test.ts` |
+| `completeJob` / `failJob` keyed by job id alone | Fixed | Both scoped to the claim; completion inside the handler's transaction | `worker-ownership.test.ts` |
+| Stale execution creating duplicate business effects | Fixed | Losing the claim rolls the handler's writes back | `worker-ownership.test.ts` |
+| Unbounded stale-job recovery | Fixed | `attempts < maxAttempts` in the claim, plus `reapAbandonedJobs` | `worker-ownership.test.ts` |
+| State, audit and follow-up work not atomic | Fixed | `withTransaction`, transaction-aware outreach services | `outreach-atomicity.test.ts` |
+| Infrastructure faults recorded as permanent exclusions | Fixed | `SKIPPED` vs `FAILED`, `PARTIALLY_DISPATCHED` | `outreach-atomicity.test.ts` |
+| A schedule tick consumed by a failed enqueue | Fixed | Claim and enqueue in one transaction | `scheduler-atomicity.test.ts` |
+| Bulk outreach had no UI | Fixed | `/outreach`, `/outreach/[batchId]` | `outreach.spec.ts` (6 browser steps) |
+| Offboarding tasks with no accountable owner | Fixed | Unassigned queue, `offboarding:assign`, owner control | `withdrawal-and-attention.test.ts` |
+| "Ran" indistinguishable from "did something" | Fixed | `src/lib/job-outcome.ts`, *What it did* column | `job-outcome.test.ts` |
+| Job history growth undocumented | Fixed | Retention policy in `docs/architecture.md` | `worker-ownership.test.ts` |
+
+---
+
 ## Not done
 
 Stated plainly rather than left to be discovered.

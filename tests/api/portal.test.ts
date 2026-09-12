@@ -1,7 +1,13 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { applyMigrations, truncateAll } from '../helpers/db';
-import { buildRequest, callRoute, cookieValue, operatorToken } from '../helpers/api';
+import {
+  buildRequest,
+  callRoute,
+  cookieValue,
+  operatorToken,
+  tokenFromMagicLink,
+} from '../helpers/api';
 import { makeExpert, makeOperator, makeProject } from '../helpers/factories';
 import { PORTAL_COOKIE } from '@/server/http/context';
 import { SYSTEM_ACTOR } from '@/server/services/activity';
@@ -31,7 +37,7 @@ async function portalFixture() {
     { projectId: project.id, expertId: expert.id },
   );
   const sent = await sendInvitation(prisma, SYSTEM_ACTOR, invitation.id);
-  const rawToken = sent!.portalUrl.split('/').pop()!;
+  const rawToken = tokenFromMagicLink(sent!.portalUrl);
 
   const session = await callRoute(
     portalSession,

@@ -4,8 +4,9 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { jobCounts, listJobs } from '@/server/services/jobs';
 import { listSchedules, scheduleDescription } from '@/server/services/schedules';
+import { describeJobOutcome } from '@/lib/job-outcome';
 import { ActionButton } from '@/components/action-button';
-import { Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
+import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
 import { type JobStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -138,7 +139,7 @@ export default async function JobsPage({
                   <th>Attempts</th>
                   <th>Run at</th>
                   <th>Worker</th>
-                  <th>Result / error</th>
+                  <th>What it did</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -168,7 +169,24 @@ export default async function JobsPage({
                       {job.lastError ? (
                         <span className="text-rose-700">{job.lastError}</span>
                       ) : job.result ? (
-                        <code className="text-ink-600">{JSON.stringify(job.result)}</code>
+                        (() => {
+                          // "Succeeded" answers whether it ran. This answers
+                          // whether anything happened, which is the question an
+                          // operator is actually asking.
+                          const outcome = describeJobOutcome(job.result);
+                          return (
+                            <div className="space-y-1">
+                              {outcome.summary && (
+                                <Badge tone={outcome.effect === 'effect' ? 'success' : 'muted'}>
+                                  {outcome.summary}
+                                </Badge>
+                              )}
+                              <code className="block text-ink-500">
+                                {JSON.stringify(job.result)}
+                              </code>
+                            </div>
+                          );
+                        })()
                       ) : (
                         <span className="text-ink-400">—</span>
                       )}

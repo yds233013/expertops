@@ -1,5 +1,5 @@
-import { type Prisma, type Schedule } from '@prisma/client';
-import { type Db } from '@/lib/db';
+import { Prisma, type Schedule } from '@prisma/client';
+import { type Db, type Transactor } from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
 import { secondsFromNow } from '@/lib/time';
 import { enqueueJob, type JobType } from './jobs';
@@ -139,18 +139,22 @@ interface DueScheduleRow {
 }
 
 /**
- * Claim every schedule that is due, advancing `nextRunAt` atomically.
+ * Claim one due schedule, advancing `nextRunAt` in the same statement.
  *
  * `nextRunAt` is set from `now` rather than from the previous `nextRunAt`, so a
  * worker that was offline for an hour fires each schedule once on restart
  * instead of replaying a backlog of ticks.
+ *
+ * One at a time, rather than the whole batch, because claiming and enqueuing
+ * have to share a transaction: a schedule is only allowed to move forward if
+ * the job it exists to create was actually created.
  */
-export async function claimDueSchedules(
+async function claimOneDueSchedule(
   db: Db,
-  options: { now?: Date; limit?: number } = {},
-): Promise<Array<{ id: string; name: string; jobType: JobType; payload: unknown }>> {
-  const now = options.now ?? clockNow();
-  const limit = options.limit ?? 25;
+  options: { now: Date; skipIds: string[] },
+): Promise<DueSchedule | null> {
+  const { now, skipIds } = options;
+  const exclusion = skipIds.length > 0 ? Prisma.sql`AND "id" <> ALL(${skipIds})` : Prisma.empty;
 
   const rows = await db.$queryRaw<DueScheduleRow[]>`
     UPDATE "Schedule" AS s
@@ -161,62 +165,115 @@ export async function claimDueSchedules(
       SELECT "id"
       FROM "Schedule"
       WHERE "enabled" = true AND "nextRunAt" <= ${now}
+      ${exclusion}
       ORDER BY "nextRunAt" ASC
-      LIMIT ${limit}
+      LIMIT 1
       FOR UPDATE SKIP LOCKED
     ) AS candidate
     WHERE s."id" = candidate."id"
     RETURNING s."id", s."name", s."jobType" AS job_type, s."payload", s."intervalSeconds" AS interval_seconds
   `;
 
-  return rows.map((row) => ({
+  const row = rows[0];
+  if (!row) return null;
+  return {
     id: row.id,
     name: row.name,
     jobType: row.job_type as JobType,
     payload: row.payload,
-  }));
+  };
+}
+
+export interface DueSchedule {
+  id: string;
+  name: string;
+  jobType: JobType;
+  payload: unknown;
 }
 
 export interface TickResult {
   claimed: number;
   enqueued: number;
   deduplicated: number;
+  /** Schedules whose enqueue failed; their due time was rolled back, not consumed. */
+  failed: Array<{ name: string; error: string }>;
   scheduleNames: string[];
 }
 
 /**
  * One scheduler tick: claim due schedules and enqueue their jobs.
  *
+ * Claiming a schedule and creating its job are one transaction. Previously they
+ * were two statements: a schedule advanced its `nextRunAt` first, and if the
+ * enqueue then failed, that execution was silently consumed — the job never
+ * existed and the schedule would not be due again until the next interval.
+ * Rolling back together means a failed enqueue leaves the schedule due, so the
+ * next tick retries it.
+ *
  * The dedupe key is derived from the schedule name and its tick bucket, so even
  * if two workers somehow claimed the same schedule only one job row is created.
  */
-export async function tickSchedules(db: Db, options: { now?: Date } = {}): Promise<TickResult> {
+export async function tickSchedules(
+  client: Transactor,
+  options: { now?: Date; limit?: number } = {},
+): Promise<TickResult> {
   const now = options.now ?? clockNow();
-  const due = await claimDueSchedules(db, { now });
+  const limit = options.limit ?? 25;
 
+  let claimed = 0;
   let enqueued = 0;
   let deduplicated = 0;
-  for (const schedule of due) {
-    const bucket = Math.floor(now.getTime() / 1000);
-    const result = await enqueueJob(db, {
-      type: schedule.jobType,
-      payload: (schedule.payload as Prisma.InputJsonValue) ?? {},
-      priority: 50,
-      dedupeKey: `schedule:${schedule.name}:${bucket}`,
-    });
-    if (result.deduplicated) deduplicated += 1;
-    else enqueued += 1;
-    if (result.job) {
-      await db.schedule.update({ where: { id: schedule.id }, data: { lastJobId: result.job.id } });
+  const failed: TickResult['failed'] = [];
+  const scheduleNames: string[] = [];
+  // Schedules already handled this tick, so a rolled-back one is not retried
+  // in a loop within the same tick.
+  const handled: string[] = [];
+
+  for (let index = 0; index < limit; index += 1) {
+    let name: string | null = null;
+    try {
+      const done = await client.$transaction(async (tx) => {
+        const schedule = await claimOneDueSchedule(tx, { now, skipIds: handled });
+        if (!schedule) return false;
+        name = schedule.name;
+        handled.push(schedule.id);
+
+        const bucket = Math.floor(now.getTime() / 1000);
+        const result = await enqueueJob(tx, {
+          type: schedule.jobType,
+          payload: (schedule.payload as Prisma.InputJsonValue) ?? {},
+          priority: 50,
+          dedupeKey: `schedule:${schedule.name}:${bucket}`,
+        });
+        if (result.deduplicated) deduplicated += 1;
+        else enqueued += 1;
+        if (result.job) {
+          await tx.schedule.update({
+            where: { id: schedule.id },
+            data: { lastJobId: result.job.id },
+          });
+        }
+        return true;
+      });
+
+      if (!done) break;
+      claimed += 1;
+      if (name) scheduleNames.push(name);
+    } catch (error) {
+      // The transaction rolled back, so this schedule is still due. Record it
+      // and move on rather than letting one broken schedule stall the rest.
+      const message = error instanceof Error ? error.message : String(error);
+      failed.push({ name: name ?? 'unknown', error: message });
+      // `handled` was rolled back with the transaction; re-exclude it here so
+      // the loop makes progress.
+      if (name) {
+        const row = await client.schedule.findUnique({ where: { name } }).catch(() => null);
+        if (row) handled.push(row.id);
+      }
     }
   }
 
-  return {
-    claimed: due.length,
-    enqueued,
-    deduplicated,
-    scheduleNames: due.map((s) => s.name),
-  };
+  return { claimed, enqueued, deduplicated, failed, scheduleNames };
 }
 
 export async function listSchedules(db: Db) {

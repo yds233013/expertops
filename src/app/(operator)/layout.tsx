@@ -10,6 +10,7 @@ import { attentionCounts } from '@/server/services/attention';
 import { candidateCountsByStage } from '@/server/services/candidates';
 import { workCounts } from '@/server/services/work';
 import { supportCounts } from '@/server/services/support';
+import { listBatches } from '@/server/services/outreach';
 import { paymentCounts } from '@/server/services/payments';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Badge } from '@/components/ui';
@@ -24,6 +25,7 @@ const NAV = [
   { href: '/screenings', label: 'Screening' },
   { href: '/rubrics', label: 'Rubrics' },
   { href: '/projects', label: 'Projects' },
+  { href: '/outreach', label: 'Outreach' },
   { href: '/experts', label: 'Experts' },
   { href: '/onboarding', label: 'Verification' },
   { href: '/work', label: 'Delivery' },
@@ -38,17 +40,27 @@ export default async function OperatorLayout({ children }: { children: React.Rea
   const operator = await currentOperator();
   if (!operator) redirect('/login');
 
-  const [outbox, jobs, onboarding, attention, candidates, work, payments, support] =
-    await Promise.all([
-      outboxCounts(prisma),
-      jobCounts(prisma),
-      onboardingCounts(prisma),
-      attentionCounts(prisma),
-      candidateCountsByStage(prisma),
-      workCounts(prisma),
-      paymentCounts(prisma),
-      supportCounts(prisma),
-    ]);
+  const [
+    outbox,
+    jobs,
+    onboarding,
+    attention,
+    candidates,
+    work,
+    payments,
+    support,
+    awaitingOutreach,
+  ] = await Promise.all([
+    outboxCounts(prisma),
+    jobCounts(prisma),
+    onboardingCounts(prisma),
+    attentionCounts(prisma),
+    candidateCountsByStage(prisma),
+    workCounts(prisma),
+    paymentCounts(prisma),
+    supportCounts(prisma),
+    listBatches(prisma, { status: 'PENDING_APPROVAL', limit: 200 }),
+  ]);
 
   // Badges show work waiting on a person, not raw record counts.
   const badges: Record<string, number> = {
@@ -58,6 +70,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
     '/onboarding': onboarding.SUBMITTED,
     '/work': work.SUBMITTED + work.IN_REVIEW,
     '/support': support.OPEN + support.WAITING_ON_OPS,
+    '/outreach': awaitingOutreach.length,
     '/payments': payments.withOpenDiscrepancies,
     '/outbox': outbox.QUEUED,
     '/jobs': jobs.DEAD + jobs.FAILED,

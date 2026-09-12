@@ -333,7 +333,7 @@ describe('concurrency: job queue', () => {
         claimJobs(client, {
           workerName: `worker-${index}`,
           limit: 10,
-          lockTimeoutSeconds: 60,
+          leaseSeconds: 60,
         }),
       ),
     );
@@ -360,7 +360,7 @@ describe('concurrency: job queue', () => {
           claimJobs(client, {
             workerName: `drainer-${index}`,
             limit: 5,
-            lockTimeoutSeconds: 300,
+            leaseSeconds: 300,
           }),
         ),
       );
@@ -369,7 +369,7 @@ describe('concurrency: job queue', () => {
       for (const job of claimed) {
         expect(seen.has(job.id), `job ${job.id} was claimed twice`).toBe(false);
         seen.add(job.id);
-        await completeJob(prisma, job.id, { ok: true });
+        await completeJob(prisma, job.id, job.claimId, { ok: true });
       }
     }
 
@@ -398,29 +398,31 @@ describe('concurrency: job queue', () => {
     const first = await claimJobs(prisma, {
       workerName: 'doomed-worker',
       limit: 5,
-      lockTimeoutSeconds: 60,
+      leaseSeconds: 60,
     });
     expect(first).toHaveLength(1);
 
-    // No second worker may take it while the lock is fresh.
+    // No second worker may take it while the lease is live.
     expect(
-      await claimJobs(prisma, { workerName: 'other', limit: 5, lockTimeoutSeconds: 60 }),
+      await claimJobs(prisma, { workerName: 'other', limit: 5, leaseSeconds: 60 }),
     ).toHaveLength(0);
 
-    // Simulate the worker dying: age the lock past the timeout.
+    // Simulate the worker dying: expire the lease it can no longer renew.
     await prisma.job.update({
       where: { id: job!.id },
-      data: { lockedAt: new Date(Date.now() - 10 * 60_000) },
+      data: { leaseExpiresAt: new Date(Date.now() - 10 * 60_000) },
     });
 
     const reclaimed = await claimJobs(prisma, {
       workerName: 'rescuer',
       limit: 5,
-      lockTimeoutSeconds: 60,
+      leaseSeconds: 60,
     });
     expect(reclaimed).toHaveLength(1);
     expect(reclaimed[0]!.id).toBe(job!.id);
     expect(reclaimed[0]!.attempts).toBe(2);
+    // The takeover minted a new fencing token, so the dead worker's is stale.
+    expect(reclaimed[0]!.claimId).not.toBe(first[0]!.claimId);
   });
 
   it('fires a schedule once even when several workers tick at the same moment', async () => {

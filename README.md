@@ -337,6 +337,12 @@ Open the candidate, choose the published rubric version, and **Send screening**.
 link. Open it in a private window, so the candidate session and your operator
 session do not share cookies.
 
+The link looks like `http://localhost:3000/apply/enter#t=…`. The token is in the
+URL *fragment*, which browsers never send to a server, so the landing request
+appears in the log as `GET /apply/enter` and nothing more. The page reads the
+fragment, strips it, and exchanges it through a POST. Copy the link whole; a
+fragment is easy to lose when a link is retyped by hand.
+
 The candidate sees the instructions, the criteria they are assessed on, a form
 for each one, and a deadline. Submit with a required work sample link missing:
 the submission is kept and the page says exactly what is still needed rather
@@ -641,8 +647,9 @@ is no adapter, no credentials and no retry story for it. Adding one is listed in
 [`docs/requirement-coverage.md`](docs/requirement-coverage.md) under *Not done*.
 
 Other unfinished areas are listed in the same place. The larger ones: there is
-no screen for composing a bulk outreach batch or for creating an offboarding
-task, and the browser suite runs in Chromium only.
+no screen for creating or reopening an offboarding task, outreach recipients can
+only come from a project's latest match run, and the browser suite runs in
+Chromium only.
 
 ---
 
@@ -655,6 +662,7 @@ task, and the browser suite runs in Chromium only.
 | [`docs/playbook.md`](docs/playbook.md) | A short operator playbook: how to actually run a day |
 | [`docs/workflow-states.md`](docs/workflow-states.md) | Every state machine, transition, and guard |
 | [`docs/requirement-coverage.md`](docs/requirement-coverage.md) | What was asked for, where it lives, and what is unfinished |
+| [`docs/review-repairs.md`](docs/review-repairs.md) | Each independent-review finding, how it was reproduced, and what the repair proves |
 | [`docs/limitations.md`](docs/limitations.md) | What this build does not do, and what would have to change |
 | [`docs/screenshots/`](docs/screenshots) | The principal screens at 1280px and 375px, captured by the browser suite |
 
@@ -694,8 +702,9 @@ claimed. No comparison is made to any commercial product.**
   does not touch external accounts.
 - **Duplicate detection is deliberately crude:** exact email, or exact name. It
   is a prompt for a human, not a resolution engine.
-- **A few flows are still API-only:** composing a bulk outreach batch, creating
-  an offboarding task, and moving an existing candidate between campaigns. See
+- **A few flows are still API-only:** creating or reopening an offboarding task,
+  and moving an existing candidate between campaigns. Bulk outreach now has a
+  full interface. See
   [`docs/requirement-coverage.md`](docs/requirement-coverage.md).
 - **Accessibility is checked mechanically, not audited.** The browser suite
   asserts that pages do not scroll sideways at 375px, that every control has an

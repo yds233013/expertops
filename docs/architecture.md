@@ -173,15 +173,18 @@ PostgreSQL-backed, no separate broker. All state lives in the `Job` and
 `Schedule` tables, so a worker holds nothing of its own and can be killed and
 restarted at any point.
 
-### Claiming
+### Claiming and ownership
 
 ```sql
 UPDATE "Job" AS j
-SET "status" = 'RUNNING', "lockedAt" = now, "lockedBy" = worker, "attempts" = attempts + 1
+SET "status" = 'RUNNING', "lockedBy" = worker,
+    "claimId" = gen_random_uuid()::text, "leaseExpiresAt" = now + lease,
+    "attempts" = attempts + 1
 FROM (
   SELECT "id" FROM "Job"
-  WHERE ("status" IN ('PENDING','FAILED') AND "runAt" <= now)
-     OR ("status" = 'RUNNING' AND "lockedAt" < staleBefore)
+  WHERE "attempts" < "maxAttempts"
+    AND (("status" IN ('PENDING','FAILED') AND "runAt" <= now)
+      OR ("status" = 'RUNNING' AND "leaseExpiresAt" < now))
   ORDER BY "priority", "runAt", "createdAt"
   LIMIT n
   FOR UPDATE SKIP LOCKED
@@ -191,9 +194,54 @@ RETURNING ...
 ```
 
 `FOR UPDATE SKIP LOCKED` is what lets N workers share one table without ever
-being handed the same row. The stale-lock clause is crash recovery: a job whose
-worker died is reclaimed once `WORKER_LOCK_TIMEOUT_SECONDS` passes, which is why
-`attempts` increments on claim rather than on failure.
+being handed the same row in a single moment. The expired-lease clause is crash
+recovery, which is why `attempts` increments on claim rather than on failure: an
+abandoned attempt costs exactly what a failed one costs.
+
+Two workers can still end up believing they own the same job, because a lease
+has to expire eventually or a crashed worker would block it forever. What must
+never happen is that both of them *act* on it. Three mechanisms, and no one of
+them is sufficient alone:
+
+**A fencing token.** Every claim mints a new `claimId`. It is required to renew
+the lease, to complete, and to fail. A worker whose job was taken over still
+holds the old value, so each of those matches zero rows and it is told it has
+lost the job.
+
+**A bounded lease with renewal.** `leaseExpiresAt` is renewed on a heartbeat
+while a handler runs, on a connection outside the execution transaction so other
+workers see it immediately. A legitimately slow handler is therefore never taken
+over. The lease is also renewed once *before* starting, because a job claimed in
+a batch may wait behind several others and reach the front with its lease nearly
+spent; if that renewal fails, the handler is not run at all.
+
+**The effects live inside the claim.** The handler and its completion run in one
+transaction. If the ownership check at completion finds the claim gone, the
+transaction throws and every write the handler made rolls back with it. This is
+what stops a stale worker leaving a duplicate outbox message behind. It is also
+why `HandlerContext.client` is a `Db` and not a `Transactor`: a handler must not
+open a transaction of its own and commit outside this one.
+
+### Execution guarantees
+
+**At-least-once delivery, at-most-once committed effect per claim.**
+
+A handler may *run* more than once. A worker that stalls past its lease can have
+its job taken over, and both processes may execute concurrently. What cannot
+happen is both committing: the loser's completion matches no row, its
+transaction rolls back, and its writes disappear with it.
+
+This holds for effects written through the handler's transaction, which is every
+effect in this build — outbox rows, invitations, activity entries and attention
+items are all database writes. It would not extend to an effect outside the
+database, and there are none.
+
+Recovery is bounded at both ends. The claim query requires `attempts <
+maxAttempts`, so a job whose worker is killed on every attempt stops being
+offered rather than looping forever. `reapAbandonedJobs`, which runs at the end
+of each tick, then releases an expired claim that still has attempts left or
+declares it `DEAD` when it does not — closing the case where nobody is left
+alive to call `failJob`.
 
 ### Retries
 
@@ -209,6 +257,14 @@ due schedules with the same `FOR UPDATE SKIP LOCKED` pattern and advances
 `nextRunAt` in the same statement. Enqueued jobs carry a dedupe key derived from
 the schedule name and the current second, so even a double claim produces one
 job.
+
+Claiming a schedule and creating its job are **one transaction**, one schedule
+at a time. If the enqueue fails, the claim rolls back with it and the schedule
+is still due, so the next tick retries it. Splitting them meant a failed enqueue
+silently consumed the execution: the schedule looked as though it had run and
+nothing would happen until the next interval. One schedule at a time, rather
+than the whole batch in one transaction, so a single broken schedule cannot
+stall the others.
 
 `nextRunAt` is set from *now* rather than from the previous `nextRunAt`. A
 worker that was offline for an hour fires each schedule once on restart instead
@@ -230,6 +286,28 @@ Registered schedules:
 sleeps only when a tick claimed nothing, so a full batch means more work is
 waiting. `tick()` is what the tests drive directly; `start()` is the loop around
 it.
+
+### History retention
+
+The `Job` table grows by roughly one row per schedule per tick — a few thousand
+rows a day at the intervals above. `maintenance-sweep` prunes it hourly, and the
+policy is deliberately narrow:
+
+| Status | Retained |
+| --- | --- |
+| `SUCCEEDED`, `CANCELLED` | Until `finishedAt` is older than seven days |
+| `FAILED`, `DEAD` | Indefinitely — a failure is evidence |
+| `PENDING`, `RUNNING` | Never pruned; they are live |
+
+Pruning frees the `dedupeKey` of any row it removes. That is safe here because
+every key in use is time-scoped: schedule keys carry a tick bucket, and business
+keys carry the revision they belong to, so a freed key cannot collide with a
+live one. A caller that reused a key verbatim across a pruning boundary would
+get a second job rather than a deduplication, which is why keys are constructed
+this way. Both properties are pinned by tests in `worker-ownership.test.ts`.
+
+Nothing prunes activity history, outbox messages, or any business record. Job
+rows are the only thing this build deletes on a schedule.
 
 One subtlety worth recording, because it was a real bug caught in testing: the
 poll timer must **not** be `unref`'d. It is the only thing keeping the event

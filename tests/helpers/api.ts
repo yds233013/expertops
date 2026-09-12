@@ -110,3 +110,18 @@ export function cookieValue(response: Response, name: string): string | null {
   const match = new RegExp(`${name}=([^;]*)`).exec(header);
   return match?.[1] ?? null;
 }
+
+/**
+ * Pull the token out of a magic link.
+ *
+ * The token lives in the URL fragment (`/portal/enter#t=<token>`) so it is never
+ * transmitted. Tests read it the way the landing page does, rather than by
+ * slicing the path — which is exactly what stopped working, correctly, when the
+ * token left the path.
+ */
+export function tokenFromMagicLink(url: string): string {
+  const hash = new URL(url).hash.replace(/^#/, '');
+  const token = new URLSearchParams(hash).get('t');
+  if (!token) throw new Error(`No token in the fragment of "${new URL(url).pathname}"`);
+  return token;
+}

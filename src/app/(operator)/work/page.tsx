@@ -8,6 +8,7 @@ import { listSupportRequests, supportCounts } from '@/server/services/support';
 import { listOffboardingTasks, offboardingCounts } from '@/server/services/offboarding';
 import { AssignWorkPanel } from '@/components/assign-work-panel';
 import { ReviewWorkPanel } from '@/components/review-work-panel';
+import { AssignOffboardingTask } from '@/components/assign-offboarding-task';
 import { ConfirmOffboardingTask } from '@/components/confirm-offboarding-task';
 import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
 import { type WorkItemStatus } from '@prisma/client';
@@ -57,6 +58,13 @@ export default async function DeliveryPage({
   const canWrite = roleHasCapability(operator.role, 'work:write');
   const canReview = roleHasCapability(operator.role, 'work:review');
   const canConfirm = roleHasCapability(operator.role, 'offboarding:confirm');
+  const canAssign = roleHasCapability(operator.role, 'offboarding:assign');
+  const operators = await prisma.user.findMany({
+    where: { isActive: true, role: { in: ['OPERATOR', 'ADMIN'] } },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+  const unassignedTasks = offboarding.filter((task) => !task.ownerId);
 
   return (
     <div className="space-y-5">
@@ -266,7 +274,14 @@ export default async function DeliveryPage({
       <Card
         title={`Offboarding tasks awaiting confirmation (${offboarding.length})`}
         description="ExpertOps cannot verify any of these. Confirming records that a named operator says they did it."
-        actions={<ProvenanceTag kind="operator" />}
+        actions={
+          <div className="flex items-center gap-2">
+            {offboardingTotals.unassigned > 0 && (
+              <Badge tone="warning">{offboardingTotals.unassigned} unassigned</Badge>
+            )}
+            <ProvenanceTag kind="operator" />
+          </div>
+        }
       >
         {offboarding.length === 0 ? (
           <EmptyState
@@ -274,23 +289,48 @@ export default async function DeliveryPage({
             hint={`${offboardingTotals.CONFIRMED} task(s) confirmed so far.`}
           />
         ) : (
-          <ul className="space-y-2">
-            {offboarding.map((task) => (
-              <li key={task.id} className="rounded-lg border border-ink-200 px-3 py-2">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-ink-900">{task.label}</p>
-                    <p className="text-xs text-ink-500">{task.description}</p>
-                    <p className="mt-1 text-xs text-ink-600">
-                      {task.expert.fullName} · {task.project.code}
-                      {task.dueAt ? ` · due ${formatRelative(task.dueAt)}` : ''}
-                    </p>
+          <>
+            {unassignedTasks.length > 0 && (
+              <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {unassignedTasks.length} task
+                {unassignedTasks.length === 1 ? ' has' : 's have'} no owner. Checklists opened
+                automatically when a project closes start unassigned, because the worker is not a
+                person who can be accountable for one. Give each an owner below.
+              </p>
+            )}
+            <ul className="space-y-2">
+              {offboarding.map((task) => (
+                <li
+                  key={task.id}
+                  className={
+                    task.ownerId
+                      ? 'rounded-lg border border-ink-200 px-3 py-2'
+                      : 'rounded-lg border border-amber-200 bg-amber-50/40 px-3 py-2'
+                  }
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-ink-900">{task.label}</p>
+                      <p className="text-xs text-ink-500">{task.description}</p>
+                      <p className="mt-1 text-xs text-ink-600">
+                        {task.expert.fullName} · {task.project.code}
+                        {task.dueAt ? ` · due ${formatRelative(task.dueAt)}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <AssignOffboardingTask
+                        taskId={task.id}
+                        ownerId={task.ownerId}
+                        owners={operators}
+                        canAssign={canAssign}
+                      />
+                      {canConfirm && <ConfirmOffboardingTask taskId={task.id} label={task.label} />}
+                    </div>
                   </div>
-                  {canConfirm && <ConfirmOffboardingTask taskId={task.id} label={task.label} />}
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </Card>
     </div>
