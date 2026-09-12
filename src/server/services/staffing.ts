@@ -37,7 +37,7 @@ export interface ProposeAssignmentInput {
 }
 
 /** Lock the project row for the remainder of the caller's transaction. */
-async function lockProject(tx: Db, projectId: string): Promise<void> {
+export async function lockProject(tx: Db, projectId: string): Promise<void> {
   const rows = await tx.$queryRaw<Array<{ id: string }>>`
     SELECT "id" FROM "Project" WHERE "id" = ${projectId} FOR UPDATE
   `;
@@ -286,77 +286,97 @@ export interface ReleaseResult {
   seatsFilled: number;
 }
 
-/** Give a seat back. Also runs under the project lock so the count stays exact. */
+/**
+ * Give a seat back. Also runs under the project lock so the count stays exact.
+ *
+ * Opens the transaction; the work itself is in `releaseAssignmentWithin` so a
+ * caller that already holds a transaction can reuse the same implementation
+ * instead of a parallel copy. Prisma cannot nest an interactive transaction, so
+ * the split is what makes sharing possible at all.
+ */
 export async function releaseAssignment(
   client: Transactor,
   actor: Actor,
   assignmentId: string,
   reason: string,
 ): Promise<ReleaseResult> {
+  return client.$transaction((tx) => releaseAssignmentWithin(tx, actor, assignmentId, reason));
+}
+
+/**
+ * The body of a release, expecting to already be inside a transaction.
+ *
+ * Takes the project row lock itself, so a caller only has to supply the
+ * transaction, not the lock.
+ */
+export async function releaseAssignmentWithin(
+  tx: Db,
+  actor: Actor,
+  assignmentId: string,
+  reason: string,
+): Promise<ReleaseResult> {
   if (!reason.trim()) throw badRequest('A reason is required to release a seat.');
 
-  return client.$transaction(async (tx) => {
-    const assignment = await tx.assignment.findUnique({
-      where: { id: assignmentId },
-      include: { project: true, expert: true },
+  const assignment = await tx.assignment.findUnique({
+    where: { id: assignmentId },
+    include: { project: true, expert: true },
+  });
+  if (!assignment) throw notFound('Assignment not found.');
+
+  assertTransition('Assignment', ASSIGNMENT_TRANSITIONS, assignment.status, 'RELEASED');
+
+  await lockProject(tx, assignment.projectId);
+
+  const now = clockNow();
+  const claimed = await tx.assignment.updateMany({
+    where: { id: assignmentId, status: { in: ['PROPOSED', 'CONFIRMED'] } },
+    data: {
+      status: 'RELEASED',
+      releasedAt: now,
+      releaseReason: reason.trim().slice(0, 500),
+      confirmedAt: null,
+    },
+  });
+  if (claimed.count === 0) {
+    throw invalidState('This assignment was already released or completed.');
+  }
+
+  const seatsFilled = await countSeatsTaken(tx, assignment.projectId);
+  await tx.project.update({ where: { id: assignment.projectId }, data: { seatsFilled } });
+
+  await recordActivity(tx, {
+    actor,
+    entityType: 'assignment',
+    entityId: assignmentId,
+    projectId: assignment.projectId,
+    expertId: assignment.expertId,
+    action: 'assignment.released',
+    summary: `${actor.label} released ${assignment.expert.fullName} from ${assignment.project.code}`,
+    metadata: { reason: reason.trim(), seatsFilled },
+  });
+
+  if (assignment.status === 'CONFIRMED') {
+    const rendered = renderAssignmentReleasedEmail({
+      expertName: assignment.expert.fullName,
+      projectTitle: assignment.project.title,
+      projectCode: assignment.project.code,
+      reason: reason.trim(),
     });
-    if (!assignment) throw notFound('Assignment not found.');
-
-    assertTransition('Assignment', ASSIGNMENT_TRANSITIONS, assignment.status, 'RELEASED');
-
-    await lockProject(tx, assignment.projectId);
-
-    const now = clockNow();
-    const claimed = await tx.assignment.updateMany({
-      where: { id: assignmentId, status: { in: ['PROPOSED', 'CONFIRMED'] } },
-      data: {
-        status: 'RELEASED',
-        releasedAt: now,
-        releaseReason: reason.trim().slice(0, 500),
-        confirmedAt: null,
-      },
-    });
-    if (claimed.count === 0) {
-      throw invalidState('This assignment was already released or completed.');
-    }
-
-    const seatsFilled = await countSeatsTaken(tx, assignment.projectId);
-    await tx.project.update({ where: { id: assignment.projectId }, data: { seatsFilled } });
-
-    await recordActivity(tx, {
-      actor,
-      entityType: 'assignment',
-      entityId: assignmentId,
+    await queueMessage(tx, {
+      toEmail: assignment.expert.email,
+      toName: assignment.expert.fullName,
+      subject: rendered.subject,
+      bodyText: rendered.bodyText,
+      template: 'assignment.released',
+      relatedType: 'assignment',
+      relatedId: assignmentId,
       projectId: assignment.projectId,
       expertId: assignment.expertId,
-      action: 'assignment.released',
-      summary: `${actor.label} released ${assignment.expert.fullName} from ${assignment.project.code}`,
-      metadata: { reason: reason.trim(), seatsFilled },
     });
+  }
 
-    if (assignment.status === 'CONFIRMED') {
-      const rendered = renderAssignmentReleasedEmail({
-        expertName: assignment.expert.fullName,
-        projectTitle: assignment.project.title,
-        projectCode: assignment.project.code,
-        reason: reason.trim(),
-      });
-      await queueMessage(tx, {
-        toEmail: assignment.expert.email,
-        toName: assignment.expert.fullName,
-        subject: rendered.subject,
-        bodyText: rendered.bodyText,
-        template: 'assignment.released',
-        relatedType: 'assignment',
-        relatedId: assignmentId,
-        projectId: assignment.projectId,
-        expertId: assignment.expertId,
-      });
-    }
-
-    const released = await tx.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
-    return { assignment: released, seatsFilled };
-  });
+  const released = await tx.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
+  return { assignment: released, seatsFilled };
 }
 
 export async function completeAssignment(

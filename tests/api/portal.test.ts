@@ -24,6 +24,7 @@ import {
 import { DELETE as removeAvailability } from '@/app/api/portal/availability/[windowId]/route';
 import { GET as getOnboarding, PATCH as saveOnboarding } from '@/app/api/portal/onboarding/route';
 import { POST as submitOnboarding } from '@/app/api/portal/onboarding/submit/route';
+import { POST as withdraw } from '@/app/api/portal/withdrawals/route';
 
 async function portalFixture() {
   const operator = await makeOperator();
@@ -421,5 +422,206 @@ describe('portal API: onboarding', () => {
       }),
     );
     expect(locked.status).toBe(409);
+  });
+});
+
+describe('portal API: withdrawals', () => {
+  beforeAll(() => applyMigrations());
+  beforeEach(() => truncateAll());
+
+  /** An expert with an accepted invitation, reachable through the portal. */
+  async function acceptedFixture() {
+    const fixture = await portalFixture();
+    await callRoute(
+      respond,
+      buildRequest('POST', `/api/portal/invitations/${fixture.invitation.id}/respond`, {
+        portalToken: fixture.portalToken,
+        body: { accept: true },
+      }),
+      { invitationId: fixture.invitation.id },
+    );
+    return fixture;
+  }
+
+  it('withdraws the signed-in expert from their own project', async () => {
+    const { portalToken, project, expert } = await acceptedFixture();
+
+    const result = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', {
+        portalToken,
+        body: { projectId: project.id, reason: 'A deadline moved.' },
+      }),
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.body.withdrawal.alreadyWithdrawn).toBe(false);
+    const invitation = await prisma.invitation.findUniqueOrThrow({
+      where: { projectId_expertId: { projectId: project.id, expertId: expert.id } },
+    });
+    expect(invitation.status).toBe('WITHDRAWN');
+  });
+
+  it('accepts a withdrawal with no reason', async () => {
+    const { portalToken, project } = await acceptedFixture();
+
+    const result = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', {
+        portalToken,
+        body: { projectId: project.id },
+      }),
+    );
+    expect(result.status).toBe(200);
+  });
+
+  it('answers a repeated request with the withdrawal that already happened', async () => {
+    const { portalToken, project, expert } = await acceptedFixture();
+    const body = { projectId: project.id, reason: 'Twice.' };
+
+    const first = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', { portalToken, body }),
+    );
+    const second = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', { portalToken, body }),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.body.withdrawal.alreadyWithdrawn).toBe(true);
+    expect(
+      await prisma.activityEvent.count({
+        where: { projectId: project.id, expertId: expert.id, action: 'assignment.expert_withdrew' },
+      }),
+    ).toBe(1);
+  });
+
+  it("refuses another expert's project even with a valid session", async () => {
+    const mine = await acceptedFixture();
+    const theirs = await acceptedFixture();
+
+    const result = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', {
+        portalToken: mine.portalToken,
+        body: { projectId: theirs.project.id },
+      }),
+    );
+
+    expect(result.status).toBe(409);
+    expect(
+      (
+        await prisma.invitation.findUniqueOrThrow({
+          where: {
+            projectId_expertId: {
+              projectId: theirs.project.id,
+              expertId: theirs.expert.id,
+            },
+          },
+        })
+      ).status,
+    ).toBe('ACCEPTED');
+  });
+
+  it('takes the expert from the session and ignores an expertId in the body', async () => {
+    const mine = await acceptedFixture();
+    const theirs = await acceptedFixture();
+
+    const result = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', {
+        portalToken: mine.portalToken,
+        // A caller trying to act as somebody else.
+        body: { projectId: mine.project.id, expertId: theirs.expert.id },
+      }),
+    );
+
+    expect(result.status).toBe(200);
+    expect(
+      (
+        await prisma.invitation.findUniqueOrThrow({
+          where: {
+            projectId_expertId: { projectId: mine.project.id, expertId: mine.expert.id },
+          },
+        })
+      ).status,
+    ).toBe('WITHDRAWN');
+    expect(
+      (
+        await prisma.invitation.findUniqueOrThrow({
+          where: {
+            projectId_expertId: { projectId: theirs.project.id, expertId: theirs.expert.id },
+          },
+        })
+      ).status,
+    ).toBe('ACCEPTED');
+  });
+
+  it('refuses an unauthenticated request', async () => {
+    const { project } = await acceptedFixture();
+
+    const result = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', { body: { projectId: project.id } }),
+    );
+    expect(result.status).toBe(401);
+  });
+
+  it('refuses a request with a missing or mismatched CSRF token', async () => {
+    const { portalToken, project, expert } = await acceptedFixture();
+
+    const missing = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', {
+        portalToken,
+        body: { projectId: project.id },
+        csrfHeader: null,
+      }),
+    );
+    expect(missing.status).toBe(403);
+
+    const mismatched = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', {
+        portalToken,
+        body: { projectId: project.id },
+        csrfHeader: 'not-the-signed-token',
+      }),
+    );
+    expect(mismatched.status).toBe(403);
+
+    const crossOrigin = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', {
+        portalToken,
+        body: { projectId: project.id },
+        origin: 'https://elsewhere.example',
+      }),
+    );
+    expect(crossOrigin.status).toBe(403);
+
+    // None of the rejected attempts changed anything.
+    expect(
+      (
+        await prisma.invitation.findUniqueOrThrow({
+          where: { projectId_expertId: { projectId: project.id, expertId: expert.id } },
+        })
+      ).status,
+    ).toBe('ACCEPTED');
+  });
+
+  it('rejects a body that fails validation', async () => {
+    const { portalToken } = await acceptedFixture();
+
+    const result = await callRoute(
+      withdraw,
+      buildRequest('POST', '/api/portal/withdrawals', {
+        portalToken,
+        body: { projectId: '', reason: 'x'.repeat(501) },
+      }),
+    );
+    expect(result.status).toBe(400);
   });
 });

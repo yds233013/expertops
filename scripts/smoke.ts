@@ -51,7 +51,13 @@ async function primeCsrf(jar: Jar): Promise<void> {
 async function api<T = any>(
   method: string,
   path: string,
-  options: { body?: unknown; jar?: Jar; use?: 'operator' | 'portal' } = {},
+  options: {
+    body?: unknown;
+    jar?: Jar;
+    use?: 'operator' | 'portal';
+    /** Send the request without the double-submit header, as a cross-site form would. */
+    omitCsrf?: boolean;
+  } = {},
 ): Promise<{ status: number; body: T }> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['content-type'] = 'application/json';
@@ -69,7 +75,7 @@ async function api<T = any>(
   if (jar?.csrf) {
     cookie.push(`expertops_csrf=${jar.csrf}`);
     // A same-origin browser submission echoes the cookie in a header.
-    headers['x-csrf-token'] = jar.csrf;
+    if (!options.omitCsrf) headers['x-csrf-token'] = jar.csrf;
   }
   if (cookie.length > 0) headers.cookie = cookie.join('; ');
 
@@ -250,10 +256,14 @@ async function main() {
   check('an illegal status jump is refused (409)', illegal.status === 409, illegal.body);
 
   section('Matching');
+  // A generous limit on purpose. This runs against a development database that
+  // accumulates synthetic experts, and a limit of ten eventually pushes the
+  // expert this walkthrough just created out of the ranking, failing on the
+  // size of the dataset rather than on anything about matching.
   const matched = await api('POST', `/api/projects/${projectId}/match`, {
     jar,
     use: 'operator',
-    body: { limit: 10, includeExcluded: true },
+    body: { limit: 100, includeExcluded: true },
   });
   check('a match run is produced', matched.status === 201, matched.body);
 
@@ -505,6 +515,78 @@ async function main() {
   });
   check('confirming twice is refused (409)', confirmedTwice.status === 409, confirmedTwice.body);
 
+  section('Expert withdrawal');
+  const strangerProject = await api('POST', '/api/projects', {
+    jar,
+    use: 'operator',
+    body: {
+      title: `Smoke unrelated ${stamp}`,
+      clientName: 'Northwind Logistics',
+      seatsRequested: 1,
+      requirements: [{ skillName: 'Payments Infrastructure', required: false }],
+    },
+  });
+  const strangerProjectId: string = strangerProject.body.project.id;
+
+  const wrongProject = await api('POST', '/api/portal/withdrawals', {
+    jar: portalJar,
+    use: 'portal',
+    body: { projectId: strangerProjectId },
+  });
+  check(
+    'withdrawing from a project the expert has no commitment on is refused (409)',
+    wrongProject.status === 409,
+    wrongProject.body,
+  );
+
+  const noSession = await api('POST', '/api/portal/withdrawals', {
+    jar: {},
+    body: { projectId },
+  });
+  check(
+    'withdrawing without a portal session is refused (401)',
+    noSession.status === 401,
+    noSession.body,
+  );
+
+  const noCsrf = await api('POST', '/api/portal/withdrawals', {
+    jar: portalJar,
+    use: 'portal',
+    body: { projectId },
+    omitCsrf: true,
+  });
+  check('withdrawing without a CSRF token is refused (403)', noCsrf.status === 403, noCsrf.body);
+
+  const withdrew = await api('POST', '/api/portal/withdrawals', {
+    jar: portalJar,
+    use: 'portal',
+    // No reason: a withdrawal is valid without one.
+    body: { projectId },
+  });
+  check(
+    'the expert withdraws from their own project',
+    withdrew.status === 200 && withdrew.body.withdrawal.alreadyWithdrawn === false,
+    withdrew.body,
+  );
+
+  const withdrewAgain = await api('POST', '/api/portal/withdrawals', {
+    jar: portalJar,
+    use: 'portal',
+    body: { projectId },
+  });
+  check(
+    'a repeated withdrawal changes nothing and says so',
+    withdrewAgain.status === 200 && withdrewAgain.body.withdrawal.alreadyWithdrawn === true,
+    withdrewAgain.body,
+  );
+
+  const reopened = await api('GET', `/api/projects/${projectId}`, { jar, use: 'operator' });
+  check(
+    'the seat is released and the project is open for staffing again',
+    reopened.body.project.seatsFilled === 0 && reopened.body.project.status === 'STAFFING',
+    reopened.body?.project,
+  );
+
   section('History and outbox');
   const activity = await api('GET', `/api/activity?projectId=${projectId}&limit=100`, {
     jar,
@@ -519,6 +601,7 @@ async function main() {
     'invitation.accepted',
     'assignment.proposed',
     'assignment.confirmed',
+    'assignment.expert_withdrew',
   ]) {
     check(`the project history records ${expected}`, actions.includes(expected), actions);
   }

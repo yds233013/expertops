@@ -4,12 +4,14 @@ import { formatDate, formatDateTime, formatRelative } from '@/lib/time';
 import { currentExpert } from '@/server/http/context';
 import { listAvailability } from '@/server/services/availability';
 import { listInvitationsForExpert } from '@/server/services/invitations';
+import { listExpertCommitments } from '@/server/services/staffing-gaps';
 import { listSupportForExpert } from '@/server/services/support';
 import { listWorkItemsForExpert } from '@/server/services/work';
 import { AvailabilityPanel } from '@/components/portal/availability-panel';
 import { InvitationPanel } from '@/components/portal/invitation-panel';
 import { OnboardingPanel } from '@/components/portal/onboarding-panel';
 import { SupportPanel } from '@/components/portal/support-panel';
+import { WithdrawalPanel } from '@/components/portal/withdrawal-panel';
 import { WorkPanel } from '@/components/portal/work-panel';
 import { Badge, Card, EmptyState, FieldRow, StatusBadge } from '@/components/ui';
 
@@ -29,16 +31,18 @@ export default async function PortalHome() {
     );
   }
 
-  const [invitations, availability, onboardingCase, supportThreads, workItems] = await Promise.all([
-    listInvitationsForExpert(prisma, expert.id),
-    listAvailability(prisma, expert.id),
-    prisma.onboardingCase.findUnique({
-      where: { expertId: expert.id },
-      include: { items: { orderBy: { position: 'asc' } } },
-    }),
-    listSupportForExpert(prisma, expert.id),
-    listWorkItemsForExpert(prisma, expert.id),
-  ]);
+  const [invitations, availability, onboardingCase, supportThreads, workItems, commitments] =
+    await Promise.all([
+      listInvitationsForExpert(prisma, expert.id),
+      listAvailability(prisma, expert.id),
+      prisma.onboardingCase.findUnique({
+        where: { expertId: expert.id },
+        include: { items: { orderBy: { position: 'asc' } } },
+      }),
+      listSupportForExpert(prisma, expert.id),
+      listWorkItemsForExpert(prisma, expert.id),
+      listExpertCommitments(prisma, expert.id),
+    ]);
 
   const openInvitations = invitations.filter((invitation) => invitation.status === 'SENT');
   const acceptedInvitations = invitations.filter((invitation) => invitation.status === 'ACCEPTED');
@@ -189,6 +193,27 @@ export default async function PortalHome() {
             reviewSummary: latestReview?.summary ?? null,
           };
         })}
+      />
+
+      <WithdrawalPanel
+        commitments={commitments.active.map((commitment) => ({
+          projectId: commitment.projectId,
+          projectCode: commitment.projectCode,
+          projectTitle: commitment.projectTitle,
+          clientName: commitment.clientName,
+          stage: commitment.stage,
+          allocationHoursPerWeek: commitment.allocationHoursPerWeek,
+          datesLabel: `${formatDate(commitment.startDate)} → ${formatDate(commitment.endDate)}`,
+          outstandingWorkItems: commitment.outstandingWorkItems,
+          retainedWorkItems: commitment.retainedWorkItems,
+        }))}
+        withdrawals={commitments.withdrawn.map((withdrawal) => ({
+          projectId: withdrawal.projectId,
+          projectCode: withdrawal.projectCode,
+          projectTitle: withdrawal.projectTitle,
+          withdrawnAtLabel: withdrawal.withdrawnAt ? formatDate(withdrawal.withdrawnAt) : null,
+          reason: withdrawal.reason,
+        }))}
       />
 
       <SupportPanel

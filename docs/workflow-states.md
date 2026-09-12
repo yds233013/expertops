@@ -137,7 +137,8 @@ project stays in one place.
 - An archived expert cannot be invited.
 - A project with every seat filled cannot take new invitations.
 - Responding requires status `SENT` and a deadline in the future.
-- Declining requires a reason. Withdrawing requires a reason.
+- Declining requires a reason. An operator withdrawing an invitation requires a
+  reason; an expert withdrawing themselves from the project does not.
 - Accepting is terminal, so a double-click produces one acceptance.
 
 **On acceptance**, in the same transaction: the invitation becomes `ACCEPTED`,
@@ -232,6 +233,29 @@ confirm.
 table rather than decrementing, requires a reason, and queues a simulated email
 only if the seat had actually been confirmed.
 
+**Expert-initiated withdrawal** reuses that release, in one transaction that
+also withdraws the accepted invitation, cancels work still waiting on the
+expert, stops the reminders attached to that work, records the audit event,
+raises the staffing attention item and queues the replacement search. It differs
+from an operator release in four ways:
+
+1. **The reason is optional.** Needing an explanation is not a good enough
+   reason to keep someone on a project they cannot do. Without one, the release
+   reason reads *Expert withdrew (no reason given).*
+2. **It is scoped to the expert's own commitment.** An accepted invitation or a
+   live assignment on *that* project is required; anything else is refused
+   rather than quietly audited. The portal never accepts an expert id from the
+   request: it comes from the session.
+3. **It is idempotent.** The project row is locked first, so concurrent requests
+   queue and the losers return the committed withdrawal unchanged. Repeat clicks
+   produce one audit event, one attention item and one replacement job.
+4. **It reopens a full project.** A project that had become `ACTIVE` on being
+   fully staffed goes back to `STAFFING`, because an `ACTIVE` project accepts no
+   invitations and the replacement would otherwise be unreachable.
+
+Work already submitted, approved or paid is never touched. Only `DRAFT`,
+`ASSIGNED` and `REVISION_REQUESTED` items are cancelled.
+
 ---
 
 ## Job
@@ -277,6 +301,7 @@ mean anything left the machine. Delivery is claimed with a conditional update on
 | Invitation `SENT → ACCEPTED` / `DECLINED` | Expert in portal | `EXPERT` |
 | Invitation `SENT → EXPIRED` | Worker `invitation.expire` | `SYSTEM` |
 | Invitation `→ WITHDRAWN` | Operator, with reason | `OPERATOR` |
+| Invitation `ACCEPTED → WITHDRAWN` | Expert withdraws in the portal | `EXPERT` |
 | Expert `PROSPECT → ONBOARDING` | Acceptance | `EXPERT` |
 | Expert `ONBOARDING → PENDING_VERIFICATION` | Checklist submitted | `EXPERT` |
 | Expert `PENDING_VERIFICATION → VERIFIED` / `REJECTED` | **Operator decision** | `OPERATOR` |
@@ -285,6 +310,8 @@ mean anything left the machine. Delivery is claimed with a conditional update on
 | Assignment `→ PROPOSED` | Operator | `OPERATOR` |
 | Assignment `PROPOSED → CONFIRMED` | **Operator decision** | `OPERATOR` |
 | Assignment `→ RELEASED` | Operator, with reason | `OPERATOR` |
+| Assignment `→ RELEASED` | Expert withdraws in the portal | `EXPERT` |
+| Project `ACTIVE → STAFFING` | Withdrawal reopened a seat | `SYSTEM` |
 
 The two rows in bold are the human confirmations. Nothing else in the system can
 produce them.

@@ -186,6 +186,36 @@ whether a transfer settled.
 
 ---
 
+## When an expert withdraws
+
+An expert can leave a project themselves, from the **Leaving a project** card in
+their portal. You find out about it the same way you find out about everything
+else: a high-severity item on *Needs attention*, titled *<name> withdrew from
+<code>*. The reason is on the item when they gave one, and says so when they did
+not — the portal does not force one.
+
+What has already happened by the time you read it:
+
+- The seat is released and the project's seat count is back down.
+- The accepted invitation is withdrawn, so they are out of the funnel.
+- Work that was still waiting on them is cancelled and its overdue reminders
+  have stopped. Work they already submitted is untouched and still needs
+  reviewing, and any payment already prepared for approved work is unaffected.
+- A project that had gone *active* on being fully staffed is back to *staffing*,
+  so the seat can be filled again.
+- A replacement batch is being assembled from the project's latest ranking.
+
+What is left to you: approve or reject that batch on *Outreach*, then dispatch
+it. Nobody has been contacted before you do. A replacement who accepts still has
+to declare availability, complete onboarding and pass your verification before
+they can be proposed and confirmed onto the seat — a withdrawal does not
+shortcut any of that. The full sequence is in
+[`walkthrough.md`](walkthrough.md#flow-f--an-expert-withdraws-and-a-replacement-is-staffed).
+
+If the seat gets filled another way, the withdrawal item resolves itself.
+
+---
+
 ## Ending an engagement
 
 Closing a project opens an offboarding checklist for everyone staffed on it.

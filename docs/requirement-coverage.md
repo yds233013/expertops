@@ -155,7 +155,8 @@ All present and passing:
 | Rubric version preservation and conflicting reviews | `screening.test.ts` |
 | Qualifications not automatically granting assignment | `screening.test.ts` |
 | Last-seat and overlapping-capacity races | `concurrency.test.ts` |
-| Withdrawal and replacement flow | `withdrawal-and-attention.test.ts` |
+| Withdrawal and replacement flow | `expert-withdrawal.test.ts`, `withdrawal-and-attention.test.ts`, `withdrawal.spec.ts` |
+| Expert-initiated withdrawal, scope and idempotency | `expert-withdrawal.test.ts`, `portal.test.ts` |
 | Duplicate payment preparation and batch inclusion | `delivery-and-payment.test.ts` |
 | Full application → payment export workflow | `lifecycle.test.ts` |
 

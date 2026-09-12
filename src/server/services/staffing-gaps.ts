@@ -1,13 +1,14 @@
 import { type Project } from '@prisma/client';
-import { type Db, type Transactor } from '@/lib/db';
+import { type Db, type MaybeTransactor, withTransaction } from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
-import { badRequest, notFound } from '@/lib/errors';
+import { invalidState, notFound } from '@/lib/errors';
 import { daysFromNow } from '@/lib/time';
 import { type Actor, recordActivity } from './activity';
 import { raiseAttention, resolveIfPresent } from './attention';
 import { enqueueJob } from './jobs';
+import { advanceProjectStatus } from './projects';
 import { checkQualificationEligibility } from './qualifications';
-import { releaseAssignment } from './staffing';
+import { lockProject, releaseAssignmentWithin } from './staffing';
 
 /**
  * Staffing-gap detection.
@@ -318,106 +319,352 @@ export interface WithdrawalResult {
   releasedAssignmentId: string | null;
   seatsFilled: number;
   gap: ProjectGap;
+  /**
+   * True when this project had already been withdrawn from and the call changed
+   * nothing. A retried request, a double-click and a duplicate submit all land
+   * here rather than producing a second set of effects.
+   */
+  alreadyWithdrawn: boolean;
+  /**
+   * Work that was still outstanding and has been cancelled, so the reminders
+   * attached to it stop. Submitted, approved and paid work is never touched.
+   */
+  cancelledWorkItemIds: string[];
+}
+
+/** Work an expert can no longer be expected to deliver once they have left. */
+const OUTSTANDING_WORK_STATUSES = ['DRAFT', 'ASSIGNED', 'REVISION_REQUESTED'] as const;
+
+export interface WithdrawalInput {
+  projectId: string;
+  expertId: string;
+  /** Optional. A withdrawal is valid without an explanation. */
+  reason?: string | null;
 }
 
 /**
  * An expert steps off a project.
  *
- * Releases the seat through the existing staffing service so the capacity
- * accounting and the row lock are reused rather than re-implemented, then
- * immediately recomputes the gap so the shortfall is visible without waiting
- * for the next sweep.
+ * One transaction covers the whole thing: the seat release, the withdrawn
+ * invitation, the cancellation of work that can no longer be delivered, the
+ * audit event, the attention item and the replacement job. Either all of it is
+ * true afterwards or none of it is, so an interrupted request cannot leave a
+ * released seat with no record of why.
+ *
+ * Three properties the callers depend on:
+ *
+ *  * **Scoped.** Withdrawal requires an accepted invitation or a live
+ *    assignment on *that* project. Someone else's project, or a project this
+ *    expert was never committed to, is refused rather than quietly audited.
+ *  * **Idempotent.** The project row is locked first, so concurrent requests
+ *    queue; the losers see the committed withdrawal and return it unchanged.
+ *    Repeat clicks produce one audit event, one attention item and one job.
+ *  * **Non-destructive.** Submitted, approved and paid work survives. Only
+ *    work that was still waiting on this expert is cancelled.
  */
 export async function recordWithdrawal(
-  client: Transactor,
+  client: MaybeTransactor,
   actor: Actor,
-  input: { projectId: string; expertId: string; reason: string },
+  input: WithdrawalInput,
 ): Promise<WithdrawalResult> {
-  if (!input.reason.trim()) throw badRequest('A reason is required to record a withdrawal.');
+  const reason = (input.reason ?? '').trim().slice(0, 500);
+  // `releaseAssignmentWithin` requires a reason for the audit trail, so an
+  // unexplained withdrawal still says what happened, just not why.
+  const releaseReason = reason
+    ? `Expert withdrew: ${reason}`
+    : 'Expert withdrew (no reason given).';
 
-  const expert = await client.expert.findUnique({ where: { id: input.expertId } });
-  if (!expert) throw notFound('Expert not found.');
+  return withTransaction(client, async (tx) => {
+    const expert = await tx.expert.findUnique({ where: { id: input.expertId } });
+    if (!expert) throw notFound('Expert not found.');
 
-  const project = await client.project.findUnique({ where: { id: input.projectId } });
-  if (!project) throw notFound('Project not found.');
+    // Everything below is read under this lock, so two concurrent withdrawals
+    // for the same project cannot both believe they are the first.
+    await lockProject(tx, input.projectId);
+    const project = await tx.project.findUniqueOrThrow({ where: { id: input.projectId } });
 
-  const assignment = await client.assignment.findUnique({
-    where: { projectId_expertId: { projectId: input.projectId, expertId: input.expertId } },
-  });
+    const invitation = await tx.invitation.findUnique({
+      where: { projectId_expertId: { projectId: input.projectId, expertId: input.expertId } },
+    });
+    const assignment = await tx.assignment.findUnique({
+      where: { projectId_expertId: { projectId: input.projectId, expertId: input.expertId } },
+    });
 
-  let releasedAssignmentId: string | null = null;
-  let seatsFilled = project.seatsFilled;
+    const activeAssignment =
+      assignment && (assignment.status === 'PROPOSED' || assignment.status === 'CONFIRMED')
+        ? assignment
+        : null;
+    const acceptedInvitation = invitation?.status === 'ACCEPTED' ? invitation : null;
 
-  if (assignment && (assignment.status === 'PROPOSED' || assignment.status === 'CONFIRMED')) {
-    const released = await releaseAssignment(
-      client,
+    if (!activeAssignment && !acceptedInvitation) {
+      // Either this is a repeat of a withdrawal that already happened, or the
+      // expert has no standing on this project at all. The audit trail is what
+      // tells the two apart.
+      const prior = await tx.activityEvent.findFirst({
+        where: {
+          projectId: input.projectId,
+          expertId: input.expertId,
+          action: 'assignment.expert_withdrew',
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!prior) {
+        throw invalidState(
+          `${expert.fullName} has no accepted invitation or active assignment on ${project.code}, so there is nothing to withdraw from.`,
+          { projectId: input.projectId, expertId: input.expertId },
+        );
+      }
+
+      const gap = await computeProjectGap(tx, input.projectId);
+      const metadata = (prior.metadata ?? {}) as { releasedAssignmentId?: string | null };
+      return {
+        releasedAssignmentId: metadata.releasedAssignmentId ?? null,
+        seatsFilled: gap.seatsFilled,
+        gap,
+        alreadyWithdrawn: true,
+        cancelledWorkItemIds: [],
+      };
+    }
+
+    let releasedAssignmentId: string | null = null;
+    let seatsFilled = project.seatsFilled;
+
+    if (activeAssignment) {
+      // Only the commitment on this project is released. Seats the expert holds
+      // elsewhere are none of this call's business.
+      const released = await releaseAssignmentWithin(tx, actor, activeAssignment.id, releaseReason);
+      releasedAssignmentId = released.assignment.id;
+      seatsFilled = released.seatsFilled;
+    }
+
+    // An accepted invitation is withdrawn too, so the funnel reflects reality.
+    await tx.invitation.updateMany({
+      where: { projectId: input.projectId, expertId: input.expertId, status: 'ACCEPTED' },
+      data: { status: 'WITHDRAWN', withdrawReason: releaseReason, respondedAt: clockNow() },
+    });
+
+    // Work still waiting on this expert cannot be delivered by them, so it is
+    // cancelled and its overdue reminders stop. Anything already submitted,
+    // reviewed, approved or paid is left exactly as it is: the expert did that
+    // work and the record of it has to survive their departure.
+    const outstanding = await tx.workItem.findMany({
+      where: {
+        projectId: input.projectId,
+        expertId: input.expertId,
+        status: { in: [...OUTSTANDING_WORK_STATUSES] },
+      },
+      select: { id: true, reference: true },
+    });
+    const cancelledWorkItemIds = outstanding.map((item) => item.id);
+    if (cancelledWorkItemIds.length > 0) {
+      await tx.workItem.updateMany({
+        where: {
+          id: { in: cancelledWorkItemIds },
+          status: { in: [...OUTSTANDING_WORK_STATUSES] },
+        },
+        data: { status: 'CANCELLED' },
+      });
+      for (const item of outstanding) {
+        await resolveIfPresent(
+          tx,
+          `work:overdue:${item.id}`,
+          'The expert withdrew, so this work item was cancelled.',
+        );
+      }
+    }
+
+    // Counted before the new event is written, so the key below identifies this
+    // withdrawal and not merely this pairing: an expert who is re-staffed and
+    // withdraws a second time gets a second replacement search.
+    const priorWithdrawals = await tx.activityEvent.count({
+      where: {
+        projectId: input.projectId,
+        expertId: input.expertId,
+        action: 'assignment.expert_withdrew',
+      },
+    });
+
+    await recordActivity(tx, {
       actor,
-      assignment.id,
-      `Expert withdrew: ${input.reason.trim()}`,
-    );
-    releasedAssignmentId = released.assignment.id;
-    seatsFilled = released.seatsFilled;
+      entityType: 'assignment',
+      entityId: activeAssignment?.id ?? assignment?.id ?? input.projectId,
+      projectId: input.projectId,
+      expertId: input.expertId,
+      action: 'assignment.expert_withdrew',
+      summary: `${expert.fullName} withdrew from ${project.code}`,
+      metadata: {
+        reason: reason || null,
+        releasedAssignmentId,
+        cancelledWorkItems: outstanding.map((item) => item.reference),
+      },
+    });
+
+    // Anything that was true only because this person held the seat is no longer
+    // true, so those items close rather than lingering as noise.
+    for (const key of [
+      releasedAssignmentId ? `delivery:no_work:${releasedAssignmentId}` : null,
+      `staffing:ready:${input.projectId}:${input.expertId}`,
+      `staffing:blocked:${input.projectId}:${input.expertId}`,
+    ]) {
+      if (key) await resolveIfPresent(tx, key, 'The expert withdrew from this project.');
+    }
+
+    const gap = await computeProjectGap(tx, input.projectId);
+
+    // A fully staffed project is ACTIVE, and an ACTIVE project accepts no
+    // invitations. Without this, a withdrawal from a full project produced a
+    // replacement batch that could never be dispatched: the shortage was
+    // visible and unfixable. Returning it to STAFFING is the existing
+    // transition for exactly this situation.
+    if (gap.gap > 0) {
+      await advanceProjectStatus(tx, actor, input.projectId, 'STAFFING');
+    }
+
+    await raiseAttention(tx, {
+      dedupeKey: `staffing:withdrawal:${input.projectId}:${input.expertId}`,
+      category: 'staffing.withdrawal',
+      severity: 'HIGH',
+      title: `${expert.fullName} withdrew from ${project.code}`,
+      blocker: reason ? `Reason given: ${reason}` : 'No reason was given.',
+      impact: `${gap.gap} seat(s) now unfilled on ${project.code}.`,
+      nextAction: 'Review replacement recommendations and send an approved outreach batch.',
+      projectId: input.projectId,
+      expertId: input.expertId,
+      dueAt: project.startDate,
+      metadata: {
+        reason: reason || null,
+        gap: gap.gap,
+        cancelledWorkItems: outstanding.map((item) => item.reference),
+      },
+    });
+
+    // Replacement recommendations are assembled by a job; they are never sent.
+    // Dispatch waits on an operator approving the resulting batch.
+    await enqueueJob(tx, {
+      type: 'staffing.propose_replacements',
+      payload: { projectId: input.projectId },
+      priority: 20,
+      // One key per withdrawal event. A retry that somehow reached this point
+      // would collide with it rather than queue a second search.
+      dedupeKey: `staffing.propose_replacements:${input.projectId}:${input.expertId}:${priorWithdrawals}`,
+    });
+
+    return {
+      releasedAssignmentId,
+      seatsFilled,
+      gap,
+      alreadyWithdrawn: false,
+      cancelledWorkItemIds,
+    };
+  });
+}
+
+export interface ExpertCommitment {
+  projectId: string;
+  projectCode: string;
+  projectTitle: string;
+  clientName: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  /** Where this commitment sits: accepted but not yet given a seat, or holding one. */
+  stage: 'ACCEPTED' | 'PROPOSED' | 'CONFIRMED';
+  allocationHoursPerWeek: number | null;
+  /** Work that would be cancelled by withdrawing now. */
+  outstandingWorkItems: number;
+  /** Work already submitted or approved, which a withdrawal keeps. */
+  retainedWorkItems: number;
+}
+
+export interface WithdrawnCommitment {
+  projectId: string;
+  projectCode: string;
+  projectTitle: string;
+  withdrawnAt: Date | null;
+  reason: string | null;
+}
+
+/**
+ * What an expert is currently committed to, and what they have withdrawn from.
+ *
+ * This is the portal's view of its own withdrawal action: the live commitments
+ * are the ones that can be withdrawn from, and the withdrawn list is what the
+ * expert sees afterwards so the outcome is not invisible.
+ */
+export async function listExpertCommitments(
+  db: Db,
+  expertId: string,
+): Promise<{ active: ExpertCommitment[]; withdrawn: WithdrawnCommitment[] }> {
+  const [invitations, assignments, workItems] = await Promise.all([
+    db.invitation.findMany({
+      where: { expertId, status: { in: ['ACCEPTED', 'WITHDRAWN'] } },
+      include: { project: true },
+      orderBy: { respondedAt: 'desc' },
+    }),
+    db.assignment.findMany({
+      where: { expertId, status: { in: ['PROPOSED', 'CONFIRMED'] } },
+      include: { project: true },
+    }),
+    db.workItem.findMany({ where: { expertId }, select: { projectId: true, status: true } }),
+  ]);
+
+  const outstandingByProject = new Map<string, number>();
+  const retainedByProject = new Map<string, number>();
+  for (const item of workItems) {
+    const bucket = (OUTSTANDING_WORK_STATUSES as readonly string[]).includes(item.status)
+      ? outstandingByProject
+      : item.status === 'CANCELLED'
+        ? null
+        : retainedByProject;
+    if (bucket) bucket.set(item.projectId, (bucket.get(item.projectId) ?? 0) + 1);
   }
 
-  // An accepted invitation is withdrawn too, so the funnel reflects reality.
-  await client.invitation.updateMany({
-    where: { projectId: input.projectId, expertId: input.expertId, status: 'ACCEPTED' },
-    data: {
-      status: 'WITHDRAWN',
-      withdrawReason: `Expert withdrew: ${input.reason.trim()}`,
-      respondedAt: clockNow(),
-    },
-  });
+  const active: ExpertCommitment[] = [];
+  const seen = new Set<string>();
 
-  await recordActivity(client, {
-    actor,
-    entityType: 'assignment',
-    entityId: assignment?.id ?? input.projectId,
-    projectId: input.projectId,
-    expertId: input.expertId,
-    action: 'assignment.expert_withdrew',
-    summary: `${expert.fullName} withdrew from ${project.code}`,
-    metadata: { reason: input.reason.trim(), releasedAssignmentId },
-  });
-
-  // Anything that was true only because this person held the seat is no longer
-  // true, so those items close rather than lingering as noise.
-  for (const key of [
-    releasedAssignmentId ? `delivery:no_work:${releasedAssignmentId}` : null,
-    `staffing:ready:${input.projectId}:${input.expertId}`,
-    `staffing:blocked:${input.projectId}:${input.expertId}`,
-  ]) {
-    if (key) await resolveIfPresent(client, key, 'The expert withdrew from this project.');
+  for (const assignment of assignments) {
+    seen.add(assignment.projectId);
+    active.push({
+      projectId: assignment.projectId,
+      projectCode: assignment.project.code,
+      projectTitle: assignment.project.title,
+      clientName: assignment.project.clientName,
+      startDate: assignment.startDate ?? assignment.project.startDate,
+      endDate: assignment.endDate ?? assignment.project.endDate,
+      stage: assignment.status === 'CONFIRMED' ? 'CONFIRMED' : 'PROPOSED',
+      allocationHoursPerWeek: assignment.allocationHoursPerWeek,
+      outstandingWorkItems: outstandingByProject.get(assignment.projectId) ?? 0,
+      retainedWorkItems: retainedByProject.get(assignment.projectId) ?? 0,
+    });
   }
 
-  const gap = await computeProjectGap(client, input.projectId);
+  for (const invitation of invitations) {
+    if (invitation.status !== 'ACCEPTED') continue;
+    if (seen.has(invitation.projectId)) continue;
+    active.push({
+      projectId: invitation.projectId,
+      projectCode: invitation.project.code,
+      projectTitle: invitation.project.title,
+      clientName: invitation.project.clientName,
+      startDate: invitation.project.startDate,
+      endDate: invitation.project.endDate,
+      stage: 'ACCEPTED',
+      allocationHoursPerWeek: null,
+      outstandingWorkItems: outstandingByProject.get(invitation.projectId) ?? 0,
+      retainedWorkItems: retainedByProject.get(invitation.projectId) ?? 0,
+    });
+  }
 
-  await raiseAttention(client, {
-    dedupeKey: `staffing:withdrawal:${input.projectId}:${input.expertId}`,
-    category: 'staffing.withdrawal',
-    severity: 'HIGH',
-    title: `${expert.fullName} withdrew from ${project.code}`,
-    blocker: `Reason given: ${input.reason.trim()}`,
-    impact: `${gap.gap} seat(s) now unfilled on ${project.code}.`,
-    nextAction: 'Review replacement recommendations and send an approved outreach batch.',
-    projectId: input.projectId,
-    expertId: input.expertId,
-    dueAt: project.startDate,
-    metadata: { reason: input.reason.trim(), gap: gap.gap },
-  });
+  const withdrawn: WithdrawnCommitment[] = invitations
+    .filter((invitation) => invitation.status === 'WITHDRAWN')
+    .map((invitation) => ({
+      projectId: invitation.projectId,
+      projectCode: invitation.project.code,
+      projectTitle: invitation.project.title,
+      withdrawnAt: invitation.respondedAt,
+      reason: invitation.withdrawReason,
+    }));
 
-  // Replacement recommendations are assembled by a job; they are never sent.
-  // Dispatch waits on an operator approving the resulting batch.
-  await enqueueJob(client, {
-    type: 'staffing.propose_replacements',
-    payload: { projectId: input.projectId },
-    priority: 20,
-    dedupeKey: `staffing.propose_replacements:${input.projectId}:${clockNow().getTime()}`,
-    // Timestamped, so unique per call. See invitation.send.
-    dedupeScope: 'DISPOSABLE',
-  });
-
-  return { releasedAssignmentId, seatsFilled, gap };
+  return { active, withdrawn };
 }
 
 export interface ReplacementRecommendation {

@@ -168,16 +168,28 @@ describe('withdrawal and replacement', () => {
     expect(items[0]!.blocker).toContain('Conflict at their day job');
   });
 
-  it('requires a reason', async () => {
+  it('accepts a withdrawal with no reason and says so on the item', async () => {
     const { operator, project, expert } = await staffedProject();
-    await expectAppError(
-      recordWithdrawal(prisma, actorFor(operator), {
-        projectId: project.id,
-        expertId: expert.id,
-        reason: '   ',
-      }),
-      'BAD_REQUEST',
-    );
+
+    // A reason is optional: needing one is not a reason to trap someone on a
+    // project they cannot do.
+    const result = await recordWithdrawal(prisma, actorFor(operator), {
+      projectId: project.id,
+      expertId: expert.id,
+      reason: '   ',
+    });
+    expect(result.alreadyWithdrawn).toBe(false);
+    expect(result.releasedAssignmentId).not.toBeNull();
+
+    const items = await listAttention(prisma, { category: 'staffing.withdrawal' });
+    expect(items).toHaveLength(1);
+    expect(items[0]!.blocker).toBe('No reason was given.');
+
+    const assignment = await prisma.assignment.findUniqueOrThrow({
+      where: { projectId_expertId: { projectId: project.id, expertId: expert.id } },
+    });
+    expect(assignment.status).toBe('RELEASED');
+    expect(assignment.releaseReason).toContain('no reason given');
   });
 
   it('recommends replacements without contacting anyone', async () => {
