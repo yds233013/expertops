@@ -9,6 +9,7 @@ import {
   purgeExpiredSessions,
   resolveSession,
   revokeSessionsFor,
+  rotateOperatorPassword,
 } from '@/server/services/auth';
 import {
   EMAIL_ATTEMPT_LIMIT,
@@ -17,6 +18,7 @@ import {
   pruneLoginAttempts,
 } from '@/server/services/login-protection';
 import { AppError } from '@/lib/errors';
+import { SYSTEM_ACTOR } from '@/server/services/activity';
 
 /**
  * Sign-in abuse, session expiry, and session revocation.
@@ -223,6 +225,41 @@ describe('session expiry and revocation', () => {
       where: { action: 'operator.sessions_revoked' },
     });
     expect(event.summary).toMatch(/Laptop left on a train/);
+  });
+
+  it('rotating a password ends every live session and refuses the old one', async () => {
+    // The case this answers is a credential that leaked. Changing the password
+    // while leaving the cookies alive would fix nothing for whoever already has
+    // one, so the two have to happen together.
+    const operator = await makeOperator();
+    const laptop = await login(prisma, {
+      email: operator.email,
+      password: operator.plainPassword,
+    });
+    const phone = await login(prisma, { email: operator.email, password: operator.plainPassword });
+
+    const replacement = 'a-replacement-password-long-enough';
+    const result = await rotateOperatorPassword(prisma, SYSTEM_ACTOR, {
+      email: operator.email.toUpperCase(),
+      newPassword: replacement,
+      reason: 'Password was exposed in a transcript',
+    });
+
+    expect(result.sessionsRevoked).toBe(2);
+    expect(await resolveSession(prisma, laptop.token)).toBeNull();
+    expect(await resolveSession(prisma, phone.token)).toBeNull();
+
+    await expect(
+      login(prisma, { email: operator.email, password: operator.plainPassword }),
+    ).rejects.toBeInstanceOf(AppError);
+
+    const fresh = await login(prisma, { email: operator.email, password: replacement });
+    expect(await resolveSession(prisma, fresh.token)).not.toBeNull();
+
+    const event = await prisma.activityEvent.findFirstOrThrow({
+      where: { action: 'operator.password_rotated' },
+    });
+    expect(event.summary).toMatch(/exposed in a transcript/);
   });
 
   it('deactivating an operator ends their sessions immediately', async () => {

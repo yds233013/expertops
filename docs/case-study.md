@@ -107,9 +107,11 @@ re-invitation crashing dispatch on a unique constraint.
   transport exists.
 - **No payment execution.** Payment preparation produces a CSV for a finance
   process elsewhere. Nothing moves money and no action marks anyone as paid.
-- **The hosted database has no automatic backups.** Point-in-time recovery is
-  disabled with no bucket configured; enabling it is a paid change that has not
-  been made. Restore has been verified locally, not from a hosted backup.
+- **Hosted backup availability and recovery remain unverified.** Point-in-time
+  recovery is disabled with no bucket configured, and enabling it is a paid
+  change that has not been made; whether the platform keeps any backup of its own
+  was not established. Restore has been verified locally, not from a hosted
+  backup.
 - **Two-identity, not two-person.** The separation-of-duties control has been
   exercised with two accounts driven by one person. That shows the system binds
   approval to a second identity and records both. It shows nothing about whether

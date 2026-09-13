@@ -100,10 +100,8 @@ than replaced, so the same id comes back every later time.
 
 ## Still not verified
 
-- **Scheduled hosted backups and a restore from one.** See
-  [Recovery](#recovery-what-exists-and-what-does-not) below: the hosted database
-  has no automatic backups configured, and no authorized path exists to take a
-  manual one without a change that has deliberately not been made.
+- **Hosted backup availability and recovery remain unverified.** See
+  [Recovery](#recovery-what-is-known-and-what-is-not) below.
 - **Concurrent-tester behaviour on the hosted instance.** Race safety is
   evidenced locally against real PostgreSQL, not on the deployment. See
   [Concurrency](#concurrency-local-evidence-not-hosted).
@@ -112,16 +110,21 @@ than replaced, so the same id comes back every later time.
 
 ---
 
-## Recovery: what exists, and what does not
+## Recovery: what is known, and what is not
 
 Inspected on the hosted deployment, 13 September 2026.
 
-**There are no automatically scheduled backups.** Railway's point-in-time
-recovery for this Postgres service reports `Status: disabled`, `Bucket wired:
-no`. Enabling it is a paid change and has not been made. The only durable copy of
-the data is the 221 MB service volume itself, which is storage, not a backup —
-it does not survive the database being corrupted, only the container being
-replaced.
+**Hosted backup availability and recovery remain unverified.**
+
+What was observed: Railway's point-in-time recovery for this Postgres service
+reports `Status: disabled`, `Bucket wired: no`. Enabling it is a paid change and
+has not been made. The service has a 221 MB volume, which is storage rather than
+a backup — it survives the container being replaced, not the data being
+corrupted.
+
+What was not established: whether the platform keeps any backup of its own
+outside the PITR feature. Nothing available here can confirm or rule that out,
+so no claim is made either way.
 
 **A manual hosted backup cannot be taken with existing access.** Every route into
 that database requires a change that was deliberately not made:
@@ -133,8 +136,8 @@ that database requires a change that was deliberately not made:
 | Public TCP proxy on Postgres | Would expose the database to the internet, against the security posture this environment is built around |
 | Enable PITR | A paid resource |
 
-So the honest state is: **the hosted database is unbacked**, and that is the most
-important operational gap in this environment.
+So hosted backup availability and recovery remain unverified, and that is the
+most important open item in this environment.
 
 **Restore mechanics are verified, locally.** `tests/integration/backup-restore.test.ts`
 runs against real PostgreSQL and covers the things a restore has to get right —

@@ -1,5 +1,5 @@
 import { type User, type UserRole } from '@prisma/client';
-import { type Db } from '@/lib/db';
+import { type Db, type Transactor, withTransaction } from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
 import { getEnv } from '@/lib/env';
 import { badRequest, conflict, notFound, unauthenticated } from '@/lib/errors';
@@ -145,6 +145,50 @@ export async function revokeSessionsFor(
     metadata: { sessions: removed.count, reason: reason.trim() },
   });
   return removed.count;
+}
+
+/**
+ * Give an operator a new password and end every session they hold.
+ *
+ * The two halves belong together. Rotating the password without dropping the
+ * sessions leaves whoever already has a cookie signed in, which is exactly the
+ * case a rotation is usually responding to — a credential that went somewhere it
+ * should not have. Doing it in one transaction means there is no window where
+ * the old password is dead but the old session is still alive.
+ */
+export async function rotateOperatorPassword(
+  db: Transactor,
+  actor: Actor,
+  input: { email: string; newPassword: string; reason: string },
+): Promise<{ userId: string; sessionsRevoked: number }> {
+  const email = input.email.trim().toLowerCase();
+  const reason = input.reason.trim();
+  if (!reason) throw badRequest('A reason is required to rotate a password.');
+  if (input.newPassword.length < 8) {
+    throw badRequest('Password must be at least 8 characters.');
+  }
+
+  return withTransaction(db, async (tx) => {
+    const user = await tx.user.findUnique({ where: { email } });
+    if (!user) throw notFound('Operator not found.');
+
+    await tx.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await hashPassword(input.newPassword) },
+    });
+    const removed = await tx.session.deleteMany({ where: { userId: user.id } });
+
+    await recordActivity(tx, {
+      actor,
+      entityType: 'user',
+      entityId: user.id,
+      action: 'operator.password_rotated',
+      summary: `${actor.label} rotated the password for ${user.name} and ended ${removed.count} session(s): ${reason}`,
+      metadata: { sessions: removed.count, reason },
+    });
+
+    return { userId: user.id, sessionsRevoked: removed.count };
+  });
 }
 
 /**
