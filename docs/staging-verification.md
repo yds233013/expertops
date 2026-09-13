@@ -100,14 +100,53 @@ than replaced, so the same id comes back every later time.
 
 ## Still not verified
 
-- **Payment batches cannot be completed here.** A batch must be approved by
-  somebody other than the operator who created it, and this deployment has one
-  operator account. The segregation of duties is working; it just cannot be
-  exercised alone.
 - Scheduled backups of the managed PostgreSQL, and a restore from one.
 - More than one concurrent tester.
 - The `Worker` page still tells the reader to start a worker with `npm run
   worker`, which is not how this deployment runs one.
+
+---
+
+## Payment batch: the second approver
+
+The gap left open above is now closed. A second operator account was added with
+`scripts/create-operator.ts`, role ADMIN, which is the role carrying
+`payment:approve`. Its password was generated locally and passed to the script
+through an environment variable, so the script's print-once branch never ran; the
+variable was deleted from the service afterwards and the value is not in this
+repository or in any log.
+
+**This exercised two account identities, not two independent human approvers.**
+One person drove both sessions. What it proves is that the application binds
+approval to an identity other than the creator's and records both. It says
+nothing about whether a second human actually reviewed the figures, which is the
+control the rule exists to provide.
+
+| Step | Actor | Result |
+| --- | --- | --- |
+| Create batch from PAY-0001 | Yash Shah | PB-0001, 1 item, 1260.00 USD, 01–13 Sept 2026 |
+| Submit for approval | Yash Shah | pending approval |
+| Approve as the creator | Yash Shah | **Refused**: "A payment batch must be approved by someone other than the operator who created it." Batch stayed pending |
+| Approve | SYNTHETIC Approver | approved |
+| Export CSV | SYNTHETIC Approver | exported |
+
+The exported file, `pb-0001.csv`: one header row and exactly one data row,
+`PAY-0001` appearing once, amount `1260.00` USD, consistent with 7 hours at
+180.00. No column or value in the file records payment — there is no `paid`,
+`settled` or `paid_at` field anywhere in it.
+
+Export did not mark anything paid. The page reports the batch as `exported` and
+badges the count "not paid", with the line "Exported. This records that a file
+was produced, not that anyone was paid." The activity log names all three acts
+separately: created by Yash Shah, approved by SYNTHETIC Approver, exported by
+SYNTHETIC Approver.
+
+The tester gate stayed on throughout: `/` and `/payments` both answered 401 to an
+unauthenticated request during the run.
+
+One thing worth changing, not changed here: the Approve button is offered to the
+batch's own creator, and the refusal only arrives after clicking it. The server
+is right and the button is wrong.
 
 ---
 
