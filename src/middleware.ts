@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { CSRF_COOKIE } from '@/lib/csrf-constants';
 import { generateEdgeToken, signEdgeToken } from '@/server/http/csrf-edge';
+import {
+  GATE_CHALLENGE_HEADERS,
+  gateAllows,
+  gateCredentials,
+  isGateExempt,
+} from '@/server/http/staging-gate';
 
 /**
  * Issue a CSRF token cookie to any browser that does not already hold one.
@@ -13,6 +19,23 @@ import { generateEdgeToken, signEdgeToken } from '@/server/http/csrf-edge';
  * guards, where the session is already being resolved.
  */
 export async function middleware(request: NextRequest) {
+  // The shared outer gate, when a deployment configures one. It runs before
+  // anything else so a stranger who finds the URL never reaches a login form,
+  // a portal, or an API route. /api/health is exempt because the platform's
+  // own health check cannot send credentials.
+  const gate = gateCredentials({
+    STAGING_GATE_USER: process.env.STAGING_GATE_USER,
+    STAGING_GATE_PASSWORD: process.env.STAGING_GATE_PASSWORD,
+  });
+  if (gate && !isGateExempt(request.nextUrl.pathname)) {
+    if (!gateAllows(request.headers.get('authorization'), gate)) {
+      return new NextResponse('Authentication required.', {
+        status: 401,
+        headers: GATE_CHALLENGE_HEADERS,
+      });
+    }
+  }
+
   const response = NextResponse.next();
 
   if (!request.cookies.get(CSRF_COOKIE)?.value) {

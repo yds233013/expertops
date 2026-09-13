@@ -1,0 +1,114 @@
+# ExpertOps on Render — private staging, synthetic data, simulated email.
+#
+# Three billable services, one shared environment group:
+#
+#   expertops-staging          web      Next.js, public URL, behind the shared gate
+#   expertops-staging-worker   worker   the persistent background worker
+#   expertops-staging-db       postgres private to the Render services
+#
+# Migrations are `preDeployCommand`, which Render runs after the build and
+# before the new version receives traffic, on a separate instance. If it fails,
+# the deploy fails and the previous version keeps serving. That is a real
+# release gate, unlike compose's depends_on.
+#
+# Both services carry the same pre-deploy command on purpose. Render deploys a
+# blueprint's services in parallel, so gating only the web service would let the
+# worker start against an un-migrated schema. `prisma migrate deploy` takes a
+# PostgreSQL advisory lock, so the two runs serialise and the second is a no-op
+# that also proves the schema is current.
+#
+# Rollback: Render reuses the previous build artifact and does NOT re-run
+# migrations or revert the database. See docs/staging-deployment.md.
+
+envVarGroups:
+  - name: expertops-staging
+    envVars:
+      # One value, shared by both services. Generating it per service would
+      # give the worker a different key from the web app, and every portal link
+      # the worker signs would be rejected by the app that has to verify it.
+      - key: AUTH_SECRET
+        generateValue: true
+      # Unused on a deployment — no demo accounts are seeded — but the
+      # configuration guard refuses to start if it is still the shipped value.
+      - key: SEED_DEMO_PASSWORD
+        generateValue: true
+      # This is a deployment, not a build: turns on the guard that refuses demo
+      # secrets, exposed magic links, plain HTTP and the development database.
+      - key: EXPERTOPS_ENV
+        value: production
+      - key: EXPOSE_PORTAL_LINKS_IN_UI
+        value: 'false'
+      - key: LOG_FORMAT
+        value: json
+      # The shared outer gate for invited testers. There is no proxy of ours in
+      # front of a Render service, so the gate lives in middleware.
+      - key: STAGING_GATE_USER
+        value: tester
+      # Set once in the dashboard at first deploy, then shared by both services.
+      - key: STAGING_GATE_PASSWORD
+        sync: false
+      # Must equal the service's own https URL. Render assigns it when the
+      # service is created, so it is filled in at first deploy: portal and
+      # invitation links are built from this.
+      - key: APP_BASE_URL
+        sync: false
+
+services:
+  - type: web
+    name: expertops-staging
+    runtime: node
+    plan: 0.5c-512mb
+    region: oregon
+    branch: main
+    # Deliberately off. A rollback on Render does not disable auto-deploys, so
+    # a push after a rollback would quietly reinstate the code just reverted.
+    autoDeploy: false
+    # --include=dev because the build needs TypeScript and Tailwind, and the
+    # worker needs tsx at runtime, and Render sets NODE_ENV=production.
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    preDeployCommand: npx prisma migrate deploy
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - fromGroup: expertops-staging
+      - key: DATABASE_URL
+        fromDatabase:
+          name: expertops-staging-db
+          property: connectionString
+
+  - type: worker
+    name: expertops-staging-worker
+    runtime: node
+    plan: 0.5c-512mb
+    region: oregon
+    branch: main
+    autoDeploy: false
+    # No `npm run build`: the worker runs TypeScript through tsx and never
+    # serves a page, so compiling Next.js here would only spend pipeline
+    # minutes.
+    buildCommand: npm ci --include=dev && npx prisma generate
+    preDeployCommand: npx prisma migrate deploy
+    # The binary directly rather than through npm, so SIGTERM reaches the
+    # process that has the shutdown handler and the job in flight finishes
+    # inside its lease.
+    startCommand: node_modules/.bin/tsx src/server/worker/main.ts
+    envVars:
+      - fromGroup: expertops-staging
+      - key: DATABASE_URL
+        fromDatabase:
+          name: expertops-staging-db
+          property: connectionString
+      - key: WORKER_NAME
+        value: render-staging-worker
+
+databases:
+  - name: expertops-staging-db
+    databaseName: expertops_staging
+    user: expertops_app
+    plan: 0.1c-256mb
+    region: oregon
+    postgresMajorVersion: '16'
+    # Empty list: reachable from the Render services above and from nothing
+    # else on the internet. Administration goes through the Render dashboard's
+    # psql shell.
+    ipAllowList: []

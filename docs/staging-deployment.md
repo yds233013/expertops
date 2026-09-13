@@ -4,7 +4,16 @@ A private staging environment for ExpertOps: the Next.js app, the persistent
 worker and PostgreSQL, reachable only by invited testers, carrying synthetic
 data and simulated email.
 
-Nothing here has been deployed. The configuration in `deploy/` was built and
+**The platform decision is Render.** See
+[Deploying on Render](#deploying-on-render) for the blueprint, the release
+behaviour and the bill. The self-hosted VPS arrangement described in the rest of
+this document is kept because the packaging, the guards, the backup and restore
+scripts, the operator tooling and the tester model are all shared with it — and
+because it remains the fallback if Render is ever dropped. The provider
+comparison and the DigitalOcean/Hetzner preflight below are **superseded**; read
+them as history, not as a recommendation.
+
+Nothing has been deployed. The configuration in `deploy/` was built and
 exercised locally against an isolated database; what is still unverified is
 listed under [What only a host can prove](#what-only-a-host-can-prove).
 
@@ -14,7 +23,10 @@ participant data, or on-call.
 
 ---
 
-## Recommendation
+## Recommendation — superseded
+
+> Superseded by [Deploying on Render](#deploying-on-render). Kept for the
+> reasoning and the prices, which were verified at the time.
 
 **One small VPS running four containers behind Caddy.** A DigitalOcean Basic
 Droplet — 1 vCPU, 2 GiB RAM, 50 GiB SSD, 2 TB transfer — at **$12.00/month**.
@@ -63,7 +75,104 @@ rather than a bigger VPS.
 
 ---
 
+## Deploying on Render
+
+`render.yaml` at the repository root is the blueprint. Three billable services
+and one shared environment group.
+
+| Service | Type | Plan | Monthly |
+| --- | --- | --- | --- |
+| `expertops-staging` | web | `0.5c-512mb` — 0.5 CPU, 512 MB | $7.00 |
+| `expertops-staging-worker` | worker | `0.5c-512mb` — 0.5 CPU, 512 MB | $7.00 |
+| `expertops-staging-db` | Postgres 16 | `0.1c-256mb` — 256 MB, 1 GB storage | $6.00 |
+| Hobby workspace | — | — | $0.00 |
+| **Total** | | | **$20.00/month** |
+
+Read from Render's pricing page on 12 September 2026. Sales tax is added
+according to the billing address. Included on Hobby and not expected to be
+exceeded by a staging box: 5 GB bandwidth (then $0.15/GB), 500 build-pipeline
+minutes (then $5 per 1,000), 1 GB of Postgres storage (then $0.30/GB), and 2
+custom domains — this uses the free `onrender.com` hostname, so none.
+
+Neither free tier is usable here. Background workers have no free plan at all,
+Render's free Postgres expires, and the pre-deploy command — the whole release
+gate — is documented as available only for **paid** services.
+
+### The release step, and what rollback really does
+
+`preDeployCommand: npx prisma migrate deploy` runs after the build and before
+the new version receives traffic, on a separate instance. Render's own words:
+*"If any command fails or times out, the entire deploy fails. Any remaining
+commands do not run."* A failed migration therefore leaves the previous version
+serving, which is the guarantee compose's `depends_on` never actually gave.
+
+Both the web service and the worker carry that command. A blueprint deploys its
+services in parallel, so gating only the web service would let the worker start
+against an un-migrated schema. `prisma migrate deploy` takes a PostgreSQL
+advisory lock, so the two runs serialise and the second is a no-op that also
+proves the schema is current.
+
+**Rollback was verified against the documentation rather than assumed, and it is
+narrower than it sounds.** Render's rollback page never mentions migrations or
+pre-deploy commands at all. A rollback *"kicks off a new deploy using the target
+deploy's build artifact"* — code only. It does not re-run migrations and it does
+not revert the database. Disks *"retain state between all deploys and cannot be
+rolled back."*
+
+So the rule on Render is the same rule as everywhere else in this repository,
+and the platform does not soften it:
+
+- **Additive migration** — a nullable column, a new table: rolling the code back
+  is usually safe, because the older build ignores what it does not know about.
+- **Anything else** — including the three migrations listed in
+  [`operations.md`](operations.md#rollback-is-not-automatic): rolling the code
+  back is **not** enough. Restore the database first, from a dump or from
+  Render's point-in-time recovery, then roll the code back to match.
+- `autoDeploy` is set to `false`. Render warns that rolling back does not
+  disable automatic deploys, so with it on, the next push would quietly
+  reinstate the commit just reverted.
+
+### The gate, on a platform with no proxy of ours
+
+Caddy is not in the picture on Render: the service is on the public internet as
+soon as it deploys. The same shared gate therefore runs in `src/middleware.ts`,
+in front of every route, before any of them resolve a session. Set
+`STAGING_GATE_USER` and `STAGING_GATE_PASSWORD` and it turns on; leave either
+unset and there is no gate, which is what development and the test suite want.
+
+`/api/health` is exempt, because Render's health check cannot send credentials.
+That publishes three integers — counts of synthetic experts, projects and
+pending jobs — to anyone who finds the URL. That is the trade, and it is the
+only thing the gate lets past.
+
+Everything else about testers is unchanged: one shared credential to reach the
+site at all, then individual operator accounts created with
+`scripts/create-operator.ts`, and single-use magic links copied from the outbox
+for the expert journey.
+
+### What Render replaces, and what it does not
+
+| Concern | Self-hosted | On Render |
+| --- | --- | --- |
+| TLS | Caddy and Let's Encrypt | managed, on `*.onrender.com` |
+| Tester gate | Caddy basic auth | the same gate in middleware |
+| Private database | no published port | `ipAllowList: []` — Render services only |
+| Release step | compose ordering | `preDeployCommand`, a real gate |
+| Worker supervision | Docker restart policy | Render restarts a failed worker |
+| Boot recovery | a systemd unit | the platform's job |
+| Backups | `staging-backup.sh` on a timer | Render's logical backups and PITR, **plus** the same script if you want a dump you hold yourself |
+| Building | on the host, needs swap on 2 GB | Render's build pipeline |
+
+The scripts in `deploy/` still work against a Render database — point
+`DATABASE_URL` at the external connection string — and the operator and fixture
+scripts run from the Render shell exactly as they do in a container.
+
+---
+
 ## Container layout
+
+This is the self-hosted compose stack. On Render the equivalent is two services
+and a managed database; see [Deploying on Render](#deploying-on-render).
 
 Five services. Four run continuously; one runs and exits.
 
@@ -95,7 +204,11 @@ off the host.
 
 ---
 
-## Cost
+## Cost — superseded
+
+> The live figure is $20.00/month on Render, in
+> [Deploying on Render](#deploying-on-render). What follows is the
+> DigitalOcean/Hetzner preflight, kept as history.
 
 Assumptions: one environment, 5–10 invited testers, a few hundred megabytes of
 synthetic data, well under 100 GB of traffic a month, database dumps kept 14
@@ -218,6 +331,8 @@ and any future CI depend on it.
 | `deploy/staging-restore-check.sh` | Restores a dump into a throwaway database and counts what survived. |
 | `deploy/staging-healthcheck.sh` | HTTP, containers and worker heartbeat in one command. |
 | `deploy/systemd/` | Start at boot; run the backup nightly. |
+| `render.yaml` | The Render blueprint: web, worker, Postgres, shared env group. |
+| `src/server/http/staging-gate.ts` | The shared tester gate, for hosts with no proxy of ours. |
 | `scripts/bootstrap-operator.ts` | Creates the first operator. Refuses to run twice. |
 | `scripts/create-operator.ts` | Adds operator accounts after the first, with a role. |
 | `scripts/staging-fixtures.ts` | A small, obviously synthetic dataset. |

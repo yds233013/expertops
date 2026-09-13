@@ -32,6 +32,10 @@ x-app: &app
     SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD}
     EXPOSE_PORTAL_LINKS_IN_UI: 'false'
     LOG_FORMAT: ${LOG_FORMAT:-json}
+    # The in-application shared gate. Unset here because Caddy is the gate on
+    # this stack; set on a platform deployment where there is no proxy of ours.
+    STAGING_GATE_USER: ${STAGING_GATE_USER:-}
+    STAGING_GATE_PASSWORD: ${STAGING_GATE_PASSWORD:-}
     SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
     PORTAL_TOKEN_TTL_HOURS: ${PORTAL_TOKEN_TTL_HOURS:-168}
   networks: [internal]
