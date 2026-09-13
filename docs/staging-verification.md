@@ -100,10 +100,72 @@ than replaced, so the same id comes back every later time.
 
 ## Still not verified
 
-- Scheduled backups of the managed PostgreSQL, and a restore from one.
-- More than one concurrent tester.
+- **Scheduled hosted backups and a restore from one.** See
+  [Recovery](#recovery-what-exists-and-what-does-not) below: the hosted database
+  has no automatic backups configured, and no authorized path exists to take a
+  manual one without a change that has deliberately not been made.
+- **Concurrent-tester behaviour on the hosted instance.** Race safety is
+  evidenced locally against real PostgreSQL, not on the deployment. See
+  [Concurrency](#concurrency-local-evidence-not-hosted).
 - The `Worker` page still tells the reader to start a worker with `npm run
   worker`, which is not how this deployment runs one.
+
+---
+
+## Recovery: what exists, and what does not
+
+Inspected on the hosted deployment, 13 September 2026.
+
+**There are no automatically scheduled backups.** Railway's point-in-time
+recovery for this Postgres service reports `Status: disabled`, `Bucket wired:
+no`. Enabling it is a paid change and has not been made. The only durable copy of
+the data is the 221 MB service volume itself, which is storage, not a backup —
+it does not survive the database being corrupted, only the container being
+replaced.
+
+**A manual hosted backup cannot be taken with existing access.** Every route into
+that database requires a change that was deliberately not made:
+
+| Route | Why not |
+| --- | --- |
+| `railway ssh` / `railway service files` | Refused: no SSH key registered. Registering one is an account-level change |
+| `railway connect` (psql) | Same SSH requirement |
+| Public TCP proxy on Postgres | Would expose the database to the internet, against the security posture this environment is built around |
+| Enable PITR | A paid resource |
+
+So the honest state is: **the hosted database is unbacked**, and that is the most
+important operational gap in this environment.
+
+**Restore mechanics are verified, locally.** `tests/integration/backup-restore.test.ts`
+runs against real PostgreSQL and covers the things a restore has to get right —
+business records, audit history and queued work arriving intact in a fresh
+database, and a corrupted dump being refused rather than half-restored. Re-run
+during this pass: passed. No worker was started against any restored copy.
+
+This is evidence that the restore path works. It is **not** evidence that the
+hosted data can be recovered, because no hosted backup exists to recover from.
+
+---
+
+## Concurrency: local evidence, not hosted
+
+**Session separation, on the deployment.** Two authenticated contexts were open
+side by side in the browser: an operator session and an expert portal session,
+each rendering its own identity, neither leaking into the other. The two use
+separate cookies by design. Full cross-context isolation with independent cookie
+jars is exercised by the browser suite, which gives the operator, the candidate
+and the expert their own contexts.
+
+**The bounded seat race, locally.** `tests/integration/concurrency.test.ts`
+covers it directly against real PostgreSQL, and was re-run during this pass:
+
+- the last seat under two simultaneous confirmations goes to exactly one
+- many confirmations racing for a few seats never oversubscribe
+- exactly one confirmation event is recorded per successful seat
+- confirming the same assignment twice at once succeeds once
+
+**This is local verification and is not claimed as hosted verification.** No load
+test was run and no uncontrolled retries were issued.
 
 ---
 
