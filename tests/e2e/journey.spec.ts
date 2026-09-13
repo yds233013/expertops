@@ -543,3 +543,35 @@ test('14. approved work appears once in payment preparation and can be exported'
     await second.context.close();
   }
 });
+
+test('15. an operator issues a replacement portal link when the first one is spent', async () => {
+  // Portal links work once. An expert whose link is spent and whose session has
+  // lapsed is told by /portal/enter to ask their ExpertOps contact for a new
+  // one — advice the contact had no way to act on, which left a staging
+  // environment unusable after its first link was opened.
+  const page = operator.page;
+  await page.goto('/experts');
+  await page.getByRole('link', { name: CANDIDATE.name }).click();
+
+  await clickUntilVisible(
+    () => page.getByRole('button', { name: 'Issue a new portal link' }).click(),
+    page.getByText('A new portal link is in the outbox'),
+  );
+
+  // The link is not on the expert record. Operators read portal links from the
+  // outbox, and that stays true for this one.
+  await expect(page.getByText(/portal\/enter#t=/)).toHaveCount(0);
+
+  await waitForOutboxMessage(page, 'Your new ExpertOps portal link', CANDIDATE.name);
+  const link = await portalLinkFor(page, 'Your new ExpertOps portal link', CANDIDATE.name);
+
+  // A fresh context, because the point is that somebody with no session can get
+  // back in using only what the operator sent them.
+  const returning = await visitorContext(page.context().browser()!);
+  try {
+    await returning.page.goto(link);
+    await expect(returning.page.getByRole('heading', { name: /^Hello,/i })).toBeVisible();
+  } finally {
+    await returning.context.close();
+  }
+});

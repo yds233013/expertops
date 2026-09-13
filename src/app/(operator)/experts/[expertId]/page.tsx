@@ -7,6 +7,7 @@ import { requireOperator } from '@/server/http/context';
 import { listActivity } from '@/server/services/activity';
 import { getExpert } from '@/server/services/experts';
 import { ExpertSkillsEditor } from '@/components/expert-skills-editor';
+import { PortalLinkPanel } from '@/components/portal-link-panel';
 import { VerifyPanel } from '@/components/verify-panel';
 import { SimulatedDeliveryBadge } from '@/components/delivery-note';
 import { Badge, Card, EmptyState, FieldRow, ProvenanceTag, StatusBadge } from '@/components/ui';
@@ -24,6 +25,8 @@ export default async function ExpertDetailPage({
   const activity = await listActivity(prisma, { expertId, limit: 40 });
 
   const canVerify = roleHasCapability(operator.role, 'onboarding:verify');
+  // Gate on the capability the route actually checks, not on a neighbouring one.
+  const canIssuePortalLink = roleHasCapability(operator.role, 'expert:write');
   const canWrite = roleHasCapability(operator.role, 'expert:write');
   const onboardingCase = expert.onboardingCase;
 
@@ -154,6 +157,15 @@ export default async function ExpertDetailPage({
           )}
         </Card>
       </div>
+
+      {canIssuePortalLink && (
+        <Card
+          title="Portal access"
+          description="How this expert reaches their own portal. They never have a password."
+        >
+          <PortalLinkPanel expertId={expert.id} expertName={expert.fullName} />
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Invitations">

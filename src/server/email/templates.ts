@@ -246,6 +246,36 @@ export function renderAssignmentReleasedEmail(input: AssignmentReleaseEmailInput
   };
 }
 
+export interface PortalLinkEmailInput {
+  expertName: string;
+  portalUrl: string;
+}
+
+/**
+ * A fresh way in, for an expert who no longer has one.
+ *
+ * Portal links are single-use, so an expert whose link is spent and whose
+ * session has lapsed has no route back — and `/portal/enter` tells them to ask
+ * their ExpertOps contact for a new one. Until this existed, the contact had no
+ * way to answer.
+ */
+export function renderPortalLinkEmail(input: PortalLinkEmailInput): RenderedMessage {
+  return {
+    subject: 'Your new ExpertOps portal link',
+    bodyText: block([
+      `Hello ${input.expertName},`,
+      '',
+      'Here is a new link to your ExpertOps portal. It replaces any earlier link,',
+      'works once, and opens a session that lasts a few hours.',
+      '',
+      input.portalUrl,
+      '',
+      'If you did not ask for this, you can ignore it.',
+      signature(),
+    ]),
+  };
+}
+
 export const TEMPLATE_NAMES = [
   'invitation.sent',
   'invitation.reminder',
@@ -256,6 +286,7 @@ export const TEMPLATE_NAMES = [
   'onboarding.rejected',
   'assignment.confirmed',
   'assignment.released',
+  'portal.link',
 ] as const;
 
 export type TemplateName = (typeof TEMPLATE_NAMES)[number];
