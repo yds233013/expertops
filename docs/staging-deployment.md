@@ -16,8 +16,17 @@ participant data, or on-call.
 
 ## Recommendation
 
-**One small VPS running four containers behind Caddy.** Hetzner Cloud CX23 in a
-European region, or any provider's equivalent 2 vCPU / 4 GB machine.
+**One small VPS running four containers behind Caddy.** A DigitalOcean Basic
+Droplet — 1 vCPU, 2 GiB RAM, 50 GiB SSD, 2 TB transfer — at **$12.00/month**.
+
+This was Hetzner until the deployment preflight. Hetzner is cheaper on paper and
+would still be the better buy if it were buyable, but on their own site today
+every shared-vCPU plan in both the Cost-Optimized and Regular Performance lines
+reads *"This product is currently unavailable. Please check back later."*, and
+no plan renders a price at all — the figures are injected client-side and did
+not load. A provider whose price cannot be read and whose servers cannot be
+ordered is not a recommendation. DigitalOcean publishes a rendered price table,
+which is the number in the cost section below.
 
 ```
                  internet
@@ -54,36 +63,145 @@ rather than a bigger VPS.
 
 ---
 
+## Container layout
+
+Five services. Four run continuously; one runs and exits.
+
+**Long-running**
+
+| Container | Image | Command | Published | Networks | Restart | Health |
+| --- | --- | --- | --- | --- | --- | --- |
+| `caddy` | `caddy:2-alpine` | Caddy default | **80, 443** | `edge` | `unless-stopped` | Caddy's own proxy probe on `/api/health` |
+| `app` | `expertops:staging` | `node_modules/.bin/next start --port 3000` | none | `edge`, `internal` | `unless-stopped` | image `HEALTHCHECK` fetches `/api/health` every 30s |
+| `worker` | `expertops:staging` | `node_modules/.bin/tsx src/server/worker/main.ts` | none | `internal` | `unless-stopped` | disabled in Docker; liveness is the heartbeat row |
+| `db` | `postgres:16-alpine` | Postgres default | **none** | `internal` | `unless-stopped` | `pg_isready` every 10s |
+
+**One-shot**
+
+| Container | Image | Command | Restart | Gate |
+| --- | --- | --- | --- | --- |
+| `migrate` | `expertops:staging` | `npx prisma migrate deploy` | `no` | starts after `db` is healthy; `app` and `worker` start only on its **successful exit** |
+
+The release step is the whole point of that last row. Neither long-running
+process migrates anything, so restarting the app does not touch the schema and
+two containers starting together cannot race each other. A failed migration
+leaves the previous app and worker running on the previous schema rather than
+half-upgrading behind a live site.
+
+`caddy` sits only on `edge`, so nothing that gets through the proxy can address
+the database. `db` publishes no port on any interface: administration is
+`docker compose exec db psql` over SSH, and there is no route to Postgres from
+off the host.
+
+---
+
 ## Cost
 
 Assumptions: one environment, 5–10 invited testers, a few hundred megabytes of
-synthetic data, well under 100 GB of traffic a month, backups kept 14 days.
+synthetic data, well under 100 GB of traffic a month, database dumps kept 14
+days.
 
-| Item | Monthly |
-| --- | --- |
-| Hetzner CX23 — 2 vCPU, 4 GB RAM, 40 GB NVMe, IPv4 included | €4.49–€5.99 (~$5.00–6.70) |
-| Hetzner automated server snapshots (20% of the server price, optional) | €0.90–€1.20 (~$1.00–1.35) |
-| Backblaze B2 for off-host dumps — first 10 GB free, then $6.95/TB | $0.00 |
-| DNS record on a domain you already own | $0.00 |
-| **Total** | **~$5–8/month** |
+Every figure below was read from the provider's own pages on 12 September 2026.
 
-Under the $20 ceiling with room for a bigger machine if 4 GB turns out to be
-tight. No credits, no trials, no free tier that expires: this is the steady
-price.
+| Item | Monthly | Source |
+| --- | --- | --- |
+| DigitalOcean Basic Droplet, Regular CPU — 1 vCPU, 2 GiB, 50 GiB SSD, 2 TB transfer | $12.00 | official pricing table |
+| Droplet backups — usage-based, daily, $0.03/GiB of restorable size | ~$0.30 | official backup pricing |
+| …or Droplet backups — basic plan, weekly, 20% of the Droplet price | $2.40 | official backup pricing |
+| Backblaze B2 for off-host database dumps — first 10 GB free | $0.00 | official pricing |
+| DNS record on a domain you already own, or `sslip.io` | $0.00 | — |
+| **Total before tax** | **$12.30–$14.40** | |
 
-Two things to check before committing, because I could not read them from an
-official page:
+Under the $20 ceiling either way. No credits, no trial, nothing that expires.
 
-- **Hetzner renders prices in JavaScript**, so the figures above come from
-  third-party trackers in September 2026, and they disagree by about €1.50
-  because of a price increase during 2026. Confirm the real number in the
-  Hetzner console at checkout. The decision does not change either way.
-- **Traffic beyond the included allowance** is billed per TB. A staging box
-  with ten testers will not approach 20 TB.
+**Tax is added on top and depends on your billing country.** DigitalOcean
+charges by the account's tax location, invoices in USD only, and lets a
+registered business remove it with a VAT or GST ID. From their tax table:
+United Kingdom 20%, Switzerland 8.1%, Norway 25%, Australia 10%, Singapore 9%,
+United Arab Emirates 5%; the European Union, the United States and Canada are
+listed as *varies* by state or member country. At 20% the $12.30 option becomes
+about **$14.76/month**; at 0% with a valid VAT ID it stays $12.30. I cannot
+finish this line without knowing your billing country — it is the first item on
+the owner checklist.
+
+**Two things you confirm at checkout, not here:**
+
+1. **The tax line on the first invoice.** It is computed from the address on
+   the account, which does not exist yet.
+2. **Region availability.** The price is the same across regions; pick the one
+   nearest your testers.
+
+**What the price does not include:** a domain. If you do not already own one,
+budget roughly $1/month at a registrar and confirm the figure there — I have
+not verified registrar pricing. `sslip.io` avoids it entirely.
+
+**2 GiB is enough to run this, not to build it.** The four containers idle at
+roughly 700 MB–1 GB together. `next build` on top of that is what would fail.
+Build the image on your machine and ship it, or add 2 GB of swap on the host
+before the first build — see
+[How the source reaches the server](#how-the-source-reaches-the-server).
+
+**Why not a platform.** Render, Railway and Fly all host this shape more
+comfortably, and all of them break the budget for the same reason: three
+always-on components priced separately. The number that settles it is managed
+Postgres — Fly's cheapest Managed Postgres plan is $38/month on its own, more
+than the whole budget. Render's Starter web service and background worker are
+$7/month each before any database. A single VPS carries all three for the price
+of one platform service.
 
 If the budget were $0, none of this works: every provider that keeps a worker
 and a database running continuously charges for it, and the free tiers that
 look like exceptions either sleep the process or expire the database.
+
+---
+
+## How the source reaches the server
+
+Nothing has been pushed anywhere. There is no clone URL, and creating one is a
+decision rather than a step: a private repository on GitHub or GitLab means an
+account, a deploy key and a third party holding the code.
+
+Three ways to get commit `215c351` onto the host, in the order I would try them:
+
+**1. A git bundle over scp.** One file, full history, no third party, and the
+commit id proves you got what was reviewed.
+
+```bash
+# on your machine
+git bundle create expertops-source-215c351.bundle HEAD --branches
+scp expertops-source-215c351.bundle deploy@staging-host:/tmp/
+
+# on the host
+git clone /tmp/expertops-source-215c351.bundle /opt/expertops
+cd /opt/expertops && git log --oneline -1        # expect 215c351
+```
+
+Later updates are another bundle: `git bundle create update.bundle 215c351..HEAD`
+then `git pull /tmp/update.bundle main` on the host.
+
+**2. A prebuilt image, so the 2 GiB host never compiles anything.** Pair it with
+the bundle above, which still carries `deploy/` and the scripts.
+
+```bash
+docker save expertops:staging | gzip | ssh deploy@staging-host 'gunzip | docker load'
+```
+
+Then set `EXPERTOPS_IMAGE=expertops:staging` in `staging.env` so compose uses
+the loaded image instead of building.
+
+**3. A bare repository on the staging host itself.** If you want `git push`
+deploys without a third party:
+
+```bash
+ssh deploy@staging-host 'git init --bare /srv/expertops.git'
+git remote add staging deploy@staging-host:/srv/expertops.git
+git push staging main
+```
+
+**The decision you owe me:** whether this code is published to a private
+repository at a host you already use, or stays on your machines and moves by
+bundle. Everything above works without publication; only option 3's convenience
+and any future CI depend on it.
 
 ---
 
@@ -101,6 +219,7 @@ look like exceptions either sleep the process or expire the database.
 | `deploy/staging-healthcheck.sh` | HTTP, containers and worker heartbeat in one command. |
 | `deploy/systemd/` | Start at boot; run the backup nightly. |
 | `scripts/bootstrap-operator.ts` | Creates the first operator. Refuses to run twice. |
+| `scripts/create-operator.ts` | Adds operator accounts after the first, with a role. |
 | `scripts/staging-fixtures.ts` | A small, obviously synthetic dataset. |
 
 ---
@@ -126,9 +245,61 @@ docker run --rm caddy:2-alpine caddy hash-password --plaintext 'the-shared-passw
 ```
 
 Put the hash in `TESTER_PASSWORD_HASH`; hand the plaintext to testers out of
-band. Behind that gate the application's own sign-in still applies, and expert
-and candidate portals still need their single-use links. The gate keeps
-strangers and crawlers out; it is not the authentication.
+band. The gate keeps strangers and crawlers out. It is not the authentication,
+and it identifies nobody: everyone shares it.
+
+### How a tester reaches each journey
+
+Two layers, and they stay separate on purpose. Everyone passes the same outer
+gate; who they are is decided inside the application, per person.
+
+| | Outer gate (shared) | Inside the application (individual) |
+| --- | --- | --- |
+| **Operator journey** | `TESTER_USERNAME` + password | Their own operator account: email, password and role, created with `scripts/create-operator.ts`. Never shared, never seeded. |
+| **Expert journey** | the same shared credential | A single-use magic link addressed to that expert. No password exists for an expert account, by design. |
+
+**Operator testers.** Bootstrap the first operator once, then add one account
+per tester:
+
+```bash
+docker compose -f docker-compose.staging.yml --env-file staging.env \
+  run --rm --no-deps \
+  -e OPERATOR_EMAIL=sam@example.com \
+  -e OPERATOR_NAME="Sam Okafor" \
+  -e OPERATOR_ROLE=OPERATOR \
+  app npx tsx scripts/create-operator.ts
+```
+
+`VIEWER` for read-only observers, `OPERATOR` for day-to-day work, `ADMIN` only
+for the approvals that need a second person — and at least two `ADMIN`s, or
+nothing can be approved, because an operator cannot approve their own batch.
+Attribution in the activity history is per account, so shared logins would make
+the history lie.
+
+This runs from the host shell because **there is no account-management screen**:
+`user:manage` exists as a capability and nothing uses it yet. That is a real
+gap, found during the deployment preflight — without this script a deployment
+could only ever have the one account `bootstrap-operator.ts` creates. Adding the
+screen is application work for later; creating accounts from the host is how it
+works today.
+
+**Expert testers.** Invite the expert from a project as usual. The worker
+renders the invitation into the simulated outbox, and the operator opens
+*Outbox* and copies the `…/portal/enter#t=…` line out of the message body, then
+sends it to the tester out of band.
+
+Two details that matter on staging:
+
+- `EXPOSE_PORTAL_LINKS_IN_UI` is forced false, so the convenience
+  "Portal link (dev only)" row is hidden. The link is still readable in the
+  message body, which is where the operator copies it from.
+- The tester needs **both**: the shared gate credential to load the page at all,
+  and the magic link to be recognised as that expert. The link is single-use, so
+  a second tester cannot reuse it — invite them separately.
+
+This mirrors production rather than working around it: an operator can always
+issue a portal link for an expert, which is how the real product works, and on
+staging every expert is synthetic anyway.
 
 **Private database.** The `db` service publishes no port. It sits on the
 `internal` network with the app, the worker and the release step; Caddy is on
@@ -372,6 +543,8 @@ database untouched throughout:
 | Worker boots, registers schedules, processes jobs | pass |
 | Sign-in: wrong password 401, correct password 200, `HttpOnly` + `Secure` cookie | pass |
 | First-operator bootstrap; second attempt refused | pass |
+| Adding a `VIEWER` account, then signing in as it: 17 read-only capabilities | pass |
+| Operator creation refuses an unknown role and a duplicate email | pass |
 | Synthetic fixtures load and are idempotent | pass |
 | Graceful stop runs the worker's SIGTERM handler | pass, after the npm fix |
 | Crash recovery: killed process, container restarted, heartbeat resumed | pass |

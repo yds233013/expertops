@@ -46,7 +46,7 @@ means it needs something external; *owner* means somebody has to decide.
 | | |
 | --- | --- |
 | **Exists** | Server-side session rows with a TTL, expired on read and purged by the maintenance sweep. Sign-out ends one device. `revokeSessionsFor` ends every session for one operator with a recorded reason. `deactivateOperator` deactivates and revokes in one step. |
-| **Missing** | No UI for either revocation path — both are service functions, reachable from a script, not a screen. No "sign out everywhere" for a participant portal session. |
+| **Missing** | No UI for either revocation path — both are service functions, reachable from a script, not a screen. No "sign out everywhere" for a participant portal session. No account-management screen either: `user:manage` is defined and unused, so operator accounts are created from a host shell with `scripts/create-operator.ts`. |
 | **Verified by** | `tests/integration/access-safeguards.test.ts` — 6 cases: expiry, sweep, one device, all devices, deactivation, and the refusals. |
 | **Blocked by** | local (the UI). |
 
