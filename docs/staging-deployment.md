@@ -4,18 +4,19 @@ A private staging environment for ExpertOps: the Next.js app, the persistent
 worker and PostgreSQL, reachable only by invited testers, carrying synthetic
 data and simulated email.
 
-**The platform decision is Render.** See
-[Deploying on Render](#deploying-on-render) for the blueprint, the release
-behaviour and the bill. The self-hosted VPS arrangement described in the rest of
-this document is kept because the packaging, the guards, the backup and restore
-scripts, the operator tooling and the tester model are all shared with it — and
-because it remains the fallback if Render is ever dropped. The provider
-comparison and the DigitalOcean/Hetzner preflight below are **superseded**; read
-them as history, not as a recommendation.
+**This is deployed on Railway.** See
+[Deployed on Railway](#deployed-on-railway) for what is running, what it costs
+and how it was verified. Everything else in this document — the Render
+blueprint, the provider comparison, the DigitalOcean/Hetzner preflight — is
+**superseded**; read it as history, not as a recommendation. The self-hosted VPS
+arrangement is kept because the packaging, the guards, the backup and restore
+scripts, the operator tooling and the tester model are all shared with the
+Railway deployment, and because it remains the fallback.
 
-Nothing has been deployed. The configuration in `deploy/` was built and
-exercised locally against an isolated database; what is still unverified is
-listed under [What only a host can prove](#what-only-a-host-can-prove).
+Railway rather than Render because Railway is where the account's other project
+already lives. Render was chosen on 12 September 2026 on the assumption that it
+hosted Ledger AI; inspecting the account showed Ledger AI runs on Railway and
+there is no Render account at all.
 
 Read [`pilot-readiness.md`](pilot-readiness.md) first. Staging closes the
 *hosting* blocker for a synthetic environment. It does not close real email,
@@ -75,7 +76,87 @@ rather than a bigger VPS.
 
 ---
 
-## Deploying on Render
+## Deployed on Railway
+
+Live at **https://web-production-09e7e.up.railway.app**, behind the tester gate.
+Project `expertops-staging` in the workspace "Yash Shah's Projects", environment
+`production`, region `ams`. Deployed 13 September 2026.
+
+Ledger AI's project `jubilant-hope` is untouched and shares nothing with this
+one: separate project, separate PostgreSQL instance, separate credentials,
+separate private network. The only thing the two share is the workspace usage
+pool and the one plan fee.
+
+| Service | What it runs | Memory in use |
+| --- | --- | --- |
+| `web` | `next start` on port 3000, health check `/api/health` | 168 MB |
+| `worker` | `tsx src/server/worker/main.ts` | 178 MB |
+| `Postgres` | Railway PostgreSQL 18, 0.1 GB volume | 109 MB |
+
+### Cost
+
+The Hobby plan is $5.00/month and includes $5.00 of usage. Memory is metered at
+$0.000231/GB/min, about $9.98 per GB-month; CPU and egress are rounding errors
+at this size.
+
+| | Monthly |
+| --- | --- |
+| Ledger AI, projected from the current period | $3.36 |
+| ExpertOps, 455 MB steady state | ~$4.50 |
+| Usage total | ~$7.90 |
+| Less the $5.00 included | −$5.00 |
+| **Paid on top of the $5.00 plan fee** | **~$2.90** |
+
+A **soft** usage limit of $10.00 is set on the workspace. Soft means an email
+alert. There is deliberately no hard limit: a hard limit suspends resources
+across the whole workspace, which would take Ledger AI down along with
+ExpertOps.
+
+### How the services are configured
+
+Neither service reads a `railway.json`. The settings are held on the service
+instances and were applied through the API:
+
+```
+railway api 'mutation($sid:String!,$eid:String,$in:ServiceInstanceUpdateInput!){
+  serviceInstanceUpdate(serviceId:$sid,environmentId:$eid,input:$in)}' \
+  --raw-var "sid=<service id>" --raw-var "eid=<environment id>" \
+  --var 'in={"startCommand":"...","healthcheckPath":"/api/health",
+             "preDeployCommand":["npx prisma migrate deploy"],
+             "restartPolicyType":"ON_FAILURE","numReplicas":1}'
+```
+
+Two things about the start command are worth knowing before changing it. It is
+**not** run through a shell, so `--port ${PORT:-3000}` reaches Next.js as a
+literal string and the container crash-loops; the port is written out. And
+`railway redeploy` replays the previous deployment's settings snapshot, so a
+settings change needs a fresh `railway up`, not a redeploy.
+
+Only `web` carries the pre-deploy command, so migrations run exactly once per
+release and the two services can never race each other to migrate.
+
+### Deploying a change
+
+`railway up --service web --ci` and `railway up --service worker --ci` from the
+repository root. There is no GitHub connection and no automatic deploy: the CLI
+tars the working directory and uploads it, which is why `.railwayignore` exists
+alongside `.dockerignore`. Keep the two in step.
+
+### Seeding
+
+The first operator and the synthetic fixtures were created by temporarily
+setting the worker's pre-deploy command to run
+`scripts/bootstrap-operator.ts` and then `scripts/staging-fixtures.ts`, because
+Railway's shell access requires registering an SSH key on the account and the
+database has no public proxy — by design. The command and the bootstrap
+variables were removed immediately afterwards. `bootstrap-operator.ts` refuses
+to run once any operator exists, so leaving it in place would have failed every
+later deploy.
+
+---
+
+## Deploying on Render — superseded
+
 
 `render.yaml` at the repository root is the blueprint. Three billable services
 and one shared environment group.
@@ -668,8 +749,16 @@ database untouched throughout:
 
 ## What only a host can prove
 
+The list below belongs to the superseded VPS arrangement. On Railway, TLS,
+process supervision and restart-on-crash are the platform's, and the tester gate
+is the application's own middleware rather than Caddy — all of which is exercised
+by the run recorded in [`staging-verification.md`](staging-verification.md).
+
 - Let's Encrypt issuance and renewal for a real hostname.
 - The Caddy tester gate in front of a real certificate.
 - Reboot recovery through `expertops-staging.service`.
 - The systemd backup timer firing on schedule, and `rclone` to a real bucket.
 - Anything about performance on 4 GB of RAM with real testers.
+
+Still unproven on Railway: scheduled backups of the managed PostgreSQL, restore
+from one of those backups, and behaviour under more than one concurrent tester.

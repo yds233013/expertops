@@ -37,6 +37,26 @@ const EXPERTS = [
     hourlyRateCents: 20_000,
     skills: [{ name: 'Evaluation Design', proficiency: 5, yearsUsed: 8 }],
   },
+  // Two more than the sandbox project has seats. A withdrawal cannot be
+  // rehearsed without somebody left to replace the expert who withdrew, and a
+  // staging box with exactly as many experts as seats can only ever
+  // demonstrate the happy path.
+  {
+    fullName: 'SYNTHETIC Cleo Marchetti',
+    email: 'synthetic.cleo.marchetti@example.test',
+    headline: 'SYNTHETIC staging record — survey methodology',
+    yearsExperience: 7,
+    hourlyRateCents: 17_500,
+    skills: [{ name: 'Evaluation Design', proficiency: 4, yearsUsed: 4 }],
+  },
+  {
+    fullName: 'SYNTHETIC Dara Nkemelu',
+    email: 'synthetic.dara.nkemelu@example.test',
+    headline: 'SYNTHETIC staging record — programme evaluation',
+    yearsExperience: 15,
+    hourlyRateCents: 22_000,
+    skills: [{ name: 'Evaluation Design', proficiency: 5, yearsUsed: 10 }],
+  },
 ];
 
 async function main() {

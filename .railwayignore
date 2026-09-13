@@ -1,0 +1,27 @@
+# What `railway up` must not upload.
+#
+# `railway up` tars this directory and sends it to the builder, which then
+# applies .dockerignore. Without this file the CLI would upload ~950 MB of
+# node_modules and build output first and discard it on the far side. Keep the
+# two lists in step: anything added to .dockerignore belongs here too.
+.git
+node_modules
+.next
+.next-dev
+.next-prod
+.next-e2e
+out
+coverage
+test-results
+playwright-report
+backups
+docs
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+.DS_Store
+.vscode
+.idea
+deploy/*.env
