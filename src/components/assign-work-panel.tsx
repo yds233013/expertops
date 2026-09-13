@@ -10,6 +10,11 @@ import { apiPost } from '@/lib/api-client';
  * Only confirmed assignments are offered, because the service refuses anything
  * else. The basis matters: an hourly item makes the expert declare hours, and
  * payment preparation compares those hours against what was approved.
+ *
+ * The due date is optional to the API but not decorative: `work.remind_overdue`
+ * selects on `dueAt <= now`, so an item created without one can never be
+ * reported late. This form used to omit the field entirely, which meant every
+ * work item an operator created was invisible to that sweep.
  */
 export function AssignWorkPanel({ assignments }: { assignments: { id: string; label: string }[] }) {
   const router = useRouter();
@@ -17,6 +22,7 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
   const [title, setTitle] = useState('');
   const [instructions, setInstructions] = useState('');
   const [basis, setBasis] = useState<'DELIVERABLE' | 'HOURLY'>('HOURLY');
+  const [dueAt, setDueAt] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -43,6 +49,10 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
             title,
             instructions: instructions || undefined,
             basis,
+            // A date input yields 'YYYY-MM-DD', which parses as UTC midnight —
+            // the start of the day, not the end of it. End of day is what an
+            // operator means by "due on the 20th".
+            dueAt: dueAt ? new Date(`${dueAt}T23:59:59.999Z`).toISOString() : undefined,
           });
           if (!result.ok) {
             setError(result.error?.message ?? 'The work item could not be created.');
@@ -50,6 +60,7 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
           }
           setTitle('');
           setInstructions('');
+          setDueAt('');
           setNotice('Work assigned. It now appears in the expert’s portal.');
           router.refresh();
         } finally {
@@ -57,7 +68,7 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
         }
       }}
     >
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label htmlFor="work-assignment" className="text-xs font-semibold text-ink-700">
             Staffed seat
@@ -100,6 +111,21 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
             <option value="HOURLY">Hourly</option>
             <option value="DELIVERABLE">Deliverable</option>
           </select>
+        </div>
+        <div>
+          <label htmlFor="work-due" className="text-xs font-semibold text-ink-700">
+            Due date
+          </label>
+          <input
+            id="work-due"
+            type="date"
+            className="input mt-1 w-full"
+            value={dueAt}
+            onChange={(event) => setDueAt(event.target.value)}
+          />
+          <p className="mt-1 text-xs text-ink-500">
+            Without one, the item is never reported as overdue.
+          </p>
         </div>
       </div>
 

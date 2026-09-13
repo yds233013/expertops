@@ -191,6 +191,27 @@ export function resetEnvCache(): void {
 }
 
 /**
+ * What to call this deployment on screen.
+ *
+ * Three layouts and the simulated outbox signature used to state "local
+ * development build" unconditionally. That is true on a laptop and false on a
+ * hosted staging box, and it is the one sentence a tester reads to decide
+ * whether what they are looking at is real. Wrong in the direction that makes
+ * someone dismiss a genuine problem as a local artefact.
+ *
+ * Deliberately two values, not three. This build has no way to tell a staging
+ * deployment from a production one — `EXPERTOPS_ENV` is `production` for both —
+ * so claiming to know the difference would be the same class of mistake.
+ */
+export function isHostedDeployment(): boolean {
+  return deploymentEnvironment(getEnv()) === 'production';
+}
+
+export function environmentLabel(): string {
+  return isHostedDeployment() ? 'Hosted deployment' : 'Local development build';
+}
+
+/**
  * Portal links may only be surfaced in the UI when this is a local development
  * build AND the operator explicitly opted in. Production builds always hide
  * them regardless of the flag.

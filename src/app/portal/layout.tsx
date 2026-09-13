@@ -1,3 +1,5 @@
+import { environmentLabel } from '@/lib/env';
+
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
@@ -9,9 +11,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       </header>
       <main className="mx-auto max-w-3xl px-6 py-6">{children}</main>
       <footer className="mx-auto max-w-3xl px-6 pb-8 text-xs text-ink-500">
-        Local development build. This portal is reached through a single-use link; no password is
-        ever created for an expert account. Messages about it are written to an in-app outbox and
-        are not emailed to anyone.
+        {environmentLabel()}. This portal is reached through a single-use link; no password is ever
+        created for an expert account. Messages about it are written to an in-app outbox and are not
+        emailed to anyone.
       </footer>
     </div>
   );

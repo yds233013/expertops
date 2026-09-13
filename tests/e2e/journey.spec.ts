@@ -447,10 +447,19 @@ test('13. work is assigned, submitted, reviewed and approved', async () => {
   await page.getByLabel('Title').fill('Draft the pilot scoring guide');
   await page.getByLabel('Instructions').fill('Two pages, with worked examples.');
   await page.getByLabel('Basis').selectOption('HOURLY');
+  // The due date is the part that used to be missing. `work.remind_overdue`
+  // selects on `dueAt <= now`, so a form that cannot set one produces work that
+  // can never be reported late — and the attention item for an unstaffed seat
+  // tells the operator to set one, which they then could not do.
+  await page.getByLabel('Due date').fill('2026-12-24');
   await clickUntilVisible(
     () => page.getByRole('button', { name: 'Assign work' }).click(),
     page.getByText('Work assigned'),
   );
+
+  await expect(
+    page.locator('section').filter({ hasText: 'Draft the pilot scoring guide' }).first(),
+  ).toContainText('due');
 
   const portal = expert.page;
   await portal.goto('/portal');

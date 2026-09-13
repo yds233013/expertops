@@ -138,3 +138,54 @@ describe('simulated email templates', () => {
     expect(new Set(TEMPLATE_NAMES).size).toBe(TEMPLATE_NAMES.length);
   });
 });
+
+describe('the signature names the environment it was rendered in', () => {
+  // A hosted staging box used to sign every simulated message "local
+  // development instance". A tester reading that has been told, by the system
+  // itself, that what they are looking at does not count.
+  const render = () =>
+    renderInvitationExpiredEmail({
+      expertName: 'Avery Okafor',
+      projectTitle: 'Settlement review',
+      projectCode: 'PRJ-0001',
+    }).bodyText;
+
+  it('says local development when that is what it is', async () => {
+    const { resetEnvCache } = await import('@/lib/env');
+    resetEnvCache();
+    expect(render()).toContain('ExpertOps (local development build)');
+    expect(render()).not.toContain('hosted deployment');
+  });
+
+  it('says hosted deployment on a deployment', async () => {
+    const { resetEnvCache } = await import('@/lib/env');
+    // A deployment has to satisfy the production configuration guard before it
+    // can have a label at all, so the fixture is a whole plausible deployment
+    // rather than one flipped variable.
+    const previous = {
+      EXPERTOPS_ENV: process.env.EXPERTOPS_ENV,
+      AUTH_SECRET: process.env.AUTH_SECRET,
+      DATABASE_URL: process.env.DATABASE_URL,
+      APP_BASE_URL: process.env.APP_BASE_URL,
+      SEED_DEMO_PASSWORD: process.env.SEED_DEMO_PASSWORD,
+      EXPOSE_PORTAL_LINKS_IN_UI: process.env.EXPOSE_PORTAL_LINKS_IN_UI,
+    };
+    process.env.EXPERTOPS_ENV = 'production';
+    process.env.AUTH_SECRET = 'a'.repeat(64);
+    process.env.DATABASE_URL = 'postgresql://app:s3cret@db.internal:5432/railway';
+    process.env.APP_BASE_URL = 'https://staging.example.test';
+    process.env.SEED_DEMO_PASSWORD = 'not-the-shared-demo-password';
+    process.env.EXPOSE_PORTAL_LINKS_IN_UI = 'false';
+    resetEnvCache();
+    try {
+      expect(render()).toContain('ExpertOps (hosted deployment)');
+      expect(render()).not.toContain('local development');
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      resetEnvCache();
+    }
+  });
+});

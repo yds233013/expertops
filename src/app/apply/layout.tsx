@@ -1,3 +1,5 @@
+import { environmentLabel } from '@/lib/env';
+
 export default function ApplyLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
@@ -17,7 +19,7 @@ export default function ApplyLayout({ children }: { children: React.ReactNode })
         {children}
       </main>
       <footer className="mx-auto max-w-3xl px-4 pb-8 text-xs text-ink-500 sm:px-6">
-        Local development build. This screening is reached through a single-use link; no password is
+        {environmentLabel()}. This screening is reached through a single-use link; no password is
         ever created for an applicant. Messages about it are written to an in-app outbox and are not
         emailed to anyone.
       </footer>

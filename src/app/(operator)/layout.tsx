@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import { environmentLabel } from '@/lib/env';
 import { capabilitiesFor } from '@/server/auth/permissions';
 import { currentOperator } from '@/server/http/context';
 import { jobCounts } from '@/server/services/jobs';
@@ -113,8 +114,8 @@ export default async function OperatorLayout({ children }: { children: React.Rea
       </header>
       <main className="mx-auto max-w-7xl px-6 py-6">{children}</main>
       <footer className="mx-auto max-w-7xl px-6 pb-8 text-xs text-ink-500">
-        Local development build. Email delivery is simulated, all data is synthetic, and nothing
-        here is connected to an external service.
+        {environmentLabel()}. Email delivery is simulated, all data is synthetic, and nothing here
+        is connected to an external service.
       </footer>
     </div>
   );
