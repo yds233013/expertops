@@ -1392,7 +1392,13 @@ model OutreachBatchItem {
   expertId      String?
   candidateId   String?
   /// Populated once dispatch actually created the invitation.
-  invitationId  String?           @unique
+  ///
+  /// Deliberately not unique. An invitation row is reopened rather than
+  /// replaced when somebody who declined or withdrew is invited again, so the
+  /// same invitation id is legitimately produced by dispatches in two
+  /// different batches over time. While this was unique, the second dispatch
+  /// died on the constraint and reported a raw Prisma error to the operator.
+  invitationId  String?
   /// Why the system proposed this person.
   rationale     String            @default("")
   matchScore    Int?
@@ -1411,6 +1417,7 @@ model OutreachBatchItem {
   @@unique([batchId, expertId])
   @@index([batchId])
   @@index([batchId, dispatchState])
+  @@index([invitationId])
 }
 
 // ---------------------------------------------------------------------------

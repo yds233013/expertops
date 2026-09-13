@@ -251,3 +251,67 @@ describe('outreach atomicity and dispatch progress', () => {
     expect(await prisma.invitation.count()).toBe(0);
   });
 });
+
+describe('inviting the same person again through a second batch', () => {
+  beforeAll(() => applyMigrations());
+  beforeEach(() => truncateAll());
+
+  it('dispatches to somebody who withdrew from an earlier batch', async () => {
+    // `createInvitation` reopens an existing invitation row rather than making
+    // a second one, so the same invitation id comes back the next time that
+    // person is invited to the same project. `OutreachBatchItem.invitationId`
+    // was unique, which meant the second batch's dispatch died on the
+    // constraint — and reported the raw Prisma error to the operator, marked
+    // "retryable" when no number of retries could ever succeed.
+    //
+    // This is the ordinary shape of a replacement: somebody leaves a project
+    // they were invited to, and later gets asked back.
+    const { operator, approver, project, experts } = await fixture();
+    const expert = experts[0]!;
+
+    const first = await createBatch(prisma, actorFor(operator), {
+      kind: 'PROJECT_INVITATION',
+      projectId: project.id,
+      items: [{ expertId: expert.id }],
+    });
+    await submitBatchForApproval(prisma, actorFor(operator), first.id);
+    await decideBatch(prisma, actorFor(approver), { batchId: first.id, approve: true });
+    await dispatchBatch(prisma, actorFor(operator), first.id);
+
+    const invitation = await prisma.invitation.findFirstOrThrow({
+      where: { projectId: project.id, expertId: expert.id },
+    });
+    await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { status: 'WITHDRAWN', withdrawReason: 'Left the project.' },
+    });
+
+    const second = await createBatch(prisma, actorFor(operator), {
+      kind: 'REPLACEMENT',
+      projectId: project.id,
+      items: [{ expertId: expert.id }],
+    });
+    await submitBatchForApproval(prisma, actorFor(operator), second.id);
+    await decideBatch(prisma, actorFor(approver), { batchId: second.id, approve: true });
+    const result = await dispatchBatch(prisma, actorFor(operator), second.id);
+
+    expect(result.failed).toEqual([]);
+    expect(result.dispatched).toBe(1);
+
+    const after = await prisma.outreachBatch.findUniqueOrThrow({ where: { id: second.id } });
+    expect(after.status).toBe('DISPATCHED');
+
+    // The same invitation row, reopened and queued to go out again — now
+    // referenced by both batch items, which is the thing the constraint used to
+    // forbid. DRAFT, not SENT: dispatch creates the invitation, and the worker
+    // is what renders and marks it.
+    const reopened = await prisma.invitation.findFirstOrThrow({
+      where: { projectId: project.id, expertId: expert.id },
+    });
+    expect(reopened.id).toBe(invitation.id);
+    expect(reopened.status).toBe('DRAFT');
+    expect(await prisma.outreachBatchItem.count({ where: { invitationId: invitation.id } })).toBe(
+      2,
+    );
+  });
+});
