@@ -510,13 +510,22 @@ export async function recordWithdrawal(
     }
 
     const gap = await computeProjectGap(tx, input.projectId);
+    const seatsUnfilled = Math.max(0, project.seatsRequested - seatsFilled);
 
     // A fully staffed project is ACTIVE, and an ACTIVE project accepts no
     // invitations. Without this, a withdrawal from a full project produced a
     // replacement batch that could never be dispatched: the shortage was
     // visible and unfixable. Returning it to STAFFING is the existing
     // transition for exactly this situation.
-    if (gap.gap > 0) {
+    //
+    // The test is empty seats, not `gap`. `gap` counts everything already in
+    // flight, an outstanding invitation included, so a withdrawal from a
+    // project that still had an unanswered invitation out scored zero and the
+    // project stayed ACTIVE holding an empty seat. ACTIVE is entered on
+    // `seatsFilled >= seatsRequested`; it has to be left on the same measure,
+    // or the two disagree and the project is stuck in whichever direction it
+    // moved last.
+    if (seatsUnfilled > 0) {
       await advanceProjectStatus(tx, actor, input.projectId, 'STAFFING');
     }
 
@@ -526,7 +535,14 @@ export async function recordWithdrawal(
       severity: 'HIGH',
       title: `${expert.fullName} withdrew from ${project.code}`,
       blocker: reason ? `Reason given: ${reason}` : 'No reason was given.',
-      impact: `${gap.gap} seat(s) now unfilled on ${project.code}.`,
+      // Two different numbers, and the operator needs both: how many seats are
+      // empty, and how much of that is already covered by someone who has been
+      // asked but has not answered.
+      impact:
+        `${seatsUnfilled} seat(s) now unfilled on ${project.code}.` +
+        (gap.gap < seatsUnfilled
+          ? ` ${seatsUnfilled - gap.gap} is covered by outreach already sent.`
+          : ''),
       nextAction: 'Review replacement recommendations and send an approved outreach batch.',
       projectId: input.projectId,
       expertId: input.expertId,
@@ -534,6 +550,7 @@ export async function recordWithdrawal(
       metadata: {
         reason: reason || null,
         gap: gap.gap,
+        seatsUnfilled,
         cancelledWorkItems: outstanding.map((item) => item.reference),
       },
     });

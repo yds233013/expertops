@@ -125,6 +125,58 @@ describe('expert withdrawal: before assignment', () => {
     expect(await replacementJobCount(project.id)).toBe(1);
   });
 
+  it('returns a full project to STAFFING even when an invitation is still out', async () => {
+    // The bug: `computeProjectGap` counts an unanswered invitation as covering
+    // the seat, so a withdrawal from a project that still had one outstanding
+    // scored a gap of zero. The project kept its ACTIVE status while holding an
+    // empty seat, and ACTIVE accepts no invitations — so the seat could not be
+    // refilled through the product at all.
+    //
+    // ACTIVE is entered on seatsFilled >= seatsRequested. It has to be left on
+    // the same measure.
+    const { operator, project, expert } = await staffed(2);
+    const second = await makeStaffableExpert(project.id);
+    const proposal = await proposeAssignment(prisma, actorFor(operator), {
+      projectId: project.id,
+      expertId: second.id,
+      allocationHoursPerWeek: 10,
+    });
+    await confirmAssignment(prisma, actorFor(operator), proposal.id);
+
+    const full = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(full.status).toBe('ACTIVE');
+    expect(full.seatsFilled).toBe(2);
+
+    // A third person who was invited and has not replied. This is the only
+    // difference between this case and the one that always worked.
+    const bystander = await makeExpert({ status: 'VERIFIED' });
+    await prisma.invitation.create({
+      data: {
+        projectId: project.id,
+        expertId: bystander.id,
+        status: 'SENT',
+        message: '',
+        expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      },
+    });
+
+    await recordWithdrawal(prisma, actorForExpert(expert), {
+      projectId: project.id,
+      expertId: expert.id,
+      reason: 'Leaving mid-engagement.',
+    });
+
+    const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(after.seatsFilled).toBe(1);
+    expect(after.status).toBe('STAFFING');
+
+    // And the operator is told how many seats are empty, not how many the
+    // pipeline thinks still need sourcing.
+    const items = await listAttention(prisma, { category: 'staffing.withdrawal' });
+    expect(items).toHaveLength(1);
+    expect(items[0]!.impact).toContain('1 seat(s) now unfilled');
+  });
+
   it('records the withdrawal against the expert as the actor', async () => {
     const { project, expert } = await acceptedOnly();
 
