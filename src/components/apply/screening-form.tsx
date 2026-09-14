@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiPost } from '@/lib/api-client';
+import { formValues, splitLines } from '@/lib/form-values';
+import { useHydrated } from '@/lib/use-hydrated';
 import { Badge } from '@/components/ui';
 
 export interface CriterionView {
@@ -25,6 +27,12 @@ const EVIDENCE_HINT: Record<string, string> = {
  * It never decides whether a submission is acceptable. Missing evidence is
  * reported by the server after the submission is recorded, because an
  * incomplete attempt is still worth capturing.
+ *
+ * The fields are uncontrolled on purpose. This page is loaded cold from a link
+ * in a message, so there is a real window in which the form is on screen and
+ * React is not yet attached; a candidate typing in that window would have their
+ * answer dropped at submit time by a controlled input reading empty state. The
+ * DOM is read instead, which is where their answer actually is.
  */
 export function ScreeningForm({
   screeningId,
@@ -42,17 +50,14 @@ export function ScreeningForm({
   submitLabel: string;
 }) {
   const router = useRouter();
-  const [answers, setAnswers] = useState<Record<string, string>>(() =>
-    Object.fromEntries(criteria.map((c) => [c.key, initialAnswers[c.key] ?? ''])),
-  );
-  const [links, setLinks] = useState(initialLinks.join('\n'));
-  const [note, setNote] = useState(initialNote);
+  const hydrated = useHydrated();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[] | null>(null);
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const values = formValues(event.currentTarget);
     setPending(true);
     setError(null);
     setMissing(null);
@@ -60,12 +65,11 @@ export function ScreeningForm({
       const result = await apiPost<{ missingEvidence: string[] }>(
         `/api/apply/screenings/${screeningId}`,
         {
-          answers,
-          workSampleLinks: links
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean),
-          note,
+          answers: Object.fromEntries(
+            criteria.map((criterion) => [criterion.key, values[`answer-${criterion.key}`] ?? '']),
+          ),
+          workSampleLinks: splitLines(values.workSampleLinks),
+          note: values.note ?? '',
         },
       );
       if (!result.ok) {
@@ -103,10 +107,7 @@ export function ScreeningForm({
               aria-describedby={criterion.scoringGuidance ? `guidance-${criterion.key}` : undefined}
               rows={5}
               className="input mt-2 w-full"
-              value={answers[criterion.key] ?? ''}
-              onChange={(event) =>
-                setAnswers((previous) => ({ ...previous, [criterion.key]: event.target.value }))
-              }
+              defaultValue={initialAnswers[criterion.key] ?? ''}
             />
           </div>
         );
@@ -125,8 +126,7 @@ export function ScreeningForm({
           aria-describedby="links-help"
           rows={3}
           className="input mt-2 w-full font-mono text-xs"
-          value={links}
-          onChange={(event) => setLinks(event.target.value)}
+          defaultValue={initialLinks.join('\n')}
         />
       </div>
 
@@ -139,8 +139,7 @@ export function ScreeningForm({
           name="note"
           rows={3}
           className="input mt-2 w-full"
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
+          defaultValue={initialNote}
         />
       </div>
 
@@ -167,7 +166,12 @@ export function ScreeningForm({
           </div>
         ))}
 
-      <button type="submit" className="btn btn-primary" disabled={pending}>
+      <button
+        type="submit"
+        className="btn btn-primary"
+        disabled={pending || !hydrated}
+        aria-busy={!hydrated}
+      >
         {pending ? 'Submitting…' : submitLabel}
       </button>
     </form>
