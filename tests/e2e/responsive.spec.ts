@@ -1,5 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
-import { operatorContext, portalLinkFor, visitorContext, waitForOutboxMessage } from './helpers';
+import {
+  clickUntilVisible,
+  operatorContext,
+  portalLinkFor,
+  visitorContext,
+  waitForOutboxMessage,
+} from './helpers';
 
 /**
  * Usability at two viewport sizes.
@@ -17,6 +23,8 @@ const OPERATOR_PAGES = [
   '/dashboard',
   '/candidates',
   '/campaigns',
+  '/opportunities',
+  '/opportunities/new',
   '/screenings',
   '/rubrics',
   '/experts',
@@ -232,5 +240,70 @@ test('the sign-in page is usable on a narrow screen and by keyboard alone', asyn
     await expect(visitor.page.getByRole('button', { name: /Menu/ })).toBeVisible();
   } finally {
     await visitor.context.close();
+  }
+});
+
+test.describe('the applicant opportunity pages', () => {
+  for (const viewport of [DESKTOP, MOBILE]) {
+    test(`are usable at ${viewport.width}x${viewport.height}`, async ({ browser }) => {
+      const operator = await operatorContext(browser, 'admin');
+      const visitor = await visitorContext(browser);
+      const title = `Viewport listing ${viewport.width} ${Date.now()}`;
+
+      try {
+        // Something published to look at. The listing is the one page an
+        // applicant reaches with no session at all, so it is worth checking at
+        // both widths rather than assuming it inherits the screening layout.
+        await operator.page.goto('/opportunities/new');
+        await operator.page.getByLabel('Title').fill(title);
+        await operator.page.getByLabel('Summary').fill('A listing used to check layout.');
+        await operator.page.getByLabel('Description').fill('Read things, write notes.');
+        await operator.page.getByLabel('Required skills').fill('Evaluation Design');
+        await operator.page.getByRole('button', { name: 'Add question' }).click();
+        await operator.page.getByLabel('Question 1 label').fill('Why this one?');
+        await operator.page.getByRole('button', { name: 'Create draft' }).click();
+        await expect(operator.page.getByRole('heading', { name: title, level: 1 })).toBeVisible({
+          timeout: 20_000,
+        });
+        await clickUntilVisible(
+          () => operator.page.getByRole('button', { name: 'Publish' }).click(),
+          operator.page.getByText('Live at'),
+        );
+
+        await visitor.page.setViewportSize(viewport);
+        await visitor.page.goto('/apply/opportunities');
+        const listing = `/apply/opportunities at ${viewport.width}px`;
+        await expect(visitor.page.getByRole('heading', { name: title, level: 2 })).toBeVisible();
+        await expectNoHorizontalOverflow(visitor.page, listing);
+        await expectNamedControls(visitor.page, listing);
+        await expectVisibleFocus(visitor.page, listing);
+
+        await visitor.page
+          .locator('section')
+          .filter({ hasText: title })
+          .getByRole('link', { name: 'View and apply' })
+          .first()
+          .click();
+        await expect(visitor.page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+
+        const detail = `the opportunity page at ${viewport.width}px`;
+        await expectNoHorizontalOverflow(visitor.page, detail);
+        await expectNamedControls(visitor.page, detail);
+
+        // The form has to be usable at this width, not merely present.
+        const email = visitor.page.getByLabel('Email');
+        await email.scrollIntoViewIfNeeded();
+        await email.fill(`viewport.${viewport.width}@e2e.test`);
+        await expect(email).toHaveValue(`viewport.${viewport.width}@e2e.test`);
+
+        const submit = visitor.page.getByRole('button', { name: 'Submit application' });
+        await submit.scrollIntoViewIfNeeded();
+        await expect(submit).toBeVisible();
+        await expect(submit).toBeEnabled();
+      } finally {
+        await operator.context.close();
+        await visitor.context.close();
+      }
+    });
   }
 });

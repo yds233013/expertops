@@ -10,10 +10,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        {/* The first stop for a keyboard, so the nav can be skipped. */}
-        <a className="skip-link" href="#main">
-          Skip to content
-        </a>
+        {/* Each layout owns its own skip link, because each owns the element it
+            skips to. One here would be dead on every page but the operator's. */}
         {children}
       </body>
     </html>

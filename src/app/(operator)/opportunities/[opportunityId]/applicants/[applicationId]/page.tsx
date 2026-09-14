@@ -35,6 +35,22 @@ export default async function ApplicantPage({
   if (application.opportunityId !== opportunityId) notFound();
 
   const canScreen = roleHasCapability(operator.role, 'screening:write');
+
+  // What has already been sent to this person. Without it the panel below would
+  // keep offering to start a screening that is already running, and the operator
+  // would have no reference to quote.
+  const screenings = await prisma.screening.findMany({
+    where: { candidateId: application.candidateId },
+    include: { rubricVersion: { include: { template: { select: { name: true } } } } },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+  });
+  // DECIDED, EXPIRED and WITHDRAWN are finished; anything else is still running
+  // and a second screening would only confuse the candidate.
+  const openScreening = screenings.find(
+    (screening) => !['DECIDED', 'EXPIRED', 'WITHDRAWN'].includes(screening.status),
+  );
+
   const publishedVersions = await prisma.screeningRubricVersion.findMany({
     where: { status: 'PUBLISHED' },
     include: { template: { select: { name: true } } },
@@ -168,9 +184,34 @@ export default async function ApplicantPage({
             title="Send a screening"
             description="Scored against a published rubric version, which never changes once published."
           >
+            {screenings.length > 0 && (
+              <ul className="mb-3 space-y-2">
+                {screenings.map((screening) => (
+                  <li
+                    key={screening.id}
+                    className="rounded-lg border border-ink-200 px-3 py-2 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs">{screening.reference}</span>
+                      <StatusBadge status={screening.status} />
+                    </div>
+                    <p className="mt-0.5 text-xs text-ink-500">
+                      {screening.rubricVersion.template.name} · v{screening.rubricVersion.version} ·
+                      due {formatRelative(screening.dueAt)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             {application.withdrawnAt ? (
               <p className="text-sm text-ink-600">
                 This application is withdrawn. Reopening is the applicant&rsquo;s decision.
+              </p>
+            ) : openScreening ? (
+              <p className="text-sm text-ink-600">
+                <span className="font-mono text-xs">{openScreening.reference}</span> is still open.
+                Scoring and the decision live on the candidate record.
               </p>
             ) : !canScreen ? (
               <p className="text-sm text-ink-600">Your role cannot send screenings.</p>

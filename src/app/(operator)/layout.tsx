@@ -118,6 +118,10 @@ export default async function OperatorLayout({ children }: { children: React.Rea
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[16rem_1fr]">
+      {/* The first stop for a keyboard, so the rail can be skipped. */}
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <div className="sidebar">
         <div className="sidebar-inner flex items-center justify-between gap-3 px-4 py-4 lg:block">
           <Link href="/dashboard" className="brand">

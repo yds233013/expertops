@@ -197,17 +197,30 @@ requires an API call.
 | Approved work appears once in payment preparation | Done | Idempotent draft creation | `journey.spec.ts` step 14, `delivery-and-payment.test.ts` |
 | Test databases cannot be confused with development | Done | `database-safety.ts`, `suite-lock.ts` | `database-safety.test.ts` (18 tests) |
 | Responsive usability at desktop and narrow mobile | Done | Checked mechanically at 1280px and 375px | `responsive.spec.ts` |
+| A person can apply without an operator entering them first | Done | `/apply/opportunities`, no session required | `opportunities.spec.ts` 3, `opportunities.test.ts` |
+| A draft opportunity is invisible to applicants | Done | Filtered in the query; an unpublished slug answers `NOT_FOUND` | `opportunities.spec.ts` 1, `opportunities.test.ts` |
+| A closed or expired opportunity refuses applications server-side | Done | `acceptanceState` in the service, not the page | `opportunities.spec.ts` 9, `opportunities.test.ts` |
+| Repeated submission does not create a duplicate | Done | `@@unique([opportunityId, candidateId])` and a lookup by lower-cased email | `opportunities.spec.ts` 4, `opportunities.test.ts` |
+| One person applying twice keeps one identity | Done | Candidate matched by email across opportunities | `opportunities.test.ts` |
+| Editing a listing does not rewrite submitted evidence | Done | `opportunitySnapshot` captured at submission | `opportunities.spec.ts` 5, `opportunities.test.ts` |
+| Internal notes never reach an applicant | Done | `PublicOpportunity` whitelist projection | `opportunities.spec.ts` 2 and 7, `opportunities.test.ts` |
+| One applicant cannot see another | Done | Candidate session scopes every applicant-facing query | `opportunities.spec.ts` 6 and 7, `opportunities.test.ts` |
+| An applicant can withdraw, and the record survives | Done | `withdrawApplication`, scoped to the session's candidate | `opportunities.spec.ts` 8, `opportunities.test.ts` |
+| Screening an applicant reuses the existing mechanism | Done | `startScreening` and the published rubric version | `opportunities.spec.ts` 7 |
 
 ### The browser suite
 
 `npm run e2e` starts a production build on port 3100 against `expertops_e2e`
-and a real worker process, then runs 25 tests in four files:
+and a real worker process, then runs 51 tests in seven files:
 
 | File | What it proves |
 | --- | --- |
 | `journey.spec.ts` | One continuous journey in 14 steps, from authoring a rubric to exporting an approved payment batch. Operator, candidate and expert each have their own browser context. |
 | `access.spec.ts` | Expired, revoked and already-used links are refused with a readable reason; one candidate cannot reach another's screening by changing an id; operator pages redirect to sign-in. |
-| `responsive.spec.ts` | Every principal operator page plus the candidate portal at 1280px and 375px: no sideways scrolling, every control has an accessible name, focus is visible, and the candidate form can be completed and submitted by keyboard. |
+| `outreach.spec.ts` | The replacement-outreach batch and its human approval gate. |
+| `withdrawal.spec.ts` | An expert leaves a seat mid-project and a replacement is found, approved, onboarded and confirmed. |
+| `responsive.spec.ts` | Every principal operator page plus the candidate portal and the applicant listing at 1280px and 375px: no sideways scrolling, every control has an accessible name, focus is visible, and the candidate form can be completed and submitted by keyboard. |
+| `opportunities.spec.ts` | Nine steps across three contexts: an operator drafts, publishes and closes a listing; two strangers apply with no account; neither can see the other; the operator screens one of them; that applicant withdraws. |
 | `screenshots.spec.ts` | Writes the walkthrough images in `docs/screenshots/`, refusing to photograph any page whose URL contains a token. |
 
 Fixture setup (operator accounts, one domain, two skills, one pre-published

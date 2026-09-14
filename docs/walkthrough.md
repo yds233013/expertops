@@ -24,7 +24,7 @@ a narrow one. They are grouped in the order work moves through the system:
 | Group | Sections |
 | --- | --- |
 | **Today** | Needs attention, Dashboard |
-| **Sourcing** | Candidates, Campaigns, Screening, Rubrics |
+| **Sourcing** | Opportunities, Candidates, Campaigns, Screening, Rubrics |
 | **Staffing** | Projects, Outreach, Experts, Verification |
 | **Delivery** | Work, Support, Payments |
 | **System** | Outbox, Activity, Worker |
@@ -146,6 +146,47 @@ operator-versus-operator, which is why profiles matter.
     and **Proficiency** and click **Save skills**. This matters: a qualification
     says someone met a bar, not what they can do, and an expert with no skill on
     file is excluded from every match by a hard filter.
+
+---
+
+## Flow A2 — an opportunity, and somebody applying to it
+
+Flow A starts with an operator typing a candidate in. This is the other
+entrance: a published listing that a stranger applies to. It joins the same
+pipeline — an applicant becomes a candidate, and Flow A continues from step 6.
+
+1. **[Operator]** *Opportunities* → **New opportunity**. Fill **Title**,
+   **Summary** and **Description**. Choose **Project engagement** or **Expert
+   network**; the applicant sees which. Add **Required skills**, expected weekly
+   hours, and an **Application deadline** if there is one. Link a **Project** or
+   **Campaign** where it belongs.
+2. **[Operator]** Put anything client-sensitive in **Internal notes — never
+   shown to applicants**, and add opportunity-specific questions with **Add
+   question**. Click **Create draft**.
+3. **[Operator]** A draft is not listed anywhere an applicant can reach. Open
+   `/apply/opportunities` in a profile that is not signed in and confirm the
+   listing is absent, then come back and click **Publish**.
+4. **[Applicant]** At `/apply/opportunities`, open the listing. Everything the
+   operator marked internal is missing from this page; only the description,
+   responsibilities, skills, hours, deadline and compensation line are on it.
+5. **[Applicant]** Fill **Your name**, **Email**, **Relevant experience**,
+   **Skills**, **Hours per week you are available** and the questions, then
+   **Submit application**. No account is created and no password exists. The
+   confirmation carries an `APP-…` reference and says what happens next.
+   Submitting the same form again returns that same reference rather than a
+   second application.
+6. **[Operator]** *Opportunities* → the listing. The applicant is under
+   **Applicants**, with a next action. Open them to read what they actually
+   submitted — against the listing **as it read when they applied**, not as it
+   reads now.
+7. **[Operator]** Choose a **Published rubric version** and click **Send
+   screening**. From here Flow A step 7 onward applies unchanged.
+8. **[Applicant]** The screening link also opens their own status page at
+   `/apply`: their stage, their next action, and **Withdraw this application**.
+   No other applicant is visible from it.
+
+Qualification and rejection are not here on purpose. They stay human decisions
+on the candidate record, with the audit history attached.
 
 ---
 
@@ -367,6 +408,7 @@ nothing in the checklist claims it did.
 | Email | Simulated. Written to *Outbox*, never sent |
 | Magic links | Real, single-use tokens; shown in the UI only in development |
 | Payment | Preparation and export only. No money moves |
+| Applications | Real records, from real form submissions. Nothing is scored automatically and nobody is qualified without a person deciding |
 | Anything outside ExpertOps | Not touched. Accounts, contracts and tools are yours to handle |
 
 ---

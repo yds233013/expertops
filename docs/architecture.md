@@ -534,3 +534,44 @@ maximum, which meant a single record with a different shape — from a test
 factory or an import — sorted highest and silently reset the counter to 1,
 colliding on the next insert. That bug is why `uniqueViolationTarget` exists:
 the handler now reports which column actually collided.
+
+## Opportunities and applications
+
+The intake pipeline originally had one entrance: an operator typed somebody in.
+Opportunities add the other direction — a published listing anybody can apply to
+— without a second identity system beside `Candidate`.
+
+Two services, `opportunities` and `applications`, and one new table. An
+`Application` already existed; it gained an opportunity, the experience and
+skills the applicant claimed, and a snapshot.
+
+Four decisions carry the boundary.
+
+**Visibility is a query, not a view.** `listPublishedOpportunities` filters on
+`status: 'PUBLISHED'` in the database, and `PublicOpportunity` is a whitelist
+projection with no field for `internalNotes` to travel in. A draft cannot be one
+forgotten conditional away from being listed, and an unpublished slug answers
+`NOT_FOUND` rather than "closed" — "closed" would confirm it exists.
+
+**The submission is frozen at submission.** `opportunitySnapshot` records the
+title, questions, required skills and deadline as they read when the person
+pressed the button. Editing the listing next week cannot silently relabel the
+answers given last week. The rubric version was already pinned the same way, for
+the same reason.
+
+**One person is one candidate.** An application is matched by lower-cased email,
+so the same person applying to three opportunities produces one `Candidate` and
+three applications. `@@unique([opportunityId, candidateId])` makes that the
+database's opinion rather than the service's: a repeat submission returns the
+application that already exists, and a withdrawn one is reopened rather than
+duplicated.
+
+**Withdrawal is the applicant's, qualification is not.** `withdrawApplication`
+scopes by the `candidateId` on the session, so the control cannot reach anybody
+else's application however it is called. Qualifying and rejecting stay where
+they were: a human decision on the candidate record, with audit history. Nothing
+is scored automatically, and no protected attribute is near a decision.
+
+Applying needs no session, so the route has no session guard to inherit CSRF
+from; it calls `assertCsrf` directly and is rate limited per email and per IP
+over a rolling hour.

@@ -1,6 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
-import { operatorContext, portalLinkFor, visitorContext, waitForOutboxMessage } from './helpers';
+import {
+  clickUntilVisible,
+  operatorContext,
+  portalLinkFor,
+  visitorContext,
+  waitForOutboxMessage,
+} from './helpers';
 
 /**
  * Screenshots for the walkthrough, written into the repository.
@@ -34,8 +40,31 @@ test('capture the walkthrough screenshots', async ({ browser }) => {
   const candidate = await visitorContext(browser);
   const name = 'Screenshot Subject';
   const email = 'screenshot.subject@e2e.test';
+  const listingTitle = 'Screenshot evaluation reviewer';
 
   try {
+    // A published opportunity, so the applicant-facing listing has something on
+    // it. Nobody applies to it: the pictures are of the pages, not of a journey.
+    await operator.page.goto('/opportunities/new');
+    await operator.page.getByLabel('Title').fill(listingTitle);
+    await operator.page
+      .getByLabel('Summary')
+      .fill('Review synthetic evaluation designs and say what you would change.');
+    await operator.page
+      .getByLabel('Description')
+      .fill('A synthetic listing, used only to photograph the applicant-facing pages.');
+    await operator.page.getByLabel('Required skills').fill('Evaluation Design');
+    await operator.page.getByRole('button', { name: 'Add question' }).click();
+    await operator.page.getByLabel('Question 1 label').fill('What would you look at first?');
+    await operator.page.getByRole('button', { name: 'Create draft' }).click();
+    await expect(operator.page.getByRole('heading', { name: listingTitle, level: 1 })).toBeVisible({
+      timeout: 20_000,
+    });
+    await clickUntilVisible(
+      () => operator.page.getByRole('button', { name: 'Publish' }).click(),
+      operator.page.getByText('Live at'),
+    );
+
     // A candidate with an open screening, so the portal has something to show.
     await operator.page.goto('/candidates');
     await operator.page.getByLabel('Full name').fill(name);
@@ -66,6 +95,7 @@ test('capture the walkthrough screenshots', async ({ browser }) => {
         ['operator-support', '/support'],
         ['operator-delivery', '/work'],
         ['operator-payments', '/payments'],
+        ['operator-opportunities', '/opportunities'],
       ] as const) {
         await operator.page.goto(path);
         // Not a nav link: on a narrow viewport the sections live behind the
@@ -79,6 +109,29 @@ test('capture the walkthrough screenshots', async ({ browser }) => {
         candidate.page.getByRole('heading', { name: /Hello, Screenshot/ }),
       ).toBeVisible();
       await shoot(candidate.page, 'candidate-screening', viewport.name);
+
+      // The two applicant pages that need no session at all. Photographed in a
+      // fresh context for exactly that reason: proof they render to a stranger.
+      const applicant = await browser.newContext({
+        viewport: { width: viewport.width, height: viewport.height },
+      });
+      try {
+        const page = await applicant.newPage();
+        await page.goto('/apply/opportunities');
+        await expect(page.getByRole('heading', { name: 'Open opportunities' })).toBeVisible();
+        await shoot(page, 'candidate-opportunities', viewport.name);
+
+        await page
+          .locator('section')
+          .filter({ hasText: listingTitle })
+          .getByRole('link', { name: 'View and apply' })
+          .first()
+          .click();
+        await expect(page.getByRole('heading', { name: listingTitle, level: 1 })).toBeVisible();
+        await shoot(page, 'candidate-opportunity-apply', viewport.name);
+      } finally {
+        await applicant.close();
+      }
 
       // The sign-in screen, in a context that has never authenticated, so no
       // field is pre-filled and nothing credential-bearing is captured.

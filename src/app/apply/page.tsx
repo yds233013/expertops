@@ -54,6 +54,10 @@ export default async function ApplyHome() {
           <p className="mt-1 text-sm text-ink-600">
             Application <span className="font-mono">{candidate.reference}</span>
           </p>
+          <p className="mt-1 text-sm text-ink-600">
+            You reached this page through a single-use link sent to you. It is the only way in;
+            there is no account to create.
+          </p>
         </div>
         <SignOutButton url="/api/apply/session" redirectTo="/" label="Sign out" />
       </header>
