@@ -136,13 +136,13 @@ export function OperatorNav({
             type="button"
             aria-label="Close the menu"
             tabIndex={-1}
-            className="absolute inset-0 bg-ink-900/30"
+            className="absolute inset-0 bg-navy-900/50"
             onClick={() => setOpen(false)}
           />
           <nav
             id={panelId}
             aria-label="Sections"
-            className="absolute inset-y-0 left-0 w-72 max-w-[85vw] overflow-y-auto border-r border-ink-200 bg-white px-4 py-4 shadow-lg"
+            className="nav-sheet absolute inset-y-0 left-0 w-72 max-w-[85vw] overflow-y-auto px-4 py-4 shadow-lg"
           >
             <NavLinks
               groups={groups}

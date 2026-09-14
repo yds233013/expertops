@@ -1,22 +1,38 @@
 @import 'tailwindcss';
 
+/**
+ * One palette, defined once.
+ *
+ * Warm ivory for the page so white cards read as raised rather than as more of
+ * the same, deep navy for the rail so the eye knows where it is, and a single
+ * deep teal for anything that can be acted on. Every pair below was checked
+ * against WCAG AA at normal text size; the muted greys are darker than they
+ * look like they need to be for exactly that reason.
+ */
 @theme {
-  --color-ink-50: #f6f7f9;
-  --color-ink-100: #eceef2;
-  --color-ink-200: #d5dae3;
-  --color-ink-300: #b0b9c9;
-  --color-ink-400: #7d8aa0;
-  --color-ink-500: #5b6880;
-  --color-ink-600: #475266;
-  --color-ink-700: #3a4354;
-  --color-ink-800: #2a3141;
-  --color-ink-900: #1b2130;
-  --color-accent-50: #eef4ff;
-  --color-accent-100: #dbe7ff;
-  --color-accent-300: #96b6ff;
-  --color-accent-500: #3f68d6;
-  --color-accent-600: #2f52b5;
-  --color-accent-700: #26418f;
+  --color-ink-50: #f5f3ee; /* page background, warm ivory */
+  --color-ink-100: #ece9e2; /* subtle fill inside a card */
+  --color-ink-200: #dde3e5; /* card and table borders */
+  --color-ink-300: #c2cbd0; /* input borders */
+  --color-ink-400: #5f6d76; /* muted text: still AA on white and on ivory */
+  --color-ink-500: #586873; /* secondary text */
+  --color-ink-600: #47565f;
+  --color-ink-700: #35454f;
+  --color-ink-800: #2a3a45;
+  --color-ink-900: #20313d; /* main text, dark slate */
+
+  --color-accent-50: #e8f2f0; /* teal tint */
+  --color-accent-100: #c9e2de;
+  --color-accent-300: #6fb5ac; /* focus ring */
+  --color-accent-500: #176b65; /* primary */
+  --color-accent-600: #125853; /* primary hover */
+  --color-accent-700: #0e4641; /* teal text on a teal tint */
+
+  --color-navy-900: #142b3b; /* the rail */
+  --color-navy-800: #1d3a4b;
+  --color-navy-700: #2a4a5c;
+  --color-navy-100: #9db0bd; /* muted text on the rail */
+  --color-navy-50: #e8f2f0;
 }
 
 :root {
@@ -174,14 +190,15 @@ table.data tr:last-child td {
    Shell: a sidebar on desktop, a bar with a menu on narrow screens.
    --------------------------------------------------------------------------- */
 .sidebar {
-  background: white;
-  border-bottom: 1px solid var(--color-ink-200);
+  background: var(--color-navy-900);
+  border-bottom: 1px solid var(--color-navy-800);
+  color: white;
 }
 
 @media (min-width: 1024px) {
   .sidebar {
     border-bottom: none;
-    border-right: 1px solid var(--color-ink-200);
+    border-right: none;
   }
 
   /* The column carries the background for the whole page height; only the
@@ -204,6 +221,11 @@ table.data tr:last-child td {
   color: var(--color-ink-900);
 }
 
+/* On the rail the brand sits on navy, so it inherits the light treatment. */
+.sidebar .brand {
+  color: white;
+}
+
 .topbar {
   display: flex;
   justify-content: flex-end;
@@ -223,7 +245,7 @@ table.data tr:last-child td {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--color-ink-400);
+  color: var(--color-navy-100);
   padding: 0 0.6rem;
   margin-bottom: 0.35rem;
 }
@@ -236,33 +258,63 @@ table.data tr:last-child td {
   border-radius: 0.5rem;
   padding: 0.4rem 0.6rem;
   font-size: 0.875rem;
-  color: var(--color-ink-600);
+  color: #cfdae2;
 }
 
 .nav-link:hover {
-  background: var(--color-ink-100);
-  color: var(--color-ink-900);
+  background: var(--color-navy-800);
+  color: white;
 }
 
+/* Teal-tinted rather than teal: a solid accent block down the rail competes
+   with the page. The bar on the edge does the pointing. */
 .nav-link-active {
-  background: var(--color-accent-50);
-  color: var(--color-accent-700);
+  background: #1a4d4a;
+  color: var(--color-navy-50);
   font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--color-accent-500);
+  box-shadow: inset 3px 0 0 #3aa294;
+}
+
+.nav-link-active:hover {
+  background: #1f5a56;
+  color: white;
+}
+
+/* A focus ring has to be visible against navy, not just against white. */
+.sidebar a:focus-visible,
+.sidebar button:focus-visible {
+  outline: 2px solid #6fb5ac;
+  outline-offset: 2px;
 }
 
 .nav-count {
   flex: none;
   min-width: 1.25rem;
   border-radius: 999px;
-  background: var(--color-accent-500);
+  background: #2f9488;
   padding: 0 0.35rem;
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1.25rem;
   text-align: center;
-  color: white;
+  color: #06231f;
   font-variant-numeric: tabular-nums;
+}
+
+/* The menu trigger and the sheet it opens both sit on the navy rail. */
+.sidebar .btn-secondary {
+  background: transparent;
+  border-color: var(--color-navy-700);
+  color: white;
+}
+
+.sidebar .btn-secondary:hover:not(:disabled) {
+  background: var(--color-navy-800);
+}
+
+.nav-sheet {
+  background: var(--color-navy-900);
+  border-right: 1px solid var(--color-navy-800);
 }
 
 /* ---------------------------------------------------------------------------
@@ -466,4 +518,13 @@ table.data th {
   border-color: #fde68a;
   background: #fffbeb;
   color: #78350f;
+}
+
+/* The sign-in screen: one navy block, so the first screen looks like the
+   product rather than a form on a blank page. */
+.auth-mark {
+  border-radius: 0.75rem;
+  background: var(--color-navy-900);
+  color: white;
+  padding: 1.1rem 1.25rem;
 }

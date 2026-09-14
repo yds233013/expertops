@@ -79,6 +79,22 @@ test('capture the walkthrough screenshots', async ({ browser }) => {
         candidate.page.getByRole('heading', { name: /Hello, Screenshot/ }),
       ).toBeVisible();
       await shoot(candidate.page, 'candidate-screening', viewport.name);
+
+      // The sign-in screen, in a context that has never authenticated, so no
+      // field is pre-filled and nothing credential-bearing is captured.
+      const signedOut = await browser.newContext({
+        viewport: { width: viewport.width, height: viewport.height },
+      });
+      try {
+        const page = await signedOut.newPage();
+        await page.goto('/login');
+        await expect(page.getByRole('heading', { name: 'ExpertOps' })).toBeVisible();
+        await expect(page.getByLabel('Work email')).toHaveValue('');
+        await expect(page.getByLabel('Password')).toHaveValue('');
+        await shoot(page, 'operator-login', viewport.name);
+      } finally {
+        await signedOut.close();
+      }
     }
   } finally {
     await operator.context.close();

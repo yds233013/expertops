@@ -15,9 +15,12 @@ export default async function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center gap-6 px-6 py-12">
-      <header>
-        <h1 className="text-xl font-semibold text-ink-900">ExpertOps</h1>
-        <p className="mt-1 text-sm text-ink-600">
+      {/* The sign-in screen is the first impression of the workspace, so it
+          carries the same navy the rail does rather than floating a card on an
+          empty field. */}
+      <header className="auth-mark">
+        <h1 className="text-xl font-semibold">ExpertOps</h1>
+        <p className="mt-1 text-sm text-navy-100">
           Operator workspace for sourcing, onboarding and staffing expert engagements.
         </p>
       </header>
