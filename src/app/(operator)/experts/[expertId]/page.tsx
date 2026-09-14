@@ -6,6 +6,7 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { listActivity } from '@/server/services/activity';
 import { getExpert } from '@/server/services/experts';
+import { ExpertProfileEditor } from '@/components/expert-profile-editor';
 import { ExpertSkillsEditor } from '@/components/expert-skills-editor';
 import { PortalLinkPanel } from '@/components/portal-link-panel';
 import { VerifyPanel } from '@/components/verify-panel';
@@ -65,6 +66,24 @@ export default async function ExpertDetailPage({
           </dl>
           {expert.bio && <p className="mt-3 text-sm text-ink-600">{expert.bio}</p>}
         </Card>
+
+        {canWrite && (
+          <Card
+            title="Profile"
+            description="Seniority, rate and capacity. A qualification converts a candidate into an expert without them, so this is where they get filled in."
+          >
+            <ExpertProfileEditor
+              expertId={expert.id}
+              initial={{
+                headline: expert.headline,
+                yearsExperience: expert.yearsExperience,
+                hourlyRateCents: expert.hourlyRateCents,
+                timezone: expert.timezone,
+                weeklyCapacityHours: expert.weeklyCapacityHours,
+              }}
+            />
+          </Card>
+        )}
 
         <Card
           title="Skills"

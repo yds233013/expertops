@@ -10,6 +10,7 @@ node_modules/
 .next-dev/
 .next-prod/
 .next-e2e/
+.next-exercise/
 out/
 next-env.d.ts
 

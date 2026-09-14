@@ -29,12 +29,12 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    ".next-e2e/types/**/*.ts",
-    ".next/types/**/*.ts",
     ".next-dev/types/**/*.ts",
+    ".next-e2e/types/**/*.ts",
+    ".next-exercise/types/**/*.ts",
     ".next-prod/types/**/*.ts",
-    "next-env.d.ts",
-    ".next-dev/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "next-env.d.ts"
   ],
-  "exclude": ["node_modules", ".next", ".next-e2e", "dist"]
+  "exclude": ["node_modules", ".next", ".next-e2e", "dist", ".next-exercise"]
 }

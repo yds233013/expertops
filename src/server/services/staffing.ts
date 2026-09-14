@@ -395,6 +395,23 @@ export async function releaseAssignmentWithin(
   const seatsFilled = await countSeatsTaken(tx, assignment.projectId);
   await tx.project.update({ where: { id: assignment.projectId }, data: { seatsFilled } });
 
+  /**
+   * A project that is no longer full has to say so.
+   *
+   * An expert withdrawing already reopened the project, through
+   * `recordWithdrawal`. An operator releasing the identical seat did not, and
+   * the two leave the project in exactly the same shape: one empty seat.
+   *
+   * The difference mattered because ACTIVE is open for staffing but closed to
+   * matching and invitations. A released seat therefore left a vacancy that
+   * could be filled only from people who had already accepted, and no screen
+   * offers a way back to STAFFING — so a project that filled and then lost
+   * somebody could never be recruited into again.
+   */
+  if (seatsFilled < assignment.project.seatsRequested) {
+    await advanceProjectStatus(tx, actor, assignment.projectId, 'STAFFING');
+  }
+
   await recordActivity(tx, {
     actor,
     entityType: 'assignment',

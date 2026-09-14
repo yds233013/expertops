@@ -15,6 +15,7 @@ export default tseslint.config(
       '.next-dev/**',
       '.next-prod/**',
       '.next-e2e/**',
+      '.next-exercise/**',
       'dist/**',
       'playwright-report/**',
       'test-results/**',
