@@ -1,0 +1,94 @@
+# The hundred-contributor exercise
+
+A network of 100 synthetic experts, three projects, thirty seats, and the whole
+operational cycle run against it — matching, approved outreach, varied
+responses, onboarding, verification, withdrawal, replacement, work, review and
+payment preparation to an exported CSV.
+
+Everything here is synthetic. Email is simulated, no payment executes, and the
+100 people do not exist.
+
+---
+
+## What it builds
+
+| | |
+| --- | --- |
+| **PRJ-0001 · PRACTICE coding review pilot** | 12 seats, requires *Code Review* at 3/5, 40 people in the area |
+| **PRJ-0002 · PRACTICE enterprise process assessment** | 10 seats, requires *Process Analysis*, 35 people |
+| **PRJ-0003 · PRACTICE security posture review** | 8 seats, requires *Threat Modelling*, 25 people |
+
+Every expert is prefixed `NET` and every address ends `@example.test`.
+
+The 100 arrive by the two routes the product has, and the distinction matters:
+
+- **80 were entered by an operator.** Somebody the team already knew of, typed
+  in. Their stage history says exactly that.
+- **20 were screened and then qualified.** A candidate record, a screening
+  against a published rubric, a review, and a human decision to qualify — which
+  is what creates the expert. Nobody becomes an expert as a side effect of
+  filling in a form.
+
+**None of them applied to an opportunity.** Applications only ever arrive
+through `/apply/opportunities`, and the script reports the application count
+separately so the two can never be confused.
+
+The network is deliberately uneven, because a network where everybody qualifies
+proves nothing:
+
+- a quarter of each area fails a hard filter — skill proficiency below the bar,
+  or fewer years than the project asks for;
+- one in five never declares availability, so they accept and then cannot be
+  seated, and the attention queue says so by name;
+- rates run from $90 to $310 an hour against a $250 ceiling, so the ranking has
+  something to weigh;
+- some hold a second, project-scoped availability window: capacity already
+  committed elsewhere;
+- contact preferences are recorded in `notes`, because the model has no field
+  for them. That is a modelling gap, not a feature.
+
+## Running it
+
+```
+DATABASE_URL=<an isolated database> npx tsx scripts/network-exercise.ts
+```
+
+It refuses to run against the development database. It is idempotent: every
+phase asks whether its work is already done, so a second run creates nothing and
+rewinds nothing. Running it after the browser suite has taken a seat will top the
+seats back up from people who accepted.
+
+Everything goes through the same service functions the application calls, so
+every capability check, state-machine guard and audit entry applies exactly as
+it would to a person clicking. Nothing writes a business status directly.
+
+## The browser suites
+
+```
+npx playwright test --config playwright.exercise.config.ts
+```
+
+Port 3200, its own build directory, and — unlike `tests/e2e` — **no reset**. The
+network has to still be there afterwards, because the point is to inspect it.
+
+| File | What it drives |
+| --- | --- |
+| `journey.spec.ts` | One person from the public listing to a confirmed seat: application, operator review, screening, revision request, resubmission, human qualification, profile, invitation, acceptance, onboarding, verification, seat. Three browser contexts. |
+| `scale.spec.ts` | The things that only misbehave with data in them: paging, search by name and reference, status filters that agree with their own counts, capacity across three projects, the attention queue, outreach batch counts, and a job queue that drained. |
+| `payments.spec.ts` | Work assigned, submitted from the expert's own portal, approved for fewer hours than claimed, the difference explained by a person, batched, self-approval refused, approved by a second account, exported. |
+
+## What separation of duties means here
+
+The application refuses to let the account that created a payment batch be the
+account that approves it. The browser suite exercises that refusal with an ADMIN
+who can see the Approve button, and the batch stays pending.
+
+That is separation between **account identities**, which is what software can
+enforce. One person drove both sessions. It is not independent human approval
+and nothing in this exercise should be described as if it were.
+
+## What exporting does not mean
+
+Exporting marks the batch and its items `EXPORTED`. There is no `PAID` state in
+the schema to reach, no column in the CSV that could record a payment, and no
+action anywhere in the application that moves money.
