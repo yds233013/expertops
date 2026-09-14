@@ -13,7 +13,7 @@ import { OnboardingPanel } from '@/components/portal/onboarding-panel';
 import { SupportPanel } from '@/components/portal/support-panel';
 import { WithdrawalPanel } from '@/components/portal/withdrawal-panel';
 import { WorkPanel } from '@/components/portal/work-panel';
-import { Badge, Card, EmptyState, FieldRow, StatusBadge } from '@/components/ui';
+import { Alert, Badge, Card, EmptyState, FieldRow, StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +50,25 @@ export default async function PortalHome() {
     (invitation) => !['SENT', 'ACCEPTED'].includes(invitation.status),
   );
 
+  const outstandingChecklistItems =
+    onboardingCase && onboardingCase.status !== 'VERIFIED'
+      ? onboardingCase.items.filter((item) => item.required && !item.completedAt).length
+      : 0;
+  const workNeedingSubmission = workItems.filter(
+    (item) => item.status === 'ASSIGNED' || item.status === 'REVISION_REQUESTED',
+  ).length;
+
+  const nextStep =
+    openInvitations.length > 0
+      ? `Respond to ${openInvitations.length === 1 ? 'the project invitation' : `${openInvitations.length} project invitations`} below.`
+      : outstandingChecklistItems > 0
+        ? `Complete ${outstandingChecklistItems} remaining onboarding ${outstandingChecklistItems === 1 ? 'item' : 'items'}, then submit the checklist for review.`
+        : onboardingCase?.status === 'SUBMITTED'
+          ? 'Your checklist is with an ExpertOps operator. Nothing is needed from you right now.'
+          : workNeedingSubmission > 0
+            ? `Submit ${workNeedingSubmission === 1 ? 'the work item' : `${workNeedingSubmission} work items`} assigned to you.`
+            : null;
+
   return (
     <div className="space-y-5">
       <header>
@@ -61,6 +80,17 @@ export default async function PortalHome() {
           Respond to invitations, tell us when you are free, and complete your onboarding checklist.
         </p>
       </header>
+
+      {/* One instruction, chosen in the order the work actually blocks on: an
+          unanswered invitation stops everything, then an unfinished checklist,
+          then work that is waiting on them. Listing all three at once is how a
+          portal becomes a wall of text nobody reads. */}
+      {nextStep && (
+        <Alert tone="info">
+          <span className="font-semibold">Next step: </span>
+          {nextStep}
+        </Alert>
+      )}
 
       <Card
         title="Your profile"
