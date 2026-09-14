@@ -235,3 +235,84 @@ writes the link into `bodyText` and the outbox renders it. It is how both runs
 reached the portal, and on a box with simulated email it may be the only way a
 tester ever could — but anyone with `outbox:read` can take over any expert's
 session. Unchanged, and worth a deliberate decision.
+
+---
+
+## The hundred-contributor exercise
+
+Run 14 September 2026. Full description in
+[`network-exercise.md`](network-exercise.md).
+
+### Where it ran
+
+| | |
+| --- | --- |
+| **Locally** | `expertops_exercise`, an isolated PostgreSQL database on the development host. The whole exercise plus 24 browser tests. |
+| **Hosted staging** | The same script through the worker's pre-deploy command, which is how this deployment runs anything — it has no shell. 100 experts, three projects, thirty seats. |
+
+The staging Basic gate stayed enabled throughout; an unauthenticated request to
+`/dashboard` still answers `401`.
+
+### Contributor counts, start and end
+
+Starting state, locally: an empty database. Hosted: 8 synthetic experts and two
+projects from the earlier staging fixtures, all left untouched.
+
+| State | Local, after the exercise |
+| --- | --- |
+| `VERIFIED` | 43 |
+| `PROSPECT` | 49 |
+| `ONBOARDING` | 12 |
+| **Total** | **104** — 100 seeded, 4 who came through `/apply/opportunities` in the browser |
+
+| | |
+| --- | --- |
+| Seats confirmed | **30 of 30**, across three projects |
+| Invitations | 53 accepted, 9 declined, 2 withdrawn |
+| Qualifications | 24, every one a human decision on a screening |
+| Outreach batches | 5, each approved by an account other than its creator |
+| Payment batches | 7, one exported through the browser by a second identity |
+| Open attention items | 40, each naming a blocker, an impact and a next action |
+| Jobs processed | 494, **0 dead** |
+| Simulated outbox messages | 149. No mail server is configured |
+
+The 100 seeded experts did **not** apply to anything. Applications only arrive
+through `/apply/opportunities`, and the two are counted separately so they can
+never be conflated.
+
+### What ran where
+
+| Through a browser | Through services, in a script |
+| --- | --- |
+| The whole candidate journey: listing, application, operator review, screening, revision request, resubmission, qualification, profile, invitation, acceptance, onboarding, verification, confirmed seat | Seeding the 100, matching, outreach approval and dispatch, invitation responses, onboarding of the 30, verification, seat confirmation, two withdrawals, replacement and restaffing |
+| Search, status filters, paging, project capacity, the attention queue, outreach batch counts, worker health | |
+| Work assignment, submission from the expert portal, review at reduced hours, discrepancy explanation, batching, refused self-approval, approval by a second account, CSV export | The same chain once at service level, for the parts the browser run does not repeat |
+
+Every script call goes through the same service function the interface calls, so
+capability checks, state-machine guards and audit entries apply identically.
+Nothing writes a business status directly.
+
+### Two account identities, not two people
+
+The application refuses to let the account that created a payment batch approve
+it. That refusal was exercised in the browser by an ADMIN who could see the
+button; the batch stayed pending, and a different ADMIN approved it.
+
+This is separation between **account identities**. One person drove both
+sessions. It is not independent human approval and is not evidence of it.
+
+### Nothing was paid
+
+Exporting marks the batch and its items `EXPORTED`. There is no `PAID` state in
+the schema, no column in the CSV that could record a payment, and no action in
+the application that moves money.
+
+### Still unverified
+
+- Hosted backup availability and recovery remain unverified.
+- Concurrent-tester behaviour remains unverified. This exercise is **100
+  managed records**, not 100 concurrent users; no load was generated.
+- Hosted operator pages were not re-verified in a browser this run. The signed-in
+  session had expired, and entering a password is not something this process
+  does. Everything that needs no session was checked hosted: the gate, health,
+  and the three published opportunities.
