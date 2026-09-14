@@ -135,11 +135,21 @@ export function StatTile({
   );
 }
 
-export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+export function EmptyState({
+  title,
+  hint,
+  action,
+}: {
+  title: string;
+  hint?: string;
+  /** The one thing to do next, when there is one. */
+  action?: ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-dashed border-ink-200 px-4 py-8 text-center">
       <p className="text-sm font-medium text-ink-700">{title}</p>
-      {hint && <p className="mt-1 text-xs text-ink-500">{hint}</p>}
+      {hint && <p className="mx-auto mt-1 max-w-prose text-xs text-ink-500">{hint}</p>}
+      {action && <div className="mt-3 flex justify-center">{action}</div>}
     </div>
   );
 }
@@ -201,6 +211,89 @@ export function ScoreBar({ score }: { score: number }) {
         />
       </div>
       <span className="text-xs font-semibold tabular-nums text-ink-700">{score}</span>
+    </div>
+  );
+}
+
+/**
+ * One page heading, so every screen announces itself the same way.
+ *
+ * The pages each rolled their own `<h1>` with the same three utility classes,
+ * which stayed consistent only as long as nobody typed a different number.
+ */
+export function PageHeader({
+  title,
+  description,
+  actions,
+  meta,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  /** Buttons or links, kept on the same line on wide screens. */
+  actions?: ReactNode;
+  /** Badges that qualify the title, such as a status or a provenance tag. */
+  meta?: ReactNode;
+}) {
+  return (
+    <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="page-title">{title}</h1>
+          {meta}
+        </div>
+        {description && <p className="page-subtitle">{description}</p>}
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </header>
+  );
+}
+
+export type AlertTone = 'success' | 'error' | 'warning' | 'info';
+
+const ALERT_CLASS: Record<AlertTone, string> = {
+  success: 'alert-success',
+  error: 'alert-error',
+  warning: 'alert-warning',
+  info: 'alert-info',
+};
+
+/**
+ * Feedback after an action.
+ *
+ * `role` differs on purpose: a failure interrupts a screen reader, a success
+ * waits its turn. Getting that backwards is how an error goes unnoticed.
+ */
+export function Alert({
+  tone,
+  children,
+  className,
+}: {
+  tone: AlertTone;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <p
+      role={tone === 'error' ? 'alert' : 'status'}
+      className={clsx('alert', ALERT_CLASS[tone], className)}
+    >
+      {children}
+    </p>
+  );
+}
+
+/** A placeholder with the shape of what is loading, not a spinner. */
+export function Skeleton({ className }: { className?: string }) {
+  return <div aria-hidden="true" className={clsx('skeleton', className)} />;
+}
+
+export function SkeletonRows({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-2" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading</span>
+      {Array.from({ length: rows }, (_, index) => (
+        <Skeleton key={index} className="h-9 w-full" />
+      ))}
     </div>
   );
 }

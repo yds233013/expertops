@@ -15,7 +15,7 @@ export default async function NewExpertPage() {
     <div className="mx-auto max-w-3xl space-y-5">
       <header className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-ink-900">Add an expert</h1>
+          <h1 className="page-title">Add an expert</h1>
           <p className="mt-1 text-sm text-ink-600">
             Record professional details only. Do not enter personal characteristics.
           </p>

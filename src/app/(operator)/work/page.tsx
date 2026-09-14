@@ -69,14 +69,14 @@ export default async function DeliveryPage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Delivery</h1>
+        <h1 className="page-title">Delivery</h1>
         <p className="mt-1 text-sm text-ink-600">
           Work items, expert support and offboarding. A review judges one submission; it never
           changes an expert&rsquo;s standing in the network.
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label="Awaiting review"
           value={counts.SUBMITTED + counts.IN_REVIEW}

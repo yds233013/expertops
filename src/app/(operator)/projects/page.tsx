@@ -40,7 +40,7 @@ export default async function ProjectsPage({
     <div className="space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-ink-900">Projects</h1>
+          <h1 className="page-title">Projects</h1>
           <p className="mt-1 text-sm text-ink-600">
             Each project moves draft → matching → inviting → staffing → active.
           </p>

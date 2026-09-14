@@ -43,7 +43,7 @@ export default async function OutreachBatchPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg font-semibold text-ink-900">{batch.reference}</h1>
+            <h1 className="page-title">{batch.reference}</h1>
             <StatusBadge status={batch.status} />
             <Badge tone={batch.kind === 'REPLACEMENT' ? 'info' : 'muted'}>
               {batch.kind.replace(/_/g, ' ').toLowerCase()}

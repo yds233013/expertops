@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { clsx } from 'clsx';
 import { prisma } from '@/lib/db';
 import { formatDateTime, formatRelative } from '@/lib/time';
 import { requireOperator } from '@/server/http/context';
@@ -6,7 +7,7 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { attentionCounts, listAttention } from '@/server/services/attention';
 import { workerHealth } from '@/server/services/worker-health';
 import { AttentionActions } from '@/components/attention-actions';
-import { Badge, Card, EmptyState, StatTile } from '@/components/ui';
+import { Badge, Card, EmptyState, PageHeader, StatTile } from '@/components/ui';
 import { type AttentionKind, type AttentionSeverity } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -60,13 +61,10 @@ export default async function AttentionPage({
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="text-lg font-semibold text-ink-900">Needs attention</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          Everything that is stuck and needs a person. Items appear and disappear on their own as
-          conditions change, so an empty list means nothing is waiting.
-        </p>
-      </header>
+      <PageHeader
+        title="Needs attention"
+        description="Everything that is stuck and needs a person. Items appear and disappear on their own as conditions change, so an empty list means nothing is waiting."
+      />
 
       {/* An empty queue means nothing is waiting only if something is running to
           put things on it. A stalled worker is announced here, ahead of the
@@ -105,7 +103,7 @@ export default async function AttentionPage({
         </section>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatTile label="Open items" value={counts.total} />
         <StatTile label="High severity" value={counts.high} tone="danger" hint="act first" />
         <StatTile label="Unassigned" value={counts.unassigned} tone="warning" hint="no owner" />
@@ -153,7 +151,7 @@ export default async function AttentionPage({
             {business.map((item) => {
               const overdue = item.dueAt !== null && item.dueAt.getTime() <= now.getTime();
               return (
-                <li key={item.id} className="rounded-lg border border-ink-200 px-4 py-3">
+                <li key={item.id} className={clsx('attn', `attn-${item.severity.toLowerCase()}`)}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -164,35 +162,35 @@ export default async function AttentionPage({
                         <code className="text-[0.7rem] text-ink-400">{item.category}</code>
                       </div>
 
-                      <dl className="mt-2 space-y-1 text-sm">
+                      <dl className="mt-2 space-y-1.5 text-sm">
                         <div className="flex gap-2">
-                          <dt className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-ink-500">
-                            Blocker
-                          </dt>
+                          <dt className="attn-term w-16 shrink-0 pt-0.5">Blocker</dt>
                           <dd className="text-ink-800">{item.blocker}</dd>
                         </div>
                         <div className="flex gap-2">
-                          <dt className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-ink-500">
-                            Impact
-                          </dt>
+                          <dt className="attn-term w-16 shrink-0 pt-0.5">Impact</dt>
                           <dd className="text-ink-600">{item.impact}</dd>
-                        </div>
-                        <div className="flex gap-2">
-                          <dt className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-ink-500">
-                            Next
-                          </dt>
-                          <dd className="font-medium text-ink-800">{item.nextAction}</dd>
                         </div>
                       </dl>
 
-                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                      {/* Separated from the description above: everything else on
+                          the card explains the situation, this is the instruction. */}
+                      <p className="attn-next">
+                        <span className="attn-term mr-2 text-accent-600">Do next</span>
+                        {item.nextAction}
+                      </p>
+
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+                        <span
+                          className={clsx('owner-chip', !item.owner && 'owner-chip-unassigned')}
+                        >
+                          {item.owner ? item.owner.name : 'Unassigned'}
+                        </span>
+                        {overdue && <Badge tone="danger">overdue</Badge>}
                         <span className={overdue ? 'font-semibold text-rose-700' : 'text-ink-500'}>
                           {item.dueAt
                             ? `${overdue ? 'Overdue since' : 'Due'} ${formatRelative(item.dueAt)}`
                             : 'No due date'}
-                        </span>
-                        <span className="text-ink-500">
-                          Owner: {item.owner ? item.owner.name : <strong>unassigned</strong>}
                         </span>
                         <span className="text-ink-400" title={formatDateTime(item.createdAt)}>
                           raised {formatRelative(item.createdAt)}

@@ -21,7 +21,7 @@ export default async function VerificationQueuePage() {
     <div className="space-y-5">
       <header>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold text-ink-900">Verification queue</h1>
+          <h1 className="page-title">Verification queue</h1>
           <ProvenanceTag kind="operator" />
         </div>
         <p className="mt-1 text-sm text-ink-600">
@@ -30,7 +30,7 @@ export default async function VerificationQueuePage() {
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatTile
           label="Awaiting review"
           value={counts.SUBMITTED}

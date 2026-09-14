@@ -33,7 +33,7 @@ export default async function CampaignsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Sourcing campaigns</h1>
+        <h1 className="page-title">Sourcing campaigns</h1>
         <p className="mt-1 text-sm text-ink-600">
           A campaign exists to close a specific shortage. Progress is counted in qualified people,
           not in applications received.

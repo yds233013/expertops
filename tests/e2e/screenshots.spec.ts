@@ -68,7 +68,9 @@ test('capture the walkthrough screenshots', async ({ browser }) => {
         ['operator-payments', '/payments'],
       ] as const) {
         await operator.page.goto(path);
-        await expect(operator.page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+        // Not a nav link: on a narrow viewport the sections live behind the
+        // menu button, so waiting for one would only ever pass on desktop.
+        await expect(operator.page.getByRole('heading', { level: 1 })).toBeVisible();
         await shoot(operator.page, file, viewport.name);
       }
 

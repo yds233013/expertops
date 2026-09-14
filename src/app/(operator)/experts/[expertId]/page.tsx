@@ -39,7 +39,7 @@ export default async function ExpertDetailPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-ink-900">{expert.fullName}</h1>
+            <h1 className="page-title">{expert.fullName}</h1>
             <StatusBadge status={expert.status} />
           </div>
           <p className="mt-1 text-sm text-ink-600">

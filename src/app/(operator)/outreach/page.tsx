@@ -73,14 +73,14 @@ export default async function OutreachPage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Bulk outreach</h1>
+        <h1 className="page-title">Bulk outreach</h1>
         <p className="mt-1 text-sm text-ink-600">
           The system assembles who is worth contacting. It never contacts them: a batch waits in
           approval until a named operator approves it, and dispatch is a separate, explicit step.
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Drafts" value={byStatus('DRAFT')} />
         <StatTile
           label="Awaiting approval"

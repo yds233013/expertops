@@ -35,7 +35,7 @@ export default async function ApplyHome() {
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-ink-900">Hello, {candidate.fullName}</h1>
+          <h1 className="page-title">Hello, {candidate.fullName}</h1>
           <p className="mt-1 text-sm text-ink-600">
             Application <span className="font-mono">{candidate.reference}</span>
           </p>

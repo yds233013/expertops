@@ -30,7 +30,7 @@ export default async function ActivityPage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Activity history</h1>
+        <h1 className="page-title">Activity history</h1>
         <p className="mt-1 text-sm text-ink-600">
           Append-only. Each entry names who acted: a human operator, an expert in their portal, or
           the background worker.

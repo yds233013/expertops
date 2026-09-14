@@ -57,7 +57,7 @@ export default async function ScreeningsPage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Screening review</h1>
+        <h1 className="page-title">Screening review</h1>
         <p className="mt-1 text-sm text-ink-600">
           Each screening is judged against the rubric version it started on. Two reviewers who
           disagree raise a conflict; the system never breaks the tie.

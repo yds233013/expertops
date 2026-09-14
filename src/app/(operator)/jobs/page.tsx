@@ -40,7 +40,7 @@ export default async function JobsPage({
     <div className="space-y-5">
       <header>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold text-ink-900">Background worker</h1>
+          <h1 className="page-title">Background worker</h1>
           <ProvenanceTag kind="automated" />
         </div>
         <p className="mt-1 text-sm text-ink-600">
@@ -52,7 +52,7 @@ export default async function JobsPage({
 
       <WorkerHealthPanel health={health} />
 
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {STATUSES.map((value) => (
           <StatTile
             key={value}

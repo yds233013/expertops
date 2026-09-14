@@ -3,15 +3,12 @@ import { environmentLabel } from '@/lib/env';
 export default function ApplyLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
-      <a
-        href="#apply-main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
-      >
+      <a className="skip-link" href="#apply-main">
         Skip to content
       </a>
       <header className="border-b border-ink-200 bg-white">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <span className="text-sm font-bold tracking-tight text-ink-900">ExpertOps</span>
+          <span className="brand">ExpertOps</span>
           <span className="text-xs text-ink-500">Screening</span>
         </div>
       </header>

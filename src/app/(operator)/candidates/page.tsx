@@ -62,14 +62,14 @@ export default async function CandidatesPage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Candidate pipeline</h1>
+        <h1 className="page-title">Candidate pipeline</h1>
         <p className="mt-1 text-sm text-ink-600">
           People being assessed for the network. A candidate becomes an expert only after a human
           qualification decision.
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label="In the funnel"
           value={

@@ -57,14 +57,14 @@ export default async function SupportPage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Support</h1>
+        <h1 className="page-title">Support</h1>
         <p className="mt-1 text-sm text-ink-600">
           Conversations with experts. Internal notes stay on this side; everything else appears in
           the expert&rsquo;s portal.
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Open" value={counts.OPEN} />
         <StatTile label="Waiting on us" value={counts.WAITING_ON_OPS} tone="warning" />
         <StatTile label="Waiting on expert" value={counts.WAITING_ON_EXPERT} />

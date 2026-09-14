@@ -169,3 +169,301 @@ table.data tr:last-child td {
 .scroll-x {
   overflow-x: auto;
 }
+
+/* ---------------------------------------------------------------------------
+   Shell: a sidebar on desktop, a bar with a menu on narrow screens.
+   --------------------------------------------------------------------------- */
+.sidebar {
+  background: white;
+  border-bottom: 1px solid var(--color-ink-200);
+}
+
+@media (min-width: 1024px) {
+  .sidebar {
+    border-bottom: none;
+    border-right: 1px solid var(--color-ink-200);
+  }
+
+  /* The column carries the background for the whole page height; only the
+     contents are pinned. Making the column itself 100vh left a white band that
+     ended mid-page on anything taller than the viewport. */
+  .sidebar-inner {
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding-bottom: 1.5rem;
+  }
+}
+
+.brand {
+  display: inline-block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-ink-900);
+}
+
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--color-ink-200);
+  background: white;
+  padding: 0.65rem 1rem;
+}
+
+@media (min-width: 640px) {
+  .topbar {
+    padding: 0.65rem 1.5rem;
+  }
+}
+
+.nav-heading {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-ink-400);
+  padding: 0 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.875rem;
+  color: var(--color-ink-600);
+}
+
+.nav-link:hover {
+  background: var(--color-ink-100);
+  color: var(--color-ink-900);
+}
+
+.nav-link-active {
+  background: var(--color-accent-50);
+  color: var(--color-accent-700);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-accent-500);
+}
+
+.nav-count {
+  flex: none;
+  min-width: 1.25rem;
+  border-radius: 999px;
+  background: var(--color-accent-500);
+  padding: 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-align: center;
+  color: white;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   Typography: one scale, so a heading means the same thing on every screen.
+   --------------------------------------------------------------------------- */
+.page-title {
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--color-ink-900);
+}
+
+.page-subtitle {
+  margin-top: 0.3rem;
+  font-size: 0.875rem;
+  color: var(--color-ink-600);
+  max-width: 70ch;
+}
+
+.section-title {
+  font-size: 0.9rem;
+  font-weight: 650;
+  color: var(--color-ink-900);
+}
+
+/* ---------------------------------------------------------------------------
+   Forms: a required field, an invalid one and a hint all look like themselves.
+   --------------------------------------------------------------------------- */
+.input:disabled,
+.textarea:disabled,
+.select:disabled {
+  background: var(--color-ink-50);
+  color: var(--color-ink-500);
+  cursor: not-allowed;
+}
+
+.input[aria-invalid='true'],
+.textarea[aria-invalid='true'],
+.select[aria-invalid='true'] {
+  border-color: #b4232a;
+}
+
+.field-hint {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-ink-500);
+}
+
+.field-error {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #971c22;
+}
+
+/* ---------------------------------------------------------------------------
+   Feedback: the same shape whether something succeeded, failed or is a note.
+   --------------------------------------------------------------------------- */
+.alert {
+  border-radius: 0.5rem;
+  border: 1px solid;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.alert-success {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+.alert-error {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+.alert-warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #78350f;
+}
+
+.alert-info {
+  background: var(--color-accent-50);
+  border-color: var(--color-accent-100);
+  color: var(--color-accent-700);
+}
+
+/* A placeholder with the shape of the thing that is coming. */
+.skeleton {
+  border-radius: 0.5rem;
+  background: linear-gradient(
+    90deg,
+    var(--color-ink-100),
+    var(--color-ink-50),
+    var(--color-ink-100)
+  );
+  background-size: 200% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* Skip link: the first thing a keyboard reaches, invisible until focused. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: 50;
+}
+
+.skip-link:focus {
+  left: 0.75rem;
+  top: 0.75rem;
+  background: white;
+  border: 1px solid var(--color-ink-300);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* A wide table should scroll inside its own box, never the page. */
+table.data th {
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Attention queue: severity has to be readable before the words are.
+   --------------------------------------------------------------------------- */
+.attn {
+  border: 1px solid var(--color-ink-200);
+  border-left-width: 4px;
+  border-radius: 0.625rem;
+  padding: 0.85rem 1rem;
+  background: white;
+}
+
+.attn-high {
+  border-left-color: #b4232a;
+}
+
+.attn-medium {
+  border-left-color: #d97706;
+}
+
+.attn-low {
+  border-left-color: var(--color-ink-300);
+}
+
+.attn-term {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-400);
+}
+
+/* The next action is the only line on the card that is an instruction. */
+.attn-next {
+  margin-top: 0.6rem;
+  border-radius: 0.45rem;
+  background: var(--color-accent-50);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-accent-700);
+}
+
+.owner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-ink-200);
+  background: var(--color-ink-50);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-ink-600);
+}
+
+.owner-chip-unassigned {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #78350f;
+}

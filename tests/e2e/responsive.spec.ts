@@ -122,8 +122,22 @@ test.describe('operator pages', () => {
           await operator.page.goto(path);
           const where = `${path} at ${viewport.width}px`;
 
-          // Navigation has to still be reachable, not pushed off-screen.
-          await expect(operator.page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+          // Navigation has to still be reachable, not pushed off-screen. On a
+          // wide viewport that is the rail; on a narrow one the sections live
+          // behind a menu button, and reachable means the button opens them.
+          if (viewport.width >= 1024) {
+            await expect(operator.page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+          } else {
+            const menu = operator.page.getByRole('button', { name: /Menu/ });
+            await expect(menu).toBeVisible();
+            await expect(menu).toHaveAttribute('aria-expanded', 'false');
+            await menu.click();
+            await expect(menu).toHaveAttribute('aria-expanded', 'true');
+            await expect(operator.page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+            // Escape closes it, so a keyboard user is never trapped behind it.
+            await operator.page.keyboard.press('Escape');
+            await expect(menu).toHaveAttribute('aria-expanded', 'false');
+          }
           await expectNoHorizontalOverflow(operator.page, where);
           await expectNamedControls(operator.page, where);
         }
@@ -212,7 +226,10 @@ test('the sign-in page is usable on a narrow screen and by keyboard alone', asyn
     await visitor.page.keyboard.type('e2e-password-123');
     await visitor.page.keyboard.press('Enter');
 
-    await expect(visitor.page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+    // Signed in, on a phone: the workspace heading is the proof, because the
+    // sections are behind the menu at this width.
+    await expect(visitor.page.getByRole('heading', { name: 'Operator dashboard' })).toBeVisible();
+    await expect(visitor.page.getByRole('button', { name: /Menu/ })).toBeVisible();
   } finally {
     await visitor.context.close();
   }

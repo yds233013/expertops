@@ -46,7 +46,7 @@ export default async function CandidateDetailPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg font-semibold text-ink-900">{candidate.fullName}</h1>
+            <h1 className="page-title">{candidate.fullName}</h1>
             <StatusBadge status={candidate.stage} />
             {candidate.contactOptOutAt && <Badge tone="muted">opted out of contact</Badge>}
           </div>

@@ -35,7 +35,7 @@ export default async function PaymentsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Payment preparation</h1>
+        <h1 className="page-title">Payment preparation</h1>
         <p className="mt-1 text-sm text-ink-600">
           Prepares an approved file for a finance process that lives elsewhere. Nothing here moves
           money, and <strong>exported is not paid</strong>. There is deliberately no action that
@@ -43,7 +43,7 @@ export default async function PaymentsPage() {
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label="Needs explanation"
           value={counts.withOpenDiscrepancies}

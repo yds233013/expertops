@@ -38,7 +38,7 @@ export default async function ExpertsPage({
     <div className="space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-ink-900">Expert network</h1>
+          <h1 className="page-title">Expert network</h1>
           <p className="mt-1 text-sm text-ink-600">
             Professional records only. No protected personal attributes are collected or stored.
           </p>

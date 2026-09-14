@@ -54,7 +54,7 @@ export default async function PortalHome() {
     <div className="space-y-5">
       <header>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold text-ink-900">Hello, {expert.fullName}</h1>
+          <h1 className="page-title">Hello, {expert.fullName}</h1>
           <StatusBadge status={expert.status} />
         </div>
         <p className="mt-1 text-sm text-ink-600">

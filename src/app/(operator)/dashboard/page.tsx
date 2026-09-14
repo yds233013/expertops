@@ -42,13 +42,13 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Operator dashboard</h1>
+        <h1 className="page-title">Operator dashboard</h1>
         <p className="mt-1 text-sm text-ink-600">
           Pipeline state across sourcing, onboarding and staffing.
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label="Open projects"
           value={openProjects}

@@ -34,7 +34,7 @@ export default async function OutboxPage({
     <div className="space-y-5">
       <header>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold text-ink-900">Simulated outbox</h1>
+          <h1 className="page-title">Simulated outbox</h1>
           <ProvenanceTag kind="simulated" />
         </div>
         <p className="mt-1 text-sm text-ink-600">
@@ -44,7 +44,7 @@ export default async function OutboxPage({
         <SimulatedDeliveryNote className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900" />
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatTile label="Queued" value={counts.QUEUED} hint="worker picks up" tone="warning" />
         <StatTile label="Marked delivered (simulated)" value={counts.SENT} tone="muted" />
         <StatTile label="Failed" value={counts.FAILED} tone="danger" />

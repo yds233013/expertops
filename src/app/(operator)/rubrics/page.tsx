@@ -27,7 +27,7 @@ export default async function RubricsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-lg font-semibold text-ink-900">Screening rubrics</h1>
+        <h1 className="page-title">Screening rubrics</h1>
         <p className="mt-1 text-sm text-ink-600">
           A published version never changes. Screenings keep the version they started against, so a
           decision made months ago is still explainable.

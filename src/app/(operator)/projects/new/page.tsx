@@ -15,7 +15,7 @@ export default async function NewProjectPage() {
     <div className="mx-auto max-w-3xl space-y-5">
       <header className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-ink-900">New project</h1>
+          <h1 className="page-title">New project</h1>
           <p className="mt-1 text-sm text-ink-600">
             A project needs at least one skill requirement before it can be opened for matching.
           </p>
