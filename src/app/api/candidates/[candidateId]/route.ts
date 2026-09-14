@@ -10,6 +10,7 @@ import {
   updateRelationship,
 } from '@/server/services/candidates';
 import { startScreening } from '@/server/services/screening';
+import { markScreeningStartedForCandidate } from '@/server/services/applications';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,9 @@ export const POST = route(async (request: NextRequest, { params }: Params) => {
       rubricVersionId: body.rubricVersionId,
       dueInHours: body.dueInHours,
     });
+    // Any application this person made is now in screening, so its status says
+    // so rather than staying on "submitted" while a screening runs.
+    await markScreeningStartedForCandidate(prisma, candidateId);
     return ok({ screening });
   }
 

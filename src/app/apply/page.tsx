@@ -1,12 +1,24 @@
 import { prisma } from '@/lib/db';
 import { formatDateTime, formatRelative } from '@/lib/time';
 import { currentCandidate } from '@/server/http/context';
+import { listApplicationsForCandidate } from '@/server/services/applications';
+import { WithdrawApplicationButton } from '@/components/apply/withdraw-application-button';
 import { listScreeningsForCandidate } from '@/server/services/screening';
 import { ScreeningForm } from '@/components/apply/screening-form';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Badge, Card, EmptyState, StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
+
+/** One sentence per state, so the page always says what happens next. */
+const APPLICATION_NEXT_STEP: Record<string, string> = {
+  SUBMITTED: 'Received. An operator is reading it; nothing is decided automatically.',
+  ACKNOWLEDGED: 'Received and acknowledged. An operator will be in touch about next steps.',
+  SCREENING_STARTED: 'A screening exercise has been sent to you. Complete it below.',
+  CLOSED_QUALIFIED: 'You were qualified. Your ExpertOps contact will follow up about projects.',
+  CLOSED_REJECTED: 'This one was not taken further. You are welcome to apply to others.',
+  CLOSED_WITHDRAWN: 'You withdrew this application.',
+};
 
 /**
  * The candidate's whole view of their application.
@@ -29,7 +41,10 @@ export default async function ApplyHome() {
     );
   }
 
-  const screenings = await listScreeningsForCandidate(prisma, candidate.id);
+  const [screenings, applications] = await Promise.all([
+    listScreeningsForCandidate(prisma, candidate.id),
+    listApplicationsForCandidate(prisma, candidate.id),
+  ]);
 
   return (
     <div className="space-y-5">
@@ -42,6 +57,45 @@ export default async function ApplyHome() {
         </div>
         <SignOutButton url="/api/apply/session" redirectTo="/" label="Sign out" />
       </header>
+
+      {applications.length > 0 && (
+        <Card
+          title="Your applications"
+          description="Only yours. Nobody else's application is visible from here."
+        >
+          <ul className="space-y-3">
+            {applications.map((application) => (
+              <li key={application.id} className="rounded-lg border border-ink-200 px-3 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="section-title">
+                      {application.opportunity?.title ?? 'Expert network'}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-ink-500">
+                      <span className="font-mono">{application.reference}</span> · submitted{' '}
+                      {formatRelative(application.submittedAt)}
+                    </p>
+                    <p className="mt-1.5 text-sm text-ink-700">
+                      {APPLICATION_NEXT_STEP[application.status]}
+                    </p>
+                  </div>
+                  <StatusBadge status={application.status} />
+                </div>
+                {!application.withdrawnAt &&
+                  application.status !== 'CLOSED_QUALIFIED' &&
+                  application.status !== 'CLOSED_REJECTED' && (
+                    <div className="mt-2">
+                      <WithdrawApplicationButton
+                        applicationId={application.id}
+                        title={application.opportunity?.title ?? 'this opportunity'}
+                      />
+                    </div>
+                  )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {screenings.length === 0 && (
         <Card title="No screening exercise yet">

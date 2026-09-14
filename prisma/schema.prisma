@@ -40,13 +40,14 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions           Session[]
-  activityEvents     ActivityEvent[]
-  createdProjects    Project[]        @relation("ProjectCreatedBy")
-  createdMatchRuns   MatchRun[]
-  createdInvitations Invitation[]     @relation("InvitationCreatedBy")
-  verifiedCases      OnboardingCase[] @relation("OnboardingVerifiedBy")
-  createdAssignments Assignment[]     @relation("AssignmentCreatedBy")
+  sessions             Session[]
+  activityEvents       ActivityEvent[]
+  createdProjects      Project[]        @relation("ProjectCreatedBy")
+  createdMatchRuns     MatchRun[]
+  createdInvitations   Invitation[]     @relation("InvitationCreatedBy")
+  verifiedCases        OnboardingCase[] @relation("OnboardingVerifiedBy")
+  createdAssignments   Assignment[]     @relation("AssignmentCreatedBy")
+  createdOpportunities Opportunity[]    @relation("OpportunityCreatedBy")
 
   // Extension back-relations
   ownedCampaigns         SourcingCampaign[]       @relation("CampaignOwner")
@@ -266,6 +267,7 @@ model Project {
   qualificationRequirements ProjectQualificationRequirement[]
   attentionItems            AttentionItem[]
   outreachBatches           OutreachBatch[]
+  opportunities             Opportunity[]
   workItems                 WorkItem[]
   supportRequests           SupportRequest[]
   paymentItems              PaymentItem[]
@@ -727,6 +729,7 @@ model Domain {
   campaigns      SourcingCampaign[]
   templates      ScreeningTemplate[]
   applications   Application[]
+  opportunities  Opportunity[]
   qualifications Qualification[]
   requirements   ProjectQualificationRequirement[]
 
@@ -759,11 +762,12 @@ model SourcingCampaign {
   createdAt   DateTime               @default(now())
   updatedAt   DateTime               @updatedAt
 
-  domain     Domain      @relation(fields: [domainId], references: [id], onDelete: Restrict)
-  project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  owner      User?       @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdBy  User?       @relation("CampaignCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  candidates Candidate[]
+  domain        Domain        @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  owner         User?         @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy     User?         @relation("CampaignCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  candidates    Candidate[]
+  opportunities Opportunity[]
 
   @@index([status, domainId])
   @@index([projectId])
@@ -872,27 +876,115 @@ enum ApplicationStatus {
 
 /// A structured application to work in a domain.
 model Application {
-  id              String            @id @default(cuid())
-  reference       String            @unique
-  candidateId     String
-  domainId        String
-  campaignId      String?
-  status          ApplicationStatus @default(SUBMITTED)
+  id                  String            @id @default(cuid())
+  reference           String            @unique
+  candidateId         String
+  domainId            String
+  campaignId          String?
+  /// Set when the application came from a published opportunity rather than
+  /// from an operator recording somebody by hand.
+  opportunityId       String?
+  status              ApplicationStatus @default(SUBMITTED)
   /// Structured answers keyed by question id. No free-form file upload exists.
-  answers         Json              @default("{}")
+  answers             Json              @default("{}")
   /// Synthetic work-sample links. Recorded as text and never fetched.
-  workSampleLinks Json              @default("[]")
-  submittedAt     DateTime          @default(now())
-  acknowledgedAt  DateTime?
-  closedAt        DateTime?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  workSampleLinks     Json              @default("[]")
+  /// What the applicant said about themselves, in their own words.
+  experience          String            @default("")
+  /// Skill names the applicant claimed. Not verified by anyone yet.
+  claimedSkills       Json              @default("[]")
+  weeklyHours         Int?
+  /// The opportunity exactly as it read when this was submitted: title, kind,
+  /// required skills, deadline and the questions that were actually asked.
+  /// Editing the opportunity afterwards must not rewrite what somebody applied
+  /// to, and a reviewer months later has to see the same thing the applicant did.
+  opportunitySnapshot Json              @default("{}")
+  submittedAt         DateTime          @default(now())
+  acknowledgedAt      DateTime?
+  withdrawnAt         DateTime?
+  withdrawReason      String?
+  closedAt            DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
-  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  domain    Domain    @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  candidate   Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  domain      Domain       @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
 
+  /// One person, one application per opportunity. A resubmitted form finds the
+  /// existing row rather than making a second one.
+  @@unique([opportunityId, candidateId])
   @@index([status, submittedAt])
   @@index([candidateId])
+  @@index([opportunityId, status])
+}
+
+enum OpportunityKind {
+  /// A named project with seats to fill.
+  PROJECT_ENGAGEMENT
+  /// Ongoing intake into the expert network, not tied to one project.
+  NETWORK_MEMBERSHIP
+}
+
+enum OpportunityStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+/// Something a person can apply to.
+///
+/// Draft is invisible to applicants and closed refuses new applications, both
+/// enforced in the service rather than by hiding a link.
+model Opportunity {
+  id         String            @id @default(cuid())
+  reference  String            @unique
+  /// Stable, human-readable and used in the candidate-facing URL.
+  slug       String            @unique
+  title      String
+  kind       OpportunityKind   @default(PROJECT_ENGAGEMENT)
+  status     OpportunityStatus @default(DRAFT)
+  domainId   String
+  /// Where this leads, when it leads somewhere specific.
+  projectId  String?
+  campaignId String?
+
+  summary          String @default("")
+  description      String @default("")
+  responsibilities String @default("")
+  /// Skill names an applicant is expected to have.
+  requiredSkills   Json   @default("[]")
+  /// What the applicant is asked, beyond the standard fields.
+  questions        Json   @default("[]")
+
+  weeklyHoursMin      Int?
+  weeklyHoursMax      Int?
+  startDate           DateTime?
+  endDate             DateTime?
+  /// After this moment the service refuses new applications.
+  applicationDeadline DateTime?
+  /// Free text, and only when a figure has actually been agreed.
+  compensationNote    String    @default("")
+
+  /// Never rendered on a candidate-facing page. Client-sensitive context and
+  /// anything a reviewer writes for other reviewers lives here.
+  internalNotes String @default("")
+
+  publishedAt DateTime?
+  closedAt    DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  domain       Domain            @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  project      Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  campaign     SourcingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdBy    User?             @relation("OpportunityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  applications Application[]
+
+  @@index([status, publishedAt])
+  @@index([domainId])
+  @@index([projectId])
 }
 
 enum DuplicateFlagStatus {

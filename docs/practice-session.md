@@ -212,3 +212,53 @@ npx tsx scripts/practice-scenario.ts
 It creates only what is missing. Records you have moved through the workflow
 stay where you left them — it will not rewind a staffed seat or an approved
 batch, so for a clean second run use fresh names.
+
+---
+
+## 6. Apply to an opportunity yourself
+
+The three `PRACTICE` opportunities are published and waiting. This journey is
+deliberately left for you to complete; nothing about it has been done for you.
+
+**Actor: applicant.** Open the opportunities page in a browser profile that is
+**not** signed in as an operator. You still pass the site gate; that is the
+staging perimeter, not an account.
+
+| | |
+| --- | --- |
+| **Where** | `/apply/opportunities` |
+| **Expect** | Three listings: code review, enterprise process, security review. Each labelled *Project engagement* |
+| **If not** | An empty list means none is published. Check **Opportunities** in the operator sidebar: a draft is invisible here by design |
+
+| | |
+| --- | --- |
+| **Where** | Open one and read it |
+| **Expect** | Description, responsibilities, required skill, expected hours, deadline, and a compensation line saying none is offered. No client name anywhere |
+| **If not** | If you can see a client name or a rate ceiling, that is a leak worth reporting — it should only exist in *Internal notes* on the operator side |
+
+| | |
+| --- | --- |
+| **Enter** | Your own synthetic details. Use an address you have not used before, something like `practice.applicant@example.test`. Answer the required question |
+| **Expect** | A confirmation with an `APP-…` reference and three numbered steps |
+| **If not** | "Please answer" means a required question is blank. "Not found" means the listing was closed while you were reading it |
+
+**Try submitting the same form again.** You should be told you have already
+applied, with the same reference, and the operator should still see one
+applicant rather than two.
+
+**Actor: operator.** In another profile, signed in.
+
+| | |
+| --- | --- |
+| **Where** | Sidebar → **Sourcing** → **Opportunities** → the one you applied to |
+| **Expect** | Your application under *Applicants*, with a next action of "Read the application, then send a screening" |
+| **If not** | Check the email you used; the applicant list is scoped to that opportunity |
+
+Open the application, read what you submitted, then **send a screening** using
+the `PRACTICE evaluation screening` rubric. From there the existing screening,
+revision, qualification and project-invitation steps in this guide apply
+unchanged — an applicant becomes a candidate becomes an expert.
+
+> To practise withdrawal you need the screening link the operator sends, because
+> application status and withdrawal live behind the candidate session. Read the
+> link out of **System → Outbox** and open it in the applicant's profile.

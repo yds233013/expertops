@@ -35,6 +35,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     heading: 'Sourcing',
     items: [
+      { href: '/opportunities', label: 'Opportunities' },
       { href: '/candidates', label: 'Candidates' },
       { href: '/campaigns', label: 'Campaigns' },
       { href: '/screenings', label: 'Screening' },
@@ -82,6 +83,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
     payments,
     support,
     awaitingOutreach,
+    newApplications,
   ] = await Promise.all([
     outboxCounts(prisma),
     jobCounts(prisma),
@@ -92,6 +94,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
     paymentCounts(prisma),
     supportCounts(prisma),
     listBatches(prisma, { status: 'PENDING_APPROVAL', limit: 200 }),
+    prisma.application.count({ where: { status: 'SUBMITTED', withdrawnAt: null } }),
   ]);
 
   // Badges show work waiting on a person, not raw record counts.
@@ -99,6 +102,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
     '/attention': attention.total,
     '/candidates':
       candidates.DUPLICATE_HOLD + candidates.SCREENING_SUBMITTED + candidates.IN_REVIEW,
+    '/opportunities': newApplications,
     '/onboarding': onboarding.SUBMITTED,
     '/work': work.SUBMITTED + work.IN_REVIEW,
     '/support': support.OPEN + support.WAITING_ON_OPS,
