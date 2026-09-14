@@ -16,6 +16,25 @@ found.
 
 ---
 
+## Finding your way
+
+The sections live in a sidebar on a wide screen, and behind a **Menu** button on
+a narrow one. They are grouped in the order work moves through the system:
+
+| Group | Sections |
+| --- | --- |
+| **Today** | Needs attention, Dashboard |
+| **Sourcing** | Candidates, Campaigns, Screening, Rubrics |
+| **Staffing** | Projects, Outreach, Experts, Verification |
+| **Delivery** | Work, Support, Payments |
+| **System** | Outbox, Activity, Worker |
+
+A number beside a section is work waiting on a person, not a record count. When
+this guide says *Work*, it means the sidebar item under **Delivery**; the page
+itself is headed "Delivery".
+
+---
+
 ## Who does what
 
 Each step carries one marker.
@@ -178,14 +197,14 @@ operator-versus-operator, which is why profiles matter.
 
 ## Flow D — delivery and review
 
-1. **[Operator]** *Delivery*. Choose the **Staffed seat**, fill **Title**,
+1. **[Operator]** *Work* (sidebar, under **Delivery**). Choose the **Staffed seat**, fill **Title**,
    **Instructions** and **Basis** (*Hourly* or *Deliverable*), then click
    **Assign work**. A reference like `WRK-0001` is created.
 2. **[Expert]** *Your work* in the portal shows the item. Fill **One-line
    summary**, **What you did**, and **Hours worked** if the item is hourly, then
    click **Submit work**.
 3. **[Worker]** A review task is raised for the operators.
-4. **[Operator]** *Delivery*. On the item, click **Review WRK-…**, fill
+4. **[Operator]** *Work* (sidebar, under **Delivery**). On the item, click **Review WRK-…**, fill
    **Summary**, set **Approved hours** (you may approve fewer than were claimed;
    the difference becomes a discrepancy flag rather than a silent adjustment)
    and click **Approve**, or ask for changes with a specific description of what
