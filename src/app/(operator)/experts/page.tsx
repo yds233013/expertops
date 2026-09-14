@@ -3,11 +3,14 @@ import { prisma } from '@/lib/db';
 import { centsToRateDisplay } from '@/lib/money';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
-import { expertCountsByStatus, listExperts } from '@/server/services/experts';
+import { buildExpertWhere, expertCountsByStatus, listExperts } from '@/server/services/experts';
 import { Badge, Card, EmptyState, StatusBadge } from '@/components/ui';
 import { type ExpertStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+
+/** One page of the network. The service caps a page at 100 regardless. */
+const PAGE_SIZE = 50;
 
 const STATUSES: ExpertStatus[] = [
   'PROSPECT',
@@ -21,7 +24,7 @@ const STATUSES: ExpertStatus[] = [
 export default async function ExpertsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; search?: string }>;
+  searchParams: Promise<{ status?: string; search?: string; cursor?: string }>;
 }) {
   const operator = await requireOperator();
   const params = await searchParams;
@@ -29,10 +32,29 @@ export default async function ExpertsPage({
     ? (params.status as ExpertStatus)
     : undefined;
 
-  const [{ experts }, counts] = await Promise.all([
-    listExperts(prisma, { status, search: params.search, limit: 100 }),
+  const [{ experts, nextCursor }, counts, matching] = await Promise.all([
+    listExperts(prisma, {
+      status,
+      search: params.search,
+      cursor: params.cursor,
+      limit: PAGE_SIZE,
+    }),
     expertCountsByStatus(prisma),
+    // What the filter actually matches, which is not the same as what fits on
+    // one page. A list that says "100 experts" beside a filter that says 101 is
+    // not a rounding difference; it is two records nobody can reach.
+    prisma.expert.count({ where: buildExpertWhere({ status, search: params.search }) }),
   ]);
+
+  const shown = experts.length;
+  const pageHref = (cursor: string | null) => {
+    const query = new URLSearchParams();
+    if (params.search) query.set('search', params.search);
+    if (status) query.set('status', status);
+    if (cursor) query.set('cursor', cursor);
+    const text = query.toString();
+    return text ? `/experts?${text}` : '/experts';
+  };
 
   return (
     <div className="space-y-5">
@@ -81,7 +103,18 @@ export default async function ExpertsPage({
         </button>
       </form>
 
-      <Card title={`${experts.length} expert${experts.length === 1 ? '' : 's'}`}>
+      <Card
+        title={
+          matching > shown || params.cursor
+            ? `${shown} of ${matching} experts`
+            : `${shown} expert${shown === 1 ? '' : 's'}`
+        }
+        description={
+          matching > PAGE_SIZE
+            ? `Shown ${PAGE_SIZE} at a time. Search or filter to narrow it.`
+            : undefined
+        }
+      >
         {experts.length === 0 ? (
           <EmptyState
             title="No experts match that filter"
@@ -151,6 +184,21 @@ export default async function ExpertsPage({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {(nextCursor || params.cursor) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {params.cursor && (
+              <Link className="btn btn-secondary btn-sm" href={pageHref(null)}>
+                Back to the start
+              </Link>
+            )}
+            {nextCursor && (
+              <Link className="btn btn-secondary btn-sm" href={pageHref(nextCursor)}>
+                Next {PAGE_SIZE}
+              </Link>
+            )}
           </div>
         )}
       </Card>
