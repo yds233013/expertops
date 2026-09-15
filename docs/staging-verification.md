@@ -245,34 +245,50 @@ Run 14–15 September 2026. Full description in
 
 ### Where each part actually ran
 
-The two environments did different things, and the difference matters when
-reading any number below.
+Both environments ran the **same seeding script**, and that script performs the
+whole operational cycle rather than just creating records. So both have a fully
+staffed network. What separates them is the browser work.
 
 | | What ran there |
 | --- | --- |
-| **Locally**, against `expertops_exercise` — an isolated PostgreSQL database on the development host | **The completed workflows.** The seeding script and every operational phase, plus 24 browser tests driving the candidate journey, the scale checks and the payment chain. Everything reported as "confirmed", "approved" or "exported" happened here. |
-| **Hosted staging** | **Setup only.** The same seeding script through the worker's pre-deploy command, which is how this deployment runs anything — it has no shell. It exited 0, so the script ran to completion, but its per-phase report was not captured from the deploy log. |
+| **Locally**, against `expertops_exercise` | The scripted exercise **and** the browser work: the candidate journey end to end, the scale checks, and the payment chain driven through the interface by two account identities. |
+| **Hosted staging** | The scripted exercise only, through the worker's pre-deploy command — this deployment has no shell. No browser journey ran there, which is why it has **0 applications**. |
 
-What was checked on hosted staging is limited to what needs no session:
+An earlier version of this report called the hosted run "setup only" and listed
+its operational numbers as unverified. That was wrong, and it was wrong because
+nobody had looked: the session had expired and the numbers were never read. They
+have now been read in the interface, and they are below.
 
-- the Basic gate still refuses `/dashboard` with `401`;
-- `/api/health` reports **108 experts** and **5 projects**;
-- the three published opportunities render at `/apply/opportunities`.
+### Hosted staging, verified in the browser on 15 September 2026
 
-**The hosted totals are not all the exercise's.** Of those 5 projects, 3 belong
-to this exercise; the other 2 are `PRJ-0001` and `PRJ-0002` from the earlier
-staging fixtures. Of the 108 experts, 100 are the seeded network and 8 predate
-it. No hosted seat count, batch or approval has been verified in the interface,
-because that needs an operator sign-in — see *Still unverified*.
+| | |
+| --- | --- |
+| Projects | **5.** Three belong to the exercise — PRJ-0003 12/12, PRJ-0004 10/10, PRJ-0005 8/8, all `active`. The other two predate it: PRJ-0001 (2/2, active) and PRJ-0002 (0/2, draft). |
+| Seats | **30 of 30** across the three exercise projects |
+| Experts | **108.** 100 seeded, 8 predating the exercise. By state: 46 verified, 53 prospect, 9 onboarding |
+| Pagination | "50 of 108 experts", `Next 50` reaching the second page and `Back to the start` returning |
+| Contact preference | "Not asked yet" on a seeded record **and** on one created long before the field existed. Nothing was inferred from anyone's notes |
+| Opportunities | 3 published, 0 draft, 0 closed, **0 applications** |
+| Outreach | 8 batches, 5 of them the exercise's, all dispatched, all created by Exercise Coordinator |
+| Payments | 4 items exported, 0 ready, 0 flagged. PB-0002 — $3,939.00, 3 items, created by Exercise Coordinator, **approved by Exercise Approver**. PB-0001 from the earlier verification is untouched |
+| Worker | 1 reporting, heartbeat current, 2,877 ticks, 17,105 succeeded, **0 failed, 0 dead** |
+| Migrations | 12 found, all applied |
+| Basic gate | `401` on `/dashboard`, `/experts` and `/apply/opportunities` without credentials |
+
+Every exercise action on staging is attributed in the audit history to the
+synthetic exercise identities, not to a real person's account.
 
 ### Contributor counts by state — local
 
-| State | Count |
+| | Count |
 | --- | --- |
-| `VERIFIED` | 43 |
-| `PROSPECT` | 49 |
-| `ONBOARDING` | 12 |
-| **Total** | **104** — 100 seeded, 4 who came through `/apply/opportunities` in a browser |
+| **Total** | **105** — 100 seeded, 5 who came through `/apply/opportunities` in a browser |
+| Applications | 7, every one from the applicant pages. None from a seeded expert |
+| Contact preference | `UNKNOWN` for all 105. Nothing inferred from the notes the seeder wrote |
+
+The local browser journey runs once per suite execution and leaves one applicant
+behind each time, which is why the applicant count grows while the seeded 100
+does not.
 
 ### Current states versus cumulative events
 
@@ -350,7 +366,9 @@ the application that moves money.
 - Hosted backup availability and recovery.
 - Concurrent-tester behaviour. This exercise is **100 managed records**, not 100
   concurrent users; no load was generated.
-- **Every hosted operational number.** Seat counts, batches, approvals and the
-  attention queue on staging have not been read from the interface. The
-  signed-in session had expired and entering a password is not something this
-  process does. Hosted verification needs an operator sign-in.
+- ~~Every hosted operational number.~~ **Now verified** — see the hosted table
+  above. Read in the interface on 15 September 2026.
+- The hosted deployment has never had a candidate journey run against it. Its
+  applicant-facing pages are verified as rendering, and the application path
+  itself is covered locally and by the browser suite, but nobody has applied on
+  staging.
