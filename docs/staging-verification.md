@@ -361,6 +361,50 @@ Exporting marks the batch and its items `EXPORTED`. There is no `PAID` state in
 the schema, no column in the CSV that could record a payment, and no action in
 the application that moves money.
 
+### The hosted candidate journey, 15 September 2026
+
+Run in the browser against staging, with an applicant who has no account and an
+operator signed in as SYNTHETIC Approver. Separate sessions: the applicant holds
+`expertops_candidate`, the operator `expertops_session`, and the two never mix.
+
+**New records, all clearly synthetic and all from this run:**
+
+| Record | |
+| --- | --- |
+| `APP-0001` | Application from HOSTED APPLICANT Vela Ashworth (`hosted.applicant.vela@example.test`) |
+| `CAN-0022` | The candidate record the application created |
+| `SCR-0022` | Screening against PRACTICE coding screening v1 |
+| — | Two screening submissions and one simulated outbox message |
+
+Nothing else was touched. The 100 seeded experts and the 8 that predate them are
+unchanged, all three exercise projects remain at 12/12, 10/10 and 8/8, and no
+seat was released or added.
+
+**What was verified:**
+
+| | |
+| --- | --- |
+| Filed under the right opportunity | OPP-0001 shows 1 application; OPP-0002 and OPP-0003 still show 0 |
+| Submission preserved against a snapshot | The applicant page records it "as it read on 15 Sept 2026, 02:06 UTC" |
+| Screening sent from the application | `SCR-0022`, and the panel then showed the open screening rather than offering a second |
+| Candidate isolation | `/apply` shows their own application and says so. No other applicant's name appears |
+| Revision requested | Scores 3/5 and 2/5, public feedback, decision note. Attributed to **SYNTHETIC Approver: REQUEST_REVISION** |
+| **Private note stays operator-only** | A canary string was written into "Private notes, never shown to the candidate". It appears **nowhere** in the HTML the candidate receives — checked against the whole document, not just the visible text, so a hidden element or an embedded payload would have been caught. The public feedback and the decision note are both present, as intended |
+| Resubmission | Revision 2 recorded complete, Revision 1 preserved beside it, status back to `submitted` |
+
+**Not completed: the qualification step.** The browser lost its way past the
+Basic gate partway through — every request from an automation-created tab
+returns 503 while the same URLs answer normally to a shell request carrying the
+gate credentials, so the gate challenge is not being satisfied in those tabs.
+Entering a password is not something this process does, so the run stops one
+step short. `SCR-0022` is sitting at `submitted` with a review open, ready to be
+qualified by a signed-in operator.
+
+Because qualification is what converts a candidate into an expert, the expert
+count is still **108**. That is the check that the applicant did not
+automatically receive anything: they have an application, a candidate record and
+a screening, and no expert record, no invitation and no seat.
+
 ### Still unverified
 
 - Hosted backup availability and recovery.
@@ -368,7 +412,6 @@ the application that moves money.
   concurrent users; no load was generated.
 - ~~Every hosted operational number.~~ **Now verified** — see the hosted table
   above. Read in the interface on 15 September 2026.
-- The hosted deployment has never had a candidate journey run against it. Its
-  applicant-facing pages are verified as rendering, and the application path
-  itself is covered locally and by the browser suite, but nobody has applied on
-  staging.
+- The hosted candidate journey is complete through resubmission but **not
+  through qualification** — see above. Nobody has yet been qualified on staging,
+  so the conversion from candidate to expert has been exercised only locally.
