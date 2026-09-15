@@ -431,6 +431,72 @@ request from that tab — including `/login` — while a shell request carrying 
 gate credentials got 200. A gate refusal would have been a 401. The cause was not
 established; it did not recur.
 
+### Opening the deployment for review, 15 September 2026
+
+The HTTP Basic gate is off. It was one shared password in an environment
+variable: a perimeter, not an authorisation model, and it made the deployment
+unreviewable without handing that password out. It came off only after the
+application's own boundaries were tested, and the module and its 11 unit tests
+remain in the tree so the gate can be switched back on by setting the two
+variables again.
+
+**What is public now**
+
+| | |
+| --- | --- |
+| `/demo` | Read-only synthetic overview |
+| `/apply/opportunities` and each listing | Practice listings and the application form |
+| `/apply/enter`, `/portal/enter` | Magic-link landings. They carry no data; the token is in the fragment |
+| `/login` | Sign-in, throttled at 8 failures per address and 30 per client in 15 minutes |
+| `/api/health` | Status and three counts |
+
+Everything else refuses an anonymous request.
+
+**Verified on the hosted deployment, with no credentials at all**
+
+| Check | Result |
+| --- | --- |
+| Public surfaces | 5/5 return `200` |
+| Operator pages — dashboard, experts, candidates, projects, opportunities, screenings, outbox, activity, payments, jobs, attention | 11/11 return `307` to sign-in |
+| Administrative read APIs | 12/12 return `401` |
+| Anonymous mutations | 6/6 return `401` |
+| `WWW-Authenticate` challenge on any path | None — the gate is genuinely gone, not merely bypassed |
+| `/apply` and `/portal` without a session | `200` with "Your session has ended". No candidate record, reference or address in the response |
+
+**The demo leaks nothing.** The hosted `/demo` HTML was searched for portal
+links, session cookie names, `@example.test` addresses, password hashes and
+candidate, application, screening and payment references. All absent. The only
+match for "Internal notes" is the demo's own list of what it does not show.
+
+The demo is a separate projection in `src/server/services/demo.ts`, not the
+VIEWER role with permissions turned down — VIEWER carries `outbox:read`, which
+is single-use sign-in links. It reads whitelisted records (synthetic name
+prefixes only) and whitelisted columns.
+
+That whitelist is visible in the numbers: the demo reports **108 experts** while
+`/api/health` reports **109**. The difference is `EXP-0109`, created by the
+hosted candidate journey. It carries no synthetic prefix, so the demo cannot see
+it — which is the rule working rather than a discrepancy.
+
+**Two fixes the boundary tests found**
+
+- `/dashboard` was the only operator page relying solely on the layout's
+  redirect. A layout is not an authorisation boundary; it now guards itself.
+- `POST /api/rubrics` and `POST /api/screenings/[id]` parsed the request body
+  before authenticating, because the capability depends on the action. Nothing
+  was written without the check, but an anonymous caller received a
+  schema-validation error rather than a refusal. Both authenticate first now.
+
+**A hands-on practice board, separate from the exercise**
+
+`PRJ-0006 PRACTICE hands-on review pilot` — one seat, empty, `matching`, requires
+Code Review at 3/5 and one year. Listed as `OPP-0004 PRACTICE hands-on code
+reviewer`. Created by `scripts/practice-hands-on.ts`, which is idempotent.
+
+No seat was released from the exercise to make room. The demo's "Seats
+confirmed" tile reads **32** — the 30 exercise seats, plus 2 on the pre-existing
+`PRJ-0001`, plus 0 on the new one.
+
 ### Still unverified
 
 - Hosted backup availability and recovery.
