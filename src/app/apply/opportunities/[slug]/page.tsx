@@ -120,6 +120,16 @@ export default async function OpportunityPage({ params }: { params: Promise<{ sl
           title="Apply"
           description="Nothing here is a commitment. An operator reads every application."
         >
+          {/* Said immediately above the fields, not in a footer. Somebody about
+              to type their name and address should already know that this is a
+              practice listing and that no email will arrive. */}
+          <Alert tone="warning" className="mb-3">
+            <strong>A practice listing, and simulated email.</strong> This is not a real job and
+            nobody is hired from it. What you type is stored in a demonstration database. Messages
+            are written to an in-app outbox and never sent, so no confirmation will reach your inbox
+            — the next step has to be handed to you directly by an operator. Please use details you
+            are happy to have sitting in a demo.
+          </Alert>
           <ApplyForm slug={opportunity.slug} questions={opportunity.questions} />
         </Card>
       ) : (

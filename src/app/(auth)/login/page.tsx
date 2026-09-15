@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentOperator } from '@/server/http/context';
 import { getEnv } from '@/lib/env';
@@ -48,6 +49,24 @@ export default async function LoginPage() {
           </p>
         </section>
       )}
+
+      {/* The way in for somebody with no account. Deliberately below the form
+          and clearly labelled, so nobody mistakes it for a way to sign in. */}
+      <section className="card px-4 py-3">
+        <p className="text-sm font-semibold text-ink-900">No account?</p>
+        <p className="mt-1 text-xs text-ink-600">
+          There is a read-only view of this workspace running on synthetic data. Nothing in it can
+          be changed, and it shows no candidate, message or payment record.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Link className="btn btn-secondary btn-sm" href="/demo">
+            Explore synthetic demo
+          </Link>
+          <Link className="btn btn-secondary btn-sm" href="/apply/opportunities">
+            Practice opportunities
+          </Link>
+        </div>
+      </section>
 
       <p className="text-xs text-ink-500">
         Experts do not have passwords. They enter through a single-use link that appears in the

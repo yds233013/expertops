@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { requireCapabilityFromRequest } from '@/server/http/context';
+import { requireCapabilityFromRequest, requireOperatorFromRequest } from '@/server/http/context';
 import { created, ok, parseJson, route } from '@/server/http/respond';
 import {
   createDraftVersion,
@@ -63,6 +63,16 @@ export const GET = route(async (request: NextRequest) => {
 });
 
 export const POST = route(async (request: NextRequest) => {
+  /**
+   * Authenticate before reading the body.
+   *
+   * Which capability this needs depends on the action, so the specific check
+   * has to come after parsing. Establishing a session first still matters: an
+   * anonymous caller should be refused, not handed a schema-validation error
+   * telling them what the endpoint wants. It also means CSRF is asserted before
+   * anything is parsed.
+   */
+  await requireOperatorFromRequest(request);
   const body = await parseJson(request, bodySchema);
 
   // Publishing makes a rubric permanent, so it needs the stronger capability.

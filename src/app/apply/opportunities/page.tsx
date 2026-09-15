@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { formatDate } from '@/lib/time';
 import { listPublishedOpportunities } from '@/server/services/opportunities';
-import { Badge, Card, EmptyState } from '@/components/ui';
+import { Alert, Badge, Card, EmptyState } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +29,22 @@ export default async function OpportunitiesPage() {
           an account: give your details once and we will be in touch about next steps.
         </p>
       </header>
+
+      <Alert tone="warning">
+        <strong>These are practice listings, not real jobs.</strong> They exist so this software can
+        be demonstrated end to end. Nobody is hired from them, no work is offered and no money
+        changes hands. Email is simulated: messages are written to an in-app outbox and never sent,
+        so applying will not put anything in your inbox — an operator has to hand you the next link
+        directly.
+      </Alert>
+
+      <p className="text-sm text-ink-600">
+        Looking at this as a reviewer rather than an applicant?{' '}
+        <Link className="text-accent-600 hover:underline" href="/demo">
+          Explore the synthetic demo
+        </Link>{' '}
+        — a read-only view of the operator side.
+      </p>
 
       {opportunities.length === 0 ? (
         <EmptyState

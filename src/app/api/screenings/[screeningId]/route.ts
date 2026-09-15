@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { requireCapabilityFromRequest } from '@/server/http/context';
+import { requireCapabilityFromRequest, requireOperatorFromRequest } from '@/server/http/context';
 import { ok, parseJson, route } from '@/server/http/respond';
 import {
   assignReviewer,
@@ -52,6 +52,9 @@ export const GET = route(async (request: NextRequest, { params }: Params) => {
 });
 
 export const POST = route(async (request: NextRequest, { params }: Params) => {
+  // Same reasoning as the rubric route: the capability depends on the action,
+  // but being signed in does not. Refuse a stranger before parsing.
+  await requireOperatorFromRequest(request);
   const { screeningId } = await params;
   const body = await parseJson(request, bodySchema);
 

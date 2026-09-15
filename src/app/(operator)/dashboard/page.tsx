@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
+import { requireOperator } from '@/server/http/context';
 import { formatRelative } from '@/lib/time';
 import { listActivity } from '@/server/services/activity';
 import { expertCountsByStatus } from '@/server/services/experts';
@@ -15,6 +16,11 @@ import { Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/compon
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
+  // Guarded here as well as in the layout. A layout redirect is not an
+  // authorisation boundary — the page's own queries run alongside it — and this
+  // is the one page in the group that had nothing of its own.
+  await requireOperator();
+
   const [
     experts,
     projects,
