@@ -392,18 +392,44 @@ seat was released or added.
 | **Private note stays operator-only** | A canary string was written into "Private notes, never shown to the candidate". It appears **nowhere** in the HTML the candidate receives — checked against the whole document, not just the visible text, so a hidden element or an embedded payload would have been caught. The public feedback and the decision note are both present, as intended |
 | Resubmission | Revision 2 recorded complete, Revision 1 preserved beside it, status back to `submitted` |
 
-**Not completed: the qualification step.** The browser lost its way past the
-Basic gate partway through — every request from an automation-created tab
-returns 503 while the same URLs answer normally to a shell request carrying the
-gate credentials, so the gate challenge is not being satisfied in those tabs.
-Entering a password is not something this process does, so the run stops one
-step short. `SCR-0022` is sitting at `submitted` with a review open, ready to be
-qualified by a signed-in operator.
+**Qualification, completed 15 September 2026.** The review of revision 2 scored
+4 and 4 against PRACTICE coding screening v1 — a specific decision on a named
+changeset, and a clear account of what they chose not to do and why — recorded as
+`SYNTHETIC Approver: APPROVE`, then qualified with a decision note. Both halves
+say in writing that this is a synthetic decision by a test identity, that no
+references were taken, and that nobody independent reviewed it.
 
-Because qualification is what converts a candidate into an expert, the expert
-count is still **108**. That is the check that the applicant did not
-automatically receive anything: they have an application, a candidate record and
-a screening, and no expert record, no invitation and no seat.
+**What qualification did, and did not, do:**
+
+| | |
+| --- | --- |
+| Experts | **108 → 109.** Exactly one record created: `EXP-0109`. Verified counts by state — prospect 53 → 54, verified 46 unchanged, onboarding 9 unchanged |
+| Status of the new expert | `prospect`, 0 years, $0/h, no skills. The conversion carries a name, an email and a headline and nothing else |
+| Invitations | **None.** The record reads "No invitations yet" |
+| Assignments | **None.** "Not staffed on any project" |
+| Availability | None declared |
+| Onboarding | Not started |
+| History on the new expert | Exactly two events — `expert.created` and `qualification.granted`, both attributed to SYNTHETIC Approver |
+| Exercise projects | **Unchanged: 12/12, 10/10, 8/8**, all `active`. No seat released, no headcount raised |
+
+Qualifying makes somebody eligible. It does not staff them, and on staging it
+demonstrably did not: onboarding verification, an accepted invitation and
+declared availability are all still missing, which is exactly what the screen
+says when you press the button.
+
+**The private notes stayed operator-only across both decisions.** A distinct
+canary went into the revision review and another into the approval. Neither
+appears anywhere in the HTML the candidate receives — the whole document was
+searched, not the visible text. What the candidate does see is the public
+feedback on both reviews, the revision decision note, and "A decision has been
+recorded on this screening."
+
+**On the 503s reported earlier:** they were transient and were not a credential
+problem. The same tab later loaded every page normally with no intervention, and
+at the time the failure was visible at the network layer as a 503 on every
+request from that tab — including `/login` — while a shell request carrying the
+gate credentials got 200. A gate refusal would have been a 401. The cause was not
+established; it did not recur.
 
 ### Still unverified
 
@@ -412,6 +438,7 @@ a screening, and no expert record, no invitation and no seat.
   concurrent users; no load was generated.
 - ~~Every hosted operational number.~~ **Now verified** — see the hosted table
   above. Read in the interface on 15 September 2026.
-- The hosted candidate journey is complete through resubmission but **not
-  through qualification** — see above. Nobody has yet been qualified on staging,
-  so the conversion from candidate to expert has been exercised only locally.
+- The hosted candidate journey is now complete end to end, including
+  qualification. What has *not* been exercised on staging is what comes after:
+  the new expert has no profile, no skills, no invitation and no seat, so
+  onboarding, verification and staffing from an application remain local-only.
