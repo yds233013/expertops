@@ -179,6 +179,7 @@ export async function loadCandidatePool(db: Db, projectId: string): Promise<Cand
   return experts.map((expert) => ({
     expertId: expert.id,
     status: expert.status,
+    contactPreference: expert.contactPreference,
     yearsExperience: expert.yearsExperience,
     hourlyRateCents: expert.hourlyRateCents,
     timezone: expert.timezone,

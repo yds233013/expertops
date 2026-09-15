@@ -276,6 +276,38 @@ export function renderPortalLinkEmail(input: PortalLinkEmailInput): RenderedMess
   };
 }
 
+export interface WorkAssignedEmailInput {
+  expertName: string;
+  projectTitle: string;
+  projectCode: string;
+  reference: string;
+  title: string;
+  instructions?: string | null;
+  dueAt?: Date | null;
+  portalUrl: string;
+}
+
+export function renderWorkAssignedEmail(input: WorkAssignedEmailInput): RenderedMessage {
+  return {
+    subject: `New work on ${input.projectTitle}: ${input.title} (${input.reference})`,
+    bodyText: block([
+      `Hello ${input.expertName},`,
+      '',
+      `${input.reference} has been assigned to you on ${input.projectTitle} (${input.projectCode}).`,
+      '',
+      input.title,
+      input.instructions ? '' : null,
+      input.instructions ?? null,
+      '',
+      input.dueAt ? `Due: ${formatDate(input.dueAt)}` : 'No due date has been set.',
+      '',
+      'Open your portal to read the brief and submit when you are ready:',
+      input.portalUrl,
+      signature(),
+    ]),
+  };
+}
+
 export const TEMPLATE_NAMES = [
   'invitation.sent',
   'invitation.reminder',
@@ -286,6 +318,7 @@ export const TEMPLATE_NAMES = [
   'onboarding.rejected',
   'assignment.confirmed',
   'assignment.released',
+  'work.assigned',
   'portal.link',
 ] as const;
 

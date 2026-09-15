@@ -2,6 +2,7 @@ import { type OutboxStatus, type Prisma } from '@prisma/client';
 import { type Db } from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
 import { notFound } from '@/lib/errors';
+import { isPrismaErrorCode, PG_UNIQUE_VIOLATION } from '@/lib/db';
 import { type TemplateName } from '@/server/email/templates';
 
 /**
@@ -23,9 +24,50 @@ export interface QueueMessageInput {
   projectId?: string | null;
   expertId?: string | null;
   devPortalUrl?: string | null;
+  /**
+   * Set when this message must exist at most once, whatever happens upstream.
+   *
+   * The job queue already refuses to run the same job twice, but a job is not
+   * the only way a message gets queued: an operator can press a button twice,
+   * and a retried request can arrive after the first one committed. The unique
+   * index is what makes "at most once" true rather than likely.
+   */
+  dedupeKey?: string | null;
 }
 
+/** Write a message into the simulated outbox. */
 export async function queueMessage(db: Db, input: QueueMessageInput) {
+  return createMessage(db, input);
+}
+
+/**
+ * Write a message at most once.
+ *
+ * Returns null when the key collides, which is a success rather than an error:
+ * the message the caller wanted already exists, and a second copy is the
+ * outcome the key was added to prevent. The job queue already refuses to run
+ * the same job twice, but a job is not the only way a message gets queued — an
+ * operator can press a button twice, and a retried request can arrive after the
+ * first one committed. The unique index is what makes "at most once" true
+ * rather than likely.
+ */
+export async function queueMessageOnce(db: Db, input: QueueMessageInput & { dedupeKey: string }) {
+  const existing = await db.outboxMessage.findUnique({
+    where: { dedupeKey: input.dedupeKey },
+    select: { id: true },
+  });
+  if (existing) return null;
+
+  try {
+    return await createMessage(db, input);
+  } catch (error) {
+    // Two requests that both passed the check above; one of them loses here.
+    if (isPrismaErrorCode(error, PG_UNIQUE_VIOLATION)) return null;
+    throw error;
+  }
+}
+
+async function createMessage(db: Db, input: QueueMessageInput) {
   return db.outboxMessage.create({
     data: {
       toEmail: input.toEmail,
@@ -38,6 +80,7 @@ export async function queueMessage(db: Db, input: QueueMessageInput) {
       projectId: input.projectId ?? null,
       expertId: input.expertId ?? null,
       devPortalUrl: input.devPortalUrl ?? null,
+      dedupeKey: input.dedupeKey ?? null,
       status: 'QUEUED',
     },
   });

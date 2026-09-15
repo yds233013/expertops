@@ -442,6 +442,13 @@ describe('failure cases: invitations', () => {
 
   it('sends at most one reminder per invitation', async () => {
     const { actor, project, expert } = await setup();
+    // A reminder needs permission. The subject of this test is that one is sent
+    // exactly once, so the expert has to have said yes to reminders at all —
+    // see contact-preferences.test.ts for what happens when they have not.
+    await prisma.expert.update({
+      where: { id: expert.id },
+      data: { contactPreference: 'EMAIL_ALL' },
+    });
     const invitation = await createInvitation(prisma, actor, {
       projectId: project.id,
       expertId: expert.id,

@@ -101,26 +101,49 @@ enum ExpertStatus {
   ARCHIVED // no longer part of the network
 }
 
+/// How an expert has said we may contact them.
+///
+/// UNKNOWN is a real state, not a default that means yes. It says nobody has
+/// asked, and it is what every record created before this field existed carries.
+/// Nothing infers a preference from the free-text notes: a sentence someone
+/// typed about phone calls is not consent, and parsing it as if it were would
+/// be worse than admitting we do not know.
+enum ContactPreference {
+  /// Never asked. Operational messages still go, because they are things the
+  /// person has to act on; optional chasing does not.
+  UNKNOWN
+  /// Everything, including reminders.
+  EMAIL_ALL
+  /// Invitations and decisions, but no reminders or nudges.
+  EMAIL_ESSENTIAL
+  /// Nothing at all. Also a hard exclusion from matching.
+  NO_CONTACT
+}
+
 model Expert {
-  id                  String       @id @default(cuid())
-  reference           String       @unique // stable human-facing id, e.g. EXP-0001
-  fullName            String
-  email               String       @unique
-  headline            String
-  bio                 String       @default("")
-  status              ExpertStatus @default(PROSPECT)
-  yearsExperience     Int          @default(0)
+  id                     String            @id @default(cuid())
+  reference              String            @unique // stable human-facing id, e.g. EXP-0001
+  fullName               String
+  email                  String            @unique
+  headline               String
+  bio                    String            @default("")
+  status                 ExpertStatus      @default(PROSPECT)
+  yearsExperience        Int               @default(0)
   // IANA timezone. Operational scheduling data only - never used as a proxy
   // for any protected attribute.
-  timezone            String       @default("UTC")
+  timezone               String            @default("UTC")
   // Stored in minor units (cents) to avoid floating point money bugs.
-  hourlyRateCents     Int          @default(0)
-  currency            String       @default("USD")
+  hourlyRateCents        Int               @default(0)
+  currency               String            @default("USD")
   // Self-reported weekly capacity, refined per project via AvailabilityWindow.
-  weeklyCapacityHours Int          @default(0)
-  notes               String       @default("")
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  weeklyCapacityHours    Int               @default(0)
+  notes                  String            @default("")
+  // Structured, and deliberately separate from `notes`. See ContactPreference.
+  contactPreference      ContactPreference @default(UNKNOWN)
+  // When the person themselves last set it, as opposed to it never being asked.
+  contactPreferenceSetAt DateTime?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   skills          ExpertSkill[]
   matchCandidates MatchCandidate[]
@@ -147,6 +170,7 @@ model Expert {
   @@index([status])
   @@index([status, hourlyRateCents])
   @@index([timezone])
+  @@index([contactPreference])
 }
 
 model Skill {
@@ -569,6 +593,9 @@ model OutboxMessage {
   expertId     String?
   // Development-only portal URL embedded in the message body.
   devPortalUrl String?
+  /// Set when a message must exist at most once. Two requests racing to queue
+  /// the same notification collide here rather than both succeeding.
+  dedupeKey    String?      @unique
   createdAt    DateTime     @default(now())
 
   @@index([status, createdAt])

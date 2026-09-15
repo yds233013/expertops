@@ -8,6 +8,7 @@ import { listExpertCommitments } from '@/server/services/staffing-gaps';
 import { listSupportForExpert } from '@/server/services/support';
 import { listWorkItemsForExpert } from '@/server/services/work';
 import { AvailabilityPanel } from '@/components/portal/availability-panel';
+import { ContactPreferencePanel } from '@/components/portal/contact-preference-panel';
 import { InvitationPanel } from '@/components/portal/invitation-panel';
 import { OnboardingPanel } from '@/components/portal/onboarding-panel';
 import { SupportPanel } from '@/components/portal/support-panel';
@@ -104,6 +105,16 @@ export default async function PortalHome() {
           </FieldRow>
           <FieldRow label="Timezone">{expert.timezone}</FieldRow>
         </dl>
+      </Card>
+
+      <Card
+        title="How we contact you"
+        description="Yours to change at any time. It applies to the next message we would have sent, not just to new ones."
+      >
+        <ContactPreferencePanel
+          current={expert.contactPreference}
+          setAt={expert.contactPreferenceSetAt}
+        />
       </Card>
 
       <Card

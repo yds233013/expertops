@@ -51,9 +51,14 @@ export interface CandidateSkill {
 export type CandidateStatus =
   'PROSPECT' | 'ONBOARDING' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED' | 'ARCHIVED';
 
+/** Mirrors the Prisma enum, spelled out here so this module stays pure. */
+export type ContactPreference = 'UNKNOWN' | 'EMAIL_ALL' | 'EMAIL_ESSENTIAL' | 'NO_CONTACT';
+
 export interface CandidateInput {
   expertId: string;
   status: CandidateStatus;
+  /** What the expert has said about being contacted. See ContactPreference. */
+  contactPreference: ContactPreference;
   yearsExperience: number;
   hourlyRateCents: number;
   timezone: string;
@@ -134,6 +139,11 @@ export function evaluateExclusion(
 ): string | null {
   if (HARD_EXCLUDED_STATUSES.includes(candidate.status)) {
     return `Expert status is ${candidate.status}`;
+  }
+  // Ranking somebody we may not contact produces a shortlist nobody can act
+  // on: every invitation to them would be refused at dispatch.
+  if (candidate.contactPreference === 'NO_CONTACT') {
+    return 'Has asked not to be contacted';
   }
   if (candidate.isAssignedToProject) {
     return 'Already assigned to this project';

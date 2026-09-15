@@ -80,8 +80,8 @@ async function completeOnboarding(portal: Page) {
 async function declareAvailability(portal: Page) {
   const from = new Date();
   const to = new Date(from.getTime() + 60 * 86_400_000);
-  await portal.getByLabel('From').fill(from.toISOString().slice(0, 10));
-  await portal.getByLabel('To').fill(to.toISOString().slice(0, 10));
+  await portal.getByLabel('From', { exact: true }).fill(from.toISOString().slice(0, 10));
+  await portal.getByLabel('To', { exact: true }).fill(to.toISOString().slice(0, 10));
   await portal.getByLabel('Hours/week').fill('20');
   await clickUntilVisible(
     () => portal.getByRole('button', { name: 'Add window' }).click(),

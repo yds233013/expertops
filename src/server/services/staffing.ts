@@ -15,7 +15,7 @@ import {
 import { type Actor, recordActivity } from './activity';
 import { enqueueJob } from './jobs';
 import { declaredHoursForProject } from './availability';
-import { queueMessage } from './outbox';
+import { queueExpertMessage } from './contact-preferences';
 import { advanceProjectStatus } from './projects';
 
 /**
@@ -287,16 +287,15 @@ export async function confirmAssignment(
       startDate: assignment.startDate,
       endDate: assignment.endDate,
     });
-    await queueMessage(tx, {
-      toEmail: expert.email,
-      toName: expert.fullName,
+    await queueExpertMessage(tx, {
+      expertId: expert.id,
+      kind: 'OPERATIONAL',
       subject: rendered.subject,
       bodyText: rendered.bodyText,
       template: 'assignment.confirmed',
       relatedType: 'assignment',
       relatedId: assignmentId,
       projectId: project.id,
-      expertId: expert.id,
     });
 
     const confirmed = await tx.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
@@ -430,16 +429,15 @@ export async function releaseAssignmentWithin(
       projectCode: assignment.project.code,
       reason: reason.trim(),
     });
-    await queueMessage(tx, {
-      toEmail: assignment.expert.email,
-      toName: assignment.expert.fullName,
+    await queueExpertMessage(tx, {
+      expertId: assignment.expertId,
+      kind: 'OPERATIONAL',
       subject: rendered.subject,
       bodyText: rendered.bodyText,
       template: 'assignment.released',
       relatedType: 'assignment',
       relatedId: assignmentId,
       projectId: assignment.projectId,
-      expertId: assignment.expertId,
     });
   }
 

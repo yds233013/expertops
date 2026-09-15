@@ -8,6 +8,9 @@ import { type Actor, recordActivity } from './activity';
 import { resolveIfPresent } from './attention';
 import { enqueueJob } from './jobs';
 import { validateWorkSampleLink } from './candidates';
+import { queueExpertMessage } from './contact-preferences';
+import { issuePortalToken } from './portal-access';
+import { renderWorkAssignedEmail } from '@/server/email/templates';
 
 /**
  * Project work items.
@@ -104,6 +107,40 @@ export async function createWorkItem(
     'Work was assigned on this seat.',
   );
 
+  /**
+   * Tell the expert. SIMULATED, like every other message here.
+   *
+   * Until now assigning work sent nothing: it appeared in the portal and the
+   * overdue job chased it eventually, so somebody who did not happen to open
+   * the portal learned about a deadline when it had already passed.
+   *
+   * Keyed on the work item, so two operators pressing the button at once, or a
+   * retried request, produce one message rather than two.
+   */
+  const portal = await issuePortalToken(db, { expertId: assignment.expertId, purpose: 'GENERAL' });
+  const rendered = renderWorkAssignedEmail({
+    expertName: assignment.expert.fullName,
+    projectTitle: assignment.project.title,
+    projectCode: assignment.project.code,
+    reference: workItem.reference,
+    title: workItem.title,
+    instructions: workItem.instructions || null,
+    dueAt: workItem.dueAt,
+    portalUrl: portal.url,
+  });
+  const notified = await queueExpertMessage(db, {
+    expertId: assignment.expertId,
+    kind: 'OPERATIONAL',
+    subject: rendered.subject,
+    bodyText: rendered.bodyText,
+    template: 'work.assigned',
+    relatedType: 'work_item',
+    relatedId: workItem.id,
+    projectId: assignment.projectId,
+    devPortalUrl: portal.url,
+    dedupeKey: `work.assigned:${workItem.id}`,
+  });
+
   await recordActivity(db, {
     actor,
     entityType: 'work_item',
@@ -112,7 +149,13 @@ export async function createWorkItem(
     expertId: assignment.expertId,
     action: 'work.assigned',
     summary: `${actor.label} assigned "${workItem.title}" (${workItem.reference}) to ${assignment.expert.fullName}`,
-    metadata: { basis: workItem.basis, dueAt: input.dueAt?.toISOString() ?? null },
+    metadata: {
+      basis: workItem.basis,
+      dueAt: input.dueAt?.toISOString() ?? null,
+      outboxMessageId: notified.messageId,
+      notificationSkipped: notified.skippedReason,
+      simulated: true,
+    },
   });
 
   return workItem;

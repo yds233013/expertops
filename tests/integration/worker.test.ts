@@ -249,6 +249,12 @@ describe('worker: job execution', () => {
       },
     });
 
+    // A nudge is optional chasing, so it needs a preference that allows it.
+    await prisma.expert.update({
+      where: { id: expert.id },
+      data: { contactPreference: 'EMAIL_ALL' },
+    });
+
     await enqueueJob(prisma, { type: 'onboarding.nudge', payload: { nudgeAfterHours: 24 } });
     const worker = new Worker({ client: prisma, name: 'nudge-test', batchSize: 10 });
     await worker.tick();

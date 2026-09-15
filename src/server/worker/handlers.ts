@@ -25,6 +25,7 @@ import {
   outstandingRequiredItems,
 } from '@/server/services/onboarding';
 import { dispatchQueuedMessages, queueMessage } from '@/server/services/outbox';
+import { queueExpertMessage } from '@/server/services/contact-preferences';
 import { buildReplacementBatch } from '@/server/services/outreach';
 import { draftPaymentFromApprovedWork } from '@/server/services/payments';
 import { issuePortalToken } from '@/server/services/portal-access';
@@ -183,18 +184,22 @@ export const HANDLERS: Record<JobType, JobHandler> = {
       portalUrl: portal.url,
       outstandingItems: outstanding.map((item) => item.label),
     });
-    const message = await queueMessage(ctx.db, {
-      toEmail: expert.email,
-      toName: expert.fullName,
+    const message = await queueExpertMessage(ctx.db, {
+      expertId,
+      kind: 'OPERATIONAL',
       subject: rendered.subject,
       bodyText: rendered.bodyText,
       template: 'onboarding.start',
       relatedType: 'onboarding',
       relatedId: onboardingCase.id,
-      expertId,
       devPortalUrl: portal.url,
     });
-    return { started: true, emailed: true, outboxMessageId: message.id };
+    return {
+      started: true,
+      emailed: message.queued,
+      outboxMessageId: message.messageId,
+      skipped: message.skippedReason,
+    };
   },
 
   'onboarding.nudge': async (payload, ctx) => {
@@ -237,15 +242,15 @@ export const HANDLERS: Record<JobType, JobHandler> = {
         portalUrl: portal.url,
         outstandingItems: outstanding.map((item) => item.label),
       });
-      await queueMessage(ctx.db, {
-        toEmail: onboardingCase.expert.email,
-        toName: onboardingCase.expert.fullName,
+      await queueExpertMessage(ctx.db, {
+        expertId: onboardingCase.expertId,
+        // A nudge is optional chasing, so a suppressed preference stops it.
+        kind: 'REMINDER',
         subject: rendered.subject,
         bodyText: rendered.bodyText,
         template: 'onboarding.nudge',
         relatedType: 'onboarding',
         relatedId: onboardingCase.id,
-        expertId: onboardingCase.expertId,
         devPortalUrl: portal.url,
       });
       await recordActivity(ctx.db, {
@@ -680,19 +685,23 @@ export const HANDLERS: Record<JobType, JobHandler> = {
       portalUrl: portal.url,
       outstandingItems: outstanding.map((item) => item.label),
     });
-    const message = await queueMessage(ctx.db, {
-      toEmail: qualification.expert.email,
-      toName: qualification.expert.fullName,
+    const message = await queueExpertMessage(ctx.db, {
+      expertId: qualification.expertId,
+      kind: 'OPERATIONAL',
       subject: rendered.subject,
       bodyText: rendered.bodyText,
       template: 'onboarding.start',
       relatedType: 'qualification',
       relatedId: qualification.id,
-      expertId: qualification.expertId,
       devPortalUrl: portal.url,
     });
 
-    return { applied: true, onboardingCaseId: onboardingCase.id, outboxMessageId: message.id };
+    return {
+      applied: true,
+      onboardingCaseId: onboardingCase.id,
+      outboxMessageId: message.messageId,
+      skipped: message.skippedReason,
+    };
   },
 
   /**

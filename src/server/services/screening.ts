@@ -5,7 +5,13 @@ import {
   type ScreeningRubricVersion,
   type ScreeningStatus,
 } from '@prisma/client';
-import { type Db, isPrismaErrorCode, PG_UNIQUE_VIOLATION } from '@/lib/db';
+import {
+  type Db,
+  type MaybeTransactor,
+  isPrismaErrorCode,
+  PG_UNIQUE_VIOLATION,
+  withTransaction,
+} from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
 import { badRequest, conflict, forbidden, invalidState, notFound } from '@/lib/errors';
 import { formatReference, parseReferenceSequence, slugify } from '@/lib/ids';
@@ -465,7 +471,7 @@ export interface SubmissionResult {
  * and a reviewer may still be able to act on it.
  */
 export async function submitScreening(
-  db: Db,
+  db: MaybeTransactor,
   actor: Actor,
   input: SubmitScreeningInput,
 ): Promise<SubmissionResult> {
@@ -510,27 +516,38 @@ export async function submitScreening(
   const revision = screening.currentRevision + 1;
   const at = clockNow();
 
-  await db.screeningSubmission.create({
-    data: {
-      screeningId: screening.id,
-      revision,
-      answers: input.answers as Prisma.InputJsonValue,
-      workSampleLinks: links as Prisma.InputJsonValue,
-      note: input.note?.trim() ?? '',
-      isComplete: missingEvidence.length === 0,
-      missingEvidence: missingEvidence as Prisma.InputJsonValue,
-      submittedAt: at,
-    },
-  });
+  /**
+   * The submission and the status move together.
+   *
+   * Written separately, there was a window in which the candidate's page could
+   * show their new revision recorded and complete while the screening still
+   * said "update your responses and submit again" — the two reads disagreeing
+   * about whether the thing they had just done had happened. Brief, but it is
+   * the moment somebody is most likely to be looking at the page.
+   */
+  const updated = await withTransaction(db, async (tx) => {
+    await tx.screeningSubmission.create({
+      data: {
+        screeningId: screening.id,
+        revision,
+        answers: input.answers as Prisma.InputJsonValue,
+        workSampleLinks: links as Prisma.InputJsonValue,
+        note: input.note?.trim() ?? '',
+        isComplete: missingEvidence.length === 0,
+        missingEvidence: missingEvidence as Prisma.InputJsonValue,
+        submittedAt: at,
+      },
+    });
 
-  const updated = await db.screening.update({
-    where: { id: screening.id },
-    data: {
-      status: 'SUBMITTED',
-      submittedAt: at,
-      currentRevision: revision,
-      reviewDueAt: hoursFromNow(DEFAULT_REVIEW_TTL_HOURS, at),
-    },
+    return tx.screening.update({
+      where: { id: screening.id },
+      data: {
+        status: 'SUBMITTED',
+        submittedAt: at,
+        currentRevision: revision,
+        reviewDueAt: hoursFromNow(DEFAULT_REVIEW_TTL_HOURS, at),
+      },
+    });
   });
 
   await setCandidateStage(db, actor, screening.candidateId, 'SCREENING_SUBMITTED', {

@@ -16,6 +16,7 @@ function candidate(overrides: Partial<CandidateInput> = {}): CandidateInput {
   return {
     expertId: 'expert-1',
     status: 'VERIFIED',
+    contactPreference: 'UNKNOWN',
     yearsExperience: 10,
     hourlyRateCents: 20_000,
     timezone: 'UTC',

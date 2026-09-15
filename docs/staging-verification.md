@@ -240,36 +240,60 @@ session. Unchanged, and worth a deliberate decision.
 
 ## The hundred-contributor exercise
 
-Run 14 September 2026. Full description in
+Run 14–15 September 2026. Full description in
 [`network-exercise.md`](network-exercise.md).
 
-### Where it ran
+### Where each part actually ran
 
-| | |
+The two environments did different things, and the difference matters when
+reading any number below.
+
+| | What ran there |
 | --- | --- |
-| **Locally** | `expertops_exercise`, an isolated PostgreSQL database on the development host. The whole exercise plus 24 browser tests. |
-| **Hosted staging** | The same script through the worker's pre-deploy command, which is how this deployment runs anything — it has no shell. 100 experts, three projects, thirty seats. |
+| **Locally**, against `expertops_exercise` — an isolated PostgreSQL database on the development host | **The completed workflows.** The seeding script and every operational phase, plus 24 browser tests driving the candidate journey, the scale checks and the payment chain. Everything reported as "confirmed", "approved" or "exported" happened here. |
+| **Hosted staging** | **Setup only.** The same seeding script through the worker's pre-deploy command, which is how this deployment runs anything — it has no shell. It exited 0, so the script ran to completion, but its per-phase report was not captured from the deploy log. |
 
-The staging Basic gate stayed enabled throughout; an unauthenticated request to
-`/dashboard` still answers `401`.
+What was checked on hosted staging is limited to what needs no session:
 
-### Contributor counts, start and end
+- the Basic gate still refuses `/dashboard` with `401`;
+- `/api/health` reports **108 experts** and **5 projects**;
+- the three published opportunities render at `/apply/opportunities`.
 
-Starting state, locally: an empty database. Hosted: 8 synthetic experts and two
-projects from the earlier staging fixtures, all left untouched.
+**The hosted totals are not all the exercise's.** Of those 5 projects, 3 belong
+to this exercise; the other 2 are `PRJ-0001` and `PRJ-0002` from the earlier
+staging fixtures. Of the 108 experts, 100 are the seeded network and 8 predate
+it. No hosted seat count, batch or approval has been verified in the interface,
+because that needs an operator sign-in — see *Still unverified*.
 
-| State | Local, after the exercise |
+### Contributor counts by state — local
+
+| State | Count |
 | --- | --- |
 | `VERIFIED` | 43 |
 | `PROSPECT` | 49 |
 | `ONBOARDING` | 12 |
-| **Total** | **104** — 100 seeded, 4 who came through `/apply/opportunities` in the browser |
+| **Total** | **104** — 100 seeded, 4 who came through `/apply/opportunities` in a browser |
+
+### Current states versus cumulative events
+
+These are different numbers and were previously run together. A count of rows in
+a status is what is true now; a count of activity events is what happened at any
+point, including to records that have since moved on.
+
+| Current state (rows, now) | Cumulative events (history, ever) |
+| --- | --- |
+| Invitations: 53 accepted, 9 declined, 2 withdrawn | 55 acceptances, 9 declines |
+| Assignments: **30 confirmed**, 4 released | 36 confirmations, 6 releases, 2 expert withdrawals |
+
+The gaps are real history, not drift: two acceptances belong to invitations later
+withdrawn, and six confirmations were followed by a release — two of them expert
+withdrawals during the exercise, the rest seats released and refilled by the
+browser journey on each run.
 
 | | |
 | --- | --- |
-| Seats confirmed | **30 of 30**, across three projects |
-| Invitations | 53 accepted, 9 declined, 2 withdrawn |
-| Qualifications | 24, every one a human decision on a screening |
+| Seats confirmed | **30 of 30**, across the three exercise projects |
+| Qualifications | 24 |
 | Outreach batches | 5, each approved by an account other than its creator |
 | Payment batches | 7, one exported through the browser by a second identity |
 | Open attention items | 40, each naming a blocker, an impact and a next action |
@@ -277,20 +301,34 @@ projects from the earlier staging fixtures, all left untouched.
 | Simulated outbox messages | 149. No mail server is configured |
 
 The 100 seeded experts did **not** apply to anything. Applications only arrive
-through `/apply/opportunities`, and the two are counted separately so they can
-never be conflated.
+through `/apply/opportunities`, and the two are counted separately.
 
-### What ran where
+### What ran through a browser, and what did not
 
-| Through a browser | Through services, in a script |
+| Through a browser, locally | Through services, in a script |
 | --- | --- |
 | The whole candidate journey: listing, application, operator review, screening, revision request, resubmission, qualification, profile, invitation, acceptance, onboarding, verification, confirmed seat | Seeding the 100, matching, outreach approval and dispatch, invitation responses, onboarding of the 30, verification, seat confirmation, two withdrawals, replacement and restaffing |
 | Search, status filters, paging, project capacity, the attention queue, outreach batch counts, worker health | |
-| Work assignment, submission from the expert portal, review at reduced hours, discrepancy explanation, batching, refused self-approval, approval by a second account, CSV export | The same chain once at service level, for the parts the browser run does not repeat |
+| Work assignment, submission from the expert portal, review at reduced hours, discrepancy explanation, batching, refused self-approval, approval by a second account, CSV export | The same chain once at service level |
 
 Every script call goes through the same service function the interface calls, so
 capability checks, state-machine guards and audit entries apply identically.
 Nothing writes a business status directly.
+
+### The 24 scripted qualifications were synthetic decisions, not reviews
+
+Each one followed the real code path — a candidate, a screening against a
+published rubric version, a reviewer, a recorded decision — and each is attributed
+in the audit history to the operator identity that executed it.
+
+Nobody read them. The answers were generated by the seeding script and approved
+by the same script under an operator identity, in a single unattended run. They
+are **synthetic decisions executed under an operator identity**, and they are
+evidence that the qualification path works end to end. They are not evidence that
+anybody exercised judgement, and no claim about review quality rests on them.
+
+The one qualification made in the browser during the candidate journey is the same
+in kind: one person driving a test, not an independent reviewer.
 
 ### Two account identities, not two people
 
@@ -309,10 +347,10 @@ the application that moves money.
 
 ### Still unverified
 
-- Hosted backup availability and recovery remain unverified.
-- Concurrent-tester behaviour remains unverified. This exercise is **100
-  managed records**, not 100 concurrent users; no load was generated.
-- Hosted operator pages were not re-verified in a browser this run. The signed-in
-  session had expired, and entering a password is not something this process
-  does. Everything that needs no session was checked hosted: the gate, health,
-  and the three published opportunities.
+- Hosted backup availability and recovery.
+- Concurrent-tester behaviour. This exercise is **100 managed records**, not 100
+  concurrent users; no load was generated.
+- **Every hosted operational number.** Seat counts, batches, approvals and the
+  attention queue on staging have not been read from the interface. The
+  signed-in session had expired and entering a password is not something this
+  process does. Hosted verification needs an operator sign-in.

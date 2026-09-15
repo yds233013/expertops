@@ -17,7 +17,7 @@ import {
 } from '@/server/email/templates';
 import { type Actor, expertActor, recordActivity } from './activity';
 import { enqueueJob } from './jobs';
-import { queueMessage } from './outbox';
+import { mayContact, queueExpertMessage } from './contact-preferences';
 import { issuePortalToken } from './portal-access';
 import { advanceProjectStatus } from './projects';
 import { startOnboarding } from './onboarding';
@@ -166,7 +166,8 @@ async function scheduleSend(db: Db, invitationId: string) {
 
 export interface SendResult {
   invitation: Invitation;
-  outboxMessageId: string;
+  /** Null when a contact preference stopped the message being written. */
+  outboxMessageId: string | null;
   portalUrl: string;
 }
 
@@ -210,16 +211,15 @@ export async function sendInvitation(
     currency: invitation.expert.currency,
   });
 
-  const message = await queueMessage(db, {
-    toEmail: invitation.expert.email,
-    toName: invitation.expert.fullName,
+  const sent = await queueExpertMessage(db, {
+    expertId: invitation.expertId,
+    kind: 'OPERATIONAL',
     subject: rendered.subject,
     bodyText: rendered.bodyText,
     template: 'invitation.sent',
     relatedType: 'invitation',
     relatedId: invitation.id,
     projectId: invitation.projectId,
-    expertId: invitation.expertId,
     devPortalUrl: portalToken.url,
   });
 
@@ -239,12 +239,12 @@ export async function sendInvitation(
     expertId: invitation.expertId,
     action: 'invitation.sent',
     summary: `Simulated invitation email queued for ${invitation.expert.fullName}`,
-    metadata: { outboxMessageId: message.id, simulated: true },
+    metadata: { outboxMessageId: sent.messageId, simulated: true, skipped: sent.skippedReason },
   });
 
   return {
     invitation: { ...invitation, status: 'SENT', sentAt: clockNow() },
-    outboxMessageId: message.id,
+    outboxMessageId: sent.messageId,
     portalUrl: portalToken.url,
   };
 }
@@ -317,7 +317,27 @@ export async function respondToInvitation(db: Db, expertId: string, input: Respo
       priority: 30,
       dedupeKey: `onboarding.start:${invitation.id}`,
     });
-    await advanceProjectStatus(db, actor, invitation.projectId, 'STAFFING');
+    /**
+     * Accepting means interested, not seated.
+     *
+     * A project that is full is ACTIVE, and it has to stay that way: an
+     * acceptance from somebody who was invited before the last seat was
+     * confirmed reserves nothing and changes no headcount. Moving such a
+     * project back to STAFFING said, on every dashboard, that a full project
+     * still needed people.
+     *
+     * Only a project with a seat left hears about it.
+     */
+    const project = await db.project.findUnique({
+      where: { id: invitation.projectId },
+      select: { seatsRequested: true },
+    });
+    const seatsTaken = await db.assignment.count({
+      where: { projectId: invitation.projectId, status: { in: ['CONFIRMED', 'COMPLETED'] } },
+    });
+    if (project && seatsTaken < project.seatsRequested) {
+      await advanceProjectStatus(db, actor, invitation.projectId, 'STAFFING');
+    }
   }
 
   return db.invitation.findUniqueOrThrow({
@@ -413,16 +433,15 @@ export async function expireOverdueInvitations(
       projectTitle: invitation.project.title,
       projectCode: invitation.project.code,
     });
-    await queueMessage(db, {
-      toEmail: invitation.expert.email,
-      toName: invitation.expert.fullName,
+    await queueExpertMessage(db, {
+      expertId: invitation.expertId,
+      kind: 'OPERATIONAL',
       subject: rendered.subject,
       bodyText: rendered.bodyText,
       template: 'invitation.expired',
       relatedType: 'invitation',
       relatedId: invitation.id,
       projectId: invitation.projectId,
-      expertId: invitation.expertId,
     });
   }
 
@@ -432,6 +451,8 @@ export async function expireOverdueInvitations(
 export interface RemindResult {
   remindedCount: number;
   invitationIds: string[];
+  /** Open invitations whose owner has reminders switched off. */
+  suppressedCount: number;
 }
 
 /**
@@ -467,7 +488,17 @@ export async function remindPendingInvitations(
   });
 
   const reminded: string[] = [];
+  const suppressed: string[] = [];
   for (const invitation of candidates) {
+    // Cheap pre-check, so a suppressed reminder does not burn the claim below
+    // and leave the invitation looking chased when nobody was chased. It reads
+    // a row loaded a moment ago; `queueExpertMessage` re-reads authoritatively,
+    // and that second read is the one that decides.
+    if (!mayContact(invitation.expert.contactPreference, 'REMINDER')) {
+      suppressed.push(invitation.id);
+      continue;
+    }
+
     const claimed = await db.invitation.updateMany({
       where: { id: invitation.id, status: 'SENT', remindedAt: null },
       data: { remindedAt: now },
@@ -486,18 +517,39 @@ export async function remindPendingInvitations(
       expiresAt: invitation.expiresAt,
       portalUrl: portalToken.url,
     });
-    await queueMessage(db, {
-      toEmail: invitation.expert.email,
-      toName: invitation.expert.fullName,
+    const reminder = await queueExpertMessage(db, {
+      expertId: invitation.expertId,
+      // A reminder is us chasing somebody who has not answered. It is the first
+      // thing a contact preference switches off, and the preference is re-read
+      // inside this call rather than trusted from the row loaded above.
+      kind: 'REMINDER',
       subject: rendered.subject,
       bodyText: rendered.bodyText,
       template: 'invitation.reminder',
       relatedType: 'invitation',
       relatedId: invitation.id,
       projectId: invitation.projectId,
-      expertId: invitation.expertId,
       devPortalUrl: portalToken.url,
     });
+
+    if (!reminder.queued) {
+      // They opted out between the pre-check and the write. The claim stays —
+      // not reminding somebody who has just asked not to be is the right
+      // outcome — but the history says what actually happened.
+      suppressed.push(invitation.id);
+      reminded.pop();
+      await recordActivity(db, {
+        actor: { type: 'SYSTEM', label: 'ExpertOps worker' },
+        entityType: 'invitation',
+        entityId: invitation.id,
+        projectId: invitation.projectId,
+        expertId: invitation.expertId,
+        action: 'invitation.reminder_suppressed',
+        summary: `Reminder for ${invitation.expert.fullName} (${invitation.project.code}) was not sent: ${reminder.skippedReason}`,
+        metadata: { automated: true, reason: reminder.skippedReason },
+      });
+      continue;
+    }
 
     await recordActivity(db, {
       actor: { type: 'SYSTEM', label: 'ExpertOps worker' },
@@ -511,7 +563,11 @@ export async function remindPendingInvitations(
     });
   }
 
-  return { remindedCount: reminded.length, invitationIds: reminded };
+  return {
+    remindedCount: reminded.length,
+    invitationIds: reminded,
+    suppressedCount: suppressed.length,
+  };
 }
 
 export async function listInvitationsForExpert(db: Db, expertId: string) {

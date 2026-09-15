@@ -14,6 +14,7 @@ import {
   releaseAssignment,
 } from '@/server/services/staffing';
 import { recordWithdrawal } from '@/server/services/staffing-gaps';
+import { respondToInvitation, sendInvitation } from '@/server/services/invitations';
 import { createInvitation } from '@/server/services/invitations';
 import { runMatching } from '@/server/services/matching';
 import { AppError } from '@/lib/errors';
@@ -185,5 +186,144 @@ describe('vacating a seat on a full project', () => {
     await releaseAssignment(prisma, actor, extra.id, 'Proposal withdrawn');
     const stillActive = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stillActive.status).toBe('ACTIVE');
+  });
+
+  describe('a leftover invitee accepting', () => {
+    it('leaves a full project ACTIVE at its correct headcount', async () => {
+      const operator = await makeOperator({ email: 'late.accept@test.local', role: 'ADMIN' });
+      const actor = actorFor(operator);
+      const project = await makeProject(operator.id, {
+        seatsRequested: 1,
+        minYearsExperience: 0,
+        status: 'STAFFING',
+      });
+
+      // Two people are invited for one seat, which is normal — a funnel, not a
+      // mistake. One is seated; the other has not answered yet.
+      const seated = await makeStaffableExpert(project.id, {
+        fullName: 'Seated First',
+        email: 'seated.first@test.local',
+      });
+      const latecomer = await makeStaffableExpert(project.id, {
+        fullName: 'Answered Later',
+        email: 'answered.later@test.local',
+      });
+      await prisma.availabilityWindow.create({
+        data: {
+          expertId: seated.id,
+          startAt: new Date(Date.now() - 86_400_000),
+          endAt: new Date(Date.now() + 86_400_000 * 60),
+          hoursPerWeek: 20,
+        },
+      });
+
+      const proposed = await proposeAssignment(prisma, actor, {
+        projectId: project.id,
+        expertId: seated.id,
+        allocationHoursPerWeek: 10,
+      });
+      await confirmAssignment(prisma, actor, proposed.id);
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe(
+        'ACTIVE',
+      );
+
+      // The latecomer says yes. Accepting means interested, not seated.
+      const invitation = await prisma.invitation.findFirstOrThrow({
+        where: { projectId: project.id, expertId: latecomer.id },
+      });
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { status: 'DRAFT', respondedAt: null },
+      });
+      await sendInvitation(prisma, actor, invitation.id);
+      await respondToInvitation(prisma, latecomer.id, {
+        invitationId: invitation.id,
+        accept: true,
+      });
+
+      const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(after.status).toBe('ACTIVE');
+      expect(after.seatsFilled).toBe(1);
+      expect(after.seatsRequested).toBe(1);
+
+      // Their acceptance is recorded — they are interested, and available if a
+      // seat frees — but it reserved nothing.
+      const accepted = await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.id } });
+      expect(accepted.status).toBe('ACCEPTED');
+      expect(
+        await prisma.assignment.count({ where: { projectId: project.id, expertId: latecomer.id } }),
+      ).toBe(0);
+    });
+
+    it('still reopens a project that has a seat left', async () => {
+      const operator = await makeOperator({ email: 'early.accept@test.local', role: 'ADMIN' });
+      const actor = actorFor(operator);
+      // INVITING is where a project sits once invitations have gone out —
+      // `createInvitation` moves it there, and the factory writes the row
+      // directly, so the test sets it explicitly.
+      const project = await makeProject(operator.id, {
+        seatsRequested: 2,
+        minYearsExperience: 0,
+        status: 'INVITING',
+      });
+      const expert = await makeStaffableExpert(project.id, {
+        fullName: 'First Yes',
+        email: 'first.yes@test.local',
+      });
+      const invitation = await prisma.invitation.findFirstOrThrow({
+        where: { projectId: project.id, expertId: expert.id },
+      });
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { status: 'DRAFT', respondedAt: null },
+      });
+      await sendInvitation(prisma, actor, invitation.id);
+      await respondToInvitation(prisma, expert.id, { invitationId: invitation.id, accept: true });
+
+      const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(after.status).toBe('STAFFING');
+    });
+
+    it('cannot be overfilled by confirming one more than the project asked for', async () => {
+      const operator = await makeOperator({ email: 'overfill@test.local', role: 'ADMIN' });
+      const actor = actorFor(operator);
+      const project = await makeProject(operator.id, {
+        seatsRequested: 1,
+        minYearsExperience: 0,
+        status: 'STAFFING',
+      });
+
+      const ids: string[] = [];
+      for (const name of ['One', 'Two']) {
+        const expert = await makeStaffableExpert(project.id, {
+          fullName: `Seat ${name}`,
+          email: `seat.${name.toLowerCase()}@test.local`,
+        });
+        await prisma.availabilityWindow.create({
+          data: {
+            expertId: expert.id,
+            startAt: new Date(Date.now() - 86_400_000),
+            endAt: new Date(Date.now() + 86_400_000 * 60),
+            hoursPerWeek: 20,
+          },
+        });
+        const proposed = await proposeAssignment(prisma, actor, {
+          projectId: project.id,
+          expertId: expert.id,
+          allocationHoursPerWeek: 10,
+        });
+        ids.push(proposed.id);
+      }
+
+      await confirmAssignment(prisma, actor, ids[0]!);
+      await expect(confirmAssignment(prisma, actor, ids[1]!)).rejects.toBeInstanceOf(AppError);
+
+      const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(after.status).toBe('ACTIVE');
+      expect(after.seatsFilled).toBe(1);
+      expect(
+        await prisma.assignment.count({ where: { projectId: project.id, status: 'CONFIRMED' } }),
+      ).toBe(1);
+    });
   });
 });

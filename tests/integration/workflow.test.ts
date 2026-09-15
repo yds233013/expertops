@@ -120,8 +120,11 @@ describe('end-to-end staffing workflow', () => {
     expect(sent!.portalUrl).toContain('/portal/enter#t=');
     expect(new URL(sent!.portalUrl).pathname).toBe('/portal/enter');
 
+    // An invitation is operational, so a default UNKNOWN preference does not
+    // stop it and the message is always written.
+    expect(sent!.outboxMessageId).not.toBeNull();
     const message = await prisma.outboxMessage.findUniqueOrThrow({
-      where: { id: sent!.outboxMessageId },
+      where: { id: sent!.outboxMessageId! },
     });
     expect(message.status).toBe('QUEUED');
     expect(message.toEmail).toBe(strong.email);

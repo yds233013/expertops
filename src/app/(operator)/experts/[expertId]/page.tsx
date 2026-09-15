@@ -6,6 +6,7 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { listActivity } from '@/server/services/activity';
 import { getExpert } from '@/server/services/experts';
+import { CONTACT_PREFERENCE_LABEL } from '@/server/services/contact-preferences';
 import { ExpertProfileEditor } from '@/components/expert-profile-editor';
 import { ExpertSkillsEditor } from '@/components/expert-skills-editor';
 import { PortalLinkPanel } from '@/components/portal-link-panel';
@@ -62,6 +63,24 @@ export default async function ExpertDetailPage({
             </FieldRow>
             <FieldRow label="Timezone">{expert.timezone}</FieldRow>
             <FieldRow label="Capacity">{expert.weeklyCapacityHours} h/week</FieldRow>
+            <FieldRow label="Contact">
+              <span
+                className={
+                  expert.contactPreference === 'NO_CONTACT'
+                    ? 'font-semibold text-rose-700'
+                    : expert.contactPreference === 'UNKNOWN'
+                      ? 'text-amber-800'
+                      : undefined
+                }
+              >
+                {CONTACT_PREFERENCE_LABEL[expert.contactPreference]}
+              </span>
+              <span className="mt-0.5 block text-xs text-ink-500">
+                {expert.contactPreferenceSetAt
+                  ? `Set by them on ${formatDate(expert.contactPreferenceSetAt)}.`
+                  : 'They have not set this themselves.'}
+              </span>
+            </FieldRow>
             <FieldRow label="Added">{formatDate(expert.createdAt)}</FieldRow>
           </dl>
           {expert.bio && <p className="mt-3 text-sm text-ink-600">{expert.bio}</p>}
