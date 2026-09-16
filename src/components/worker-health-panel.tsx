@@ -28,7 +28,7 @@ export function WorkerHealthPanel({ health }: { health: WorkerHealth }) {
     >
       <div className="space-y-4">
         {health.warnings.length === 0 ? (
-          <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          <p className="alert alert-success">
             A worker is reporting in, nothing is overdue, and no job has exhausted its retries.
           </p>
         ) : (

@@ -8,7 +8,15 @@ import { listBatches, listPaymentItems, paymentCounts } from '@/server/services/
 import { ResolveDiscrepancy } from '@/components/resolve-discrepancy';
 import { CreateBatchPanel } from '@/components/create-batch-panel';
 import { PaymentBatchActions } from '@/components/payment-batch-actions';
-import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  ProvenanceTag,
+  StatTile,
+  StatusBadge,
+  PageHeader,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,14 +42,17 @@ export default async function PaymentsPage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="page-title">Payment preparation</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          Prepares an approved file for a finance process that lives elsewhere. Nothing here moves
-          money, and <strong>exported is not paid</strong>. There is deliberately no action that
-          marks an expert as paid.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Delivery"
+        title="Payment preparation"
+        description={
+          <>
+            Prepares an approved file for a finance process that lives elsewhere. Nothing here moves
+            money, and <strong>exported is not paid</strong>. There is deliberately no action that
+            marks an expert as paid.
+          </>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile

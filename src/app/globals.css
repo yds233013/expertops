@@ -54,477 +54,1183 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Utility classes used across the operator workspace. */
-.card {
-  background: white;
-  border: 1px solid var(--color-ink-200);
-  border-radius: 0.75rem;
-}
-
-.label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-ink-500);
-  margin-bottom: 0.35rem;
-}
-
-.input,
-.textarea,
-.select {
-  width: 100%;
-  border: 1px solid var(--color-ink-300);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.65rem;
-  font-size: 0.875rem;
-  background: white;
-  color: var(--color-ink-900);
-}
-
-.input:focus,
-.textarea:focus,
-.select:focus {
-  outline: 2px solid var(--color-accent-300);
-  outline-offset: 1px;
-  border-color: var(--color-accent-500);
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.9rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition:
-    background-color 120ms ease,
-    border-color 120ms ease;
-}
-
-.btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/* Keyboard users need to see where they are. :focus-visible keeps the ring off
-   mouse clicks while guaranteeing it for Tab navigation. */
-.btn:focus-visible,
-a:focus-visible,
-summary:focus-visible,
-[role='button']:focus-visible {
-  outline: 2px solid var(--color-accent-500);
-  outline-offset: 2px;
-}
-
-.btn-primary {
-  background: var(--color-accent-500);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--color-accent-600);
-}
-
-.btn-secondary {
-  background: white;
-  border-color: var(--color-ink-300);
-  color: var(--color-ink-800);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: var(--color-ink-100);
-}
-
-.btn-danger {
-  background: #b4232a;
-  color: white;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #971c22;
-}
-
-.btn-sm {
-  padding: 0.3rem 0.6rem;
-  font-size: 0.8rem;
-}
-
-table.data {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-table.data th {
-  text-align: left;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-ink-500);
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--color-ink-200);
-  white-space: nowrap;
-}
-
-table.data td {
-  padding: 0.65rem 0.75rem;
-  border-bottom: 1px solid var(--color-ink-100);
-  vertical-align: top;
-}
-
-table.data tr:last-child td {
-  border-bottom: none;
-}
-
-.scroll-x {
-  overflow-x: auto;
-}
-
-/* ---------------------------------------------------------------------------
-   Shell: a sidebar on desktop, a bar with a menu on narrow screens.
-   --------------------------------------------------------------------------- */
-.sidebar {
-  background: var(--color-navy-900);
-  border-bottom: 1px solid var(--color-navy-800);
-  color: white;
-}
-
-@media (min-width: 1024px) {
-  .sidebar {
-    border-bottom: none;
-    border-right: none;
+/*
+ * Component classes live in a layer so that Tailwind utilities written next to
+ * them win. Unlayered, `.btn` beat `hidden` and `.input` beat `w-24`, and a
+ * utility on an element silently did nothing.
+ */
+@layer components {
+  /* Utility classes used across the operator workspace. */
+  .card {
+    background: white;
+    border: 1px solid var(--color-ink-200);
+    border-radius: 0.75rem;
+    /* A shadow this quiet is not decoration: on warm ivory it is what separates
+     a raised surface from the page without drawing a heavier border. */
+    box-shadow: 0 1px 2px rgb(32 49 61 / 0.04);
   }
 
-  /* The column carries the background for the whole page height; only the
-     contents are pinned. Making the column itself 100vh left a white band that
-     ended mid-page on anything taller than the viewport. */
-  .sidebar-inner {
+  .card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--color-ink-100);
+  }
+
+  .card-body {
+    padding: 1rem;
+  }
+
+  /* A card whose only job is to hold a table should not pad it twice. */
+  .card-body-flush {
+    padding: 0;
+  }
+
+  .label {
+    display: block;
+    /* Sentence case at a readable size. Small capitals made every form look like
+     a table header and were harder to scan than the field values beneath. */
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-ink-700);
+    margin-bottom: 0.3rem;
+  }
+
+  /* A group of related fields, with a heading that says what they are for. */
+  .fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+  }
+
+  .fieldset + .fieldset {
+    margin-top: 1.5rem;
+  }
+
+  /* Floated so it leaves the fieldset border and lays out like a heading. */
+  .legend {
+    float: left;
+    width: 100%;
+    padding: 0;
+    margin-bottom: 0.2rem;
+    font-size: 0.85rem;
+    font-weight: 650;
+    color: var(--color-ink-900);
+  }
+
+  .legend + * {
+    clear: both;
+  }
+
+  .legend-hint {
+    margin-bottom: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--color-ink-500);
+  }
+
+  .input,
+  .textarea,
+  .select {
+    width: 100%;
+    border: 1px solid var(--color-ink-300);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.875rem;
+    background: white;
+    color: var(--color-ink-900);
+  }
+
+  .input:focus,
+  .textarea:focus,
+  .select:focus {
+    outline: 2px solid var(--color-accent-300);
+    outline-offset: 1px;
+    border-color: var(--color-accent-500);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
+  }
+
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /* Keyboard users need to see where they are. :focus-visible keeps the ring off
+   mouse clicks while guaranteeing it for Tab navigation. */
+  .btn:focus-visible,
+  a:focus-visible,
+  summary:focus-visible,
+  [role='button']:focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+  }
+
+  .btn-primary {
+    background: var(--color-accent-500);
+    color: white;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-600);
+  }
+
+  .btn-secondary {
+    background: white;
+    border-color: var(--color-ink-300);
+    color: var(--color-ink-800);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--color-ink-100);
+  }
+
+  .btn-danger {
+    background: #b4232a;
+    color: white;
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background: #971c22;
+  }
+
+  .btn-sm {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  table.data th {
     position: sticky;
     top: 0;
-    max-height: 100vh;
-    overflow-y: auto;
-    padding-bottom: 1.5rem;
+    z-index: 1;
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-ink-500);
+    background: var(--color-ink-50);
+    padding: 0.55rem 0.8rem;
+    border-bottom: 1px solid var(--color-ink-200);
+    white-space: nowrap;
   }
-}
 
-.brand {
-  display: inline-block;
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--color-ink-900);
-}
+  table.data td {
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid var(--color-ink-100);
+    vertical-align: middle;
+    line-height: 1.4;
+  }
 
-/* On the rail the brand sits on navy, so it inherits the light treatment. */
-.sidebar .brand {
-  color: white;
-}
+  /* Rows that are read one at a time benefit from a target under the cursor. */
+  table.data tbody tr:hover td {
+    background: var(--color-ink-50);
+  }
 
-.topbar {
-  display: flex;
-  justify-content: flex-end;
-  border-bottom: 1px solid var(--color-ink-200);
-  background: white;
-  padding: 0.65rem 1rem;
-}
+  table.data tr:last-child td {
+    border-bottom: none;
+  }
 
-@media (min-width: 640px) {
+  /* The actions column: never wraps, always right, never steals width. */
+  table.data td.row-actions,
+  table.data th.row-actions {
+    width: 1%;
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  table.data td.row-actions .btn {
+    vertical-align: middle;
+  }
+
+  /* A primary cell: the thing the row is about. */
+  .cell-primary {
+    font-weight: 600;
+    color: var(--color-ink-900);
+  }
+
+  .cell-meta {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.75rem;
+    color: var(--color-ink-500);
+  }
+
+  .scroll-x {
+    overflow-x: auto;
+    /* Lets the sticky header work inside a rounded card without clipping. */
+    max-height: none;
+  }
+
+  /* ---------------------------------------------------------------------------
+   Shell: a sidebar on desktop, a bar with a menu on narrow screens.
+   --------------------------------------------------------------------------- */
+  .sidebar {
+    background: var(--color-navy-900);
+    border-bottom: 1px solid var(--color-navy-800);
+    color: white;
+  }
+
+  @media (min-width: 1024px) {
+    .sidebar {
+      border-bottom: none;
+      border-right: none;
+    }
+
+    /* The column carries the background for the whole page height; only the
+     contents are pinned. Making the column itself 100vh left a white band that
+     ended mid-page on anything taller than the viewport. */
+    .sidebar-inner {
+      position: sticky;
+      top: 0;
+      max-height: 100vh;
+      overflow-y: auto;
+      padding-bottom: 1.5rem;
+    }
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--color-ink-900);
+  }
+
+  /* A square mark gives the rail a fixed left edge to align the nav against,
+   so the wordmark and the links share one optical margin. */
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    flex: none;
+    border-radius: 0.45rem;
+    background: var(--color-accent-500);
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+
+  .brand-sub {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-navy-100);
+  }
+
+  /* On the rail the brand sits on navy, so it inherits the light treatment. */
+  .sidebar .brand {
+    color: white;
+  }
+
   .topbar {
-    padding: 0.65rem 1.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--color-ink-200);
+    background: rgb(255 255 255 / 0.9);
+    backdrop-filter: saturate(140%) blur(8px);
+    padding: 0.55rem 1rem;
+    min-height: 3.25rem;
   }
-}
 
-.nav-heading {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--color-navy-100);
-  padding: 0 0.6rem;
-  margin-bottom: 0.35rem;
-}
+  @media (min-width: 640px) {
+    .topbar {
+      padding: 0.55rem 1.5rem;
+    }
+  }
 
-.nav-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  border-radius: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.875rem;
-  color: #cfdae2;
-}
+  /* The operator's own identity. Quiet by default; it is reference, not a task. */
+  .account {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+  }
 
-.nav-link:hover {
-  background: var(--color-navy-800);
-  color: white;
-}
+  .avatar {
+    display: grid;
+    place-items: center;
+    width: 1.85rem;
+    height: 1.85rem;
+    flex: none;
+    border-radius: 999px;
+    background: var(--color-accent-50);
+    border: 1px solid var(--color-accent-100);
+    color: var(--color-accent-700);
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
 
-/* Teal-tinted rather than teal: a solid accent block down the rail competes
+  .nav-heading {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    /* Dimmer than a link: a heading is a label for the group, not a destination,
+     and at full contrast it competed with the items under it. */
+    color: #7e97a8;
+    padding: 0 0.6rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border-radius: 0.45rem;
+    padding: 0.38rem 0.6rem;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    color: #cfdae2;
+    transition:
+      background-color 100ms ease,
+      color 100ms ease;
+  }
+
+  .nav-link:hover {
+    background: var(--color-navy-800);
+    color: white;
+  }
+
+  /* Teal-tinted rather than teal: a solid accent block down the rail competes
    with the page. The bar on the edge does the pointing. */
-.nav-link-active {
-  background: #1a4d4a;
-  color: var(--color-navy-50);
-  font-weight: 600;
-  box-shadow: inset 3px 0 0 #3aa294;
-}
+  .nav-link-active {
+    background: #1a4d4a;
+    color: var(--color-navy-50);
+    font-weight: 600;
+    box-shadow: inset 3px 0 0 #3aa294;
+  }
 
-.nav-link-active:hover {
-  background: #1f5a56;
-  color: white;
-}
+  .nav-link-active:hover {
+    background: #1f5a56;
+    color: white;
+  }
 
-/* A focus ring has to be visible against navy, not just against white. */
-.sidebar a:focus-visible,
-.sidebar button:focus-visible {
-  outline: 2px solid #6fb5ac;
-  outline-offset: 2px;
-}
+  /* A focus ring has to be visible against navy, not just against white. */
+  .sidebar a:focus-visible,
+  .sidebar button:focus-visible {
+    outline: 2px solid #6fb5ac;
+    outline-offset: 2px;
+  }
 
-.nav-count {
-  flex: none;
-  min-width: 1.25rem;
-  border-radius: 999px;
-  background: #2f9488;
-  padding: 0 0.35rem;
-  font-size: 0.68rem;
-  font-weight: 700;
-  line-height: 1.25rem;
-  text-align: center;
-  color: #06231f;
-  font-variant-numeric: tabular-nums;
-}
+  .nav-count {
+    flex: none;
+    min-width: 1.25rem;
+    border-radius: 999px;
+    background: #2f9488;
+    padding: 0 0.35rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.25rem;
+    text-align: center;
+    color: #06231f;
+    font-variant-numeric: tabular-nums;
+  }
 
-/* The menu trigger and the sheet it opens both sit on the navy rail. */
-.sidebar .btn-secondary {
-  background: transparent;
-  border-color: var(--color-navy-700);
-  color: white;
-}
+  /* The menu trigger and the sheet it opens both sit on the navy rail. */
+  .sidebar .btn-secondary {
+    background: transparent;
+    border-color: var(--color-navy-700);
+    color: white;
+  }
 
-.sidebar .btn-secondary:hover:not(:disabled) {
-  background: var(--color-navy-800);
-}
+  .sidebar .btn-secondary:hover:not(:disabled) {
+    background: var(--color-navy-800);
+  }
 
-.nav-sheet {
-  background: var(--color-navy-900);
-  border-right: 1px solid var(--color-navy-800);
-}
+  .nav-sheet {
+    background: var(--color-navy-900);
+    border-right: 1px solid var(--color-navy-800);
+  }
 
-/* ---------------------------------------------------------------------------
+  /* ---------------------------------------------------------------------------
    Typography: one scale, so a heading means the same thing on every screen.
    --------------------------------------------------------------------------- */
-.page-title {
-  font-size: 1.35rem;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-  line-height: 1.25;
-  color: var(--color-ink-900);
-}
+  .eyebrow {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-ink-400);
+    margin-bottom: 0.3rem;
+  }
 
-.page-subtitle {
-  margin-top: 0.3rem;
-  font-size: 0.875rem;
-  color: var(--color-ink-600);
-  max-width: 70ch;
-}
+  .page-title {
+    font-size: 1.5rem;
+    font-weight: 640;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--color-ink-900);
+    text-wrap: balance;
+  }
 
-.section-title {
-  font-size: 0.9rem;
-  font-weight: 650;
-  color: var(--color-ink-900);
-}
+  .page-subtitle {
+    margin-top: 0.4rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--color-ink-600);
+    max-width: 72ch;
+  }
 
-/* ---------------------------------------------------------------------------
+  .section-title {
+    font-size: 0.9rem;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+    color: var(--color-ink-900);
+  }
+
+  /* Numbers that sit in a column should line up under each other. */
+  .tabular-nums,
+  table.data td,
+  table.data th {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------------------------------------------------------------------------
    Forms: a required field, an invalid one and a hint all look like themselves.
    --------------------------------------------------------------------------- */
-.input:disabled,
-.textarea:disabled,
-.select:disabled {
-  background: var(--color-ink-50);
-  color: var(--color-ink-500);
-  cursor: not-allowed;
-}
+  .input:disabled,
+  .textarea:disabled,
+  .select:disabled {
+    background: var(--color-ink-50);
+    color: var(--color-ink-500);
+    cursor: not-allowed;
+  }
 
-.input[aria-invalid='true'],
-.textarea[aria-invalid='true'],
-.select[aria-invalid='true'] {
-  border-color: #b4232a;
-}
+  .input[aria-invalid='true'],
+  .textarea[aria-invalid='true'],
+  .select[aria-invalid='true'] {
+    border-color: #b4232a;
+  }
 
-.field-hint {
-  margin-top: 0.3rem;
-  font-size: 0.75rem;
-  color: var(--color-ink-500);
-}
+  .field-hint {
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--color-ink-500);
+  }
 
-.field-error {
-  margin-top: 0.3rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #971c22;
-}
+  .field-error {
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #971c22;
+  }
 
-/* ---------------------------------------------------------------------------
+  /* ---------------------------------------------------------------------------
    Feedback: the same shape whether something succeeded, failed or is a note.
    --------------------------------------------------------------------------- */
-.alert {
-  border-radius: 0.5rem;
-  border: 1px solid;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.875rem;
-}
-
-.alert-success {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-  color: #065f46;
-}
-
-.alert-error {
-  background: #fff1f2;
-  border-color: #fecdd3;
-  color: #9f1239;
-}
-
-.alert-warning {
-  background: #fffbeb;
-  border-color: #fde68a;
-  color: #78350f;
-}
-
-.alert-info {
-  background: var(--color-accent-50);
-  border-color: var(--color-accent-100);
-  color: var(--color-accent-700);
-}
-
-/* A placeholder with the shape of the thing that is coming. */
-.skeleton {
-  border-radius: 0.5rem;
-  background: linear-gradient(
-    90deg,
-    var(--color-ink-100),
-    var(--color-ink-50),
-    var(--color-ink-100)
-  );
-  background-size: 200% 100%;
-  animation: skeleton 1.4s ease-in-out infinite;
-}
-
-@keyframes skeleton {
-  0% {
-    background-position: 200% 0;
+  .alert {
+    border-radius: 0.5rem;
+    border: 1px solid;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.875rem;
   }
-  100% {
-    background-position: -200% 0;
-  }
-}
 
-@media (prefers-reduced-motion: reduce) {
+  .alert-success {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+  }
+
+  .alert-error {
+    background: #fff1f2;
+    border-color: #fecdd3;
+    color: #9f1239;
+  }
+
+  .alert-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #78350f;
+  }
+
+  .alert-info {
+    background: var(--color-accent-50);
+    border-color: var(--color-accent-100);
+    color: var(--color-accent-700);
+  }
+
+  /* A placeholder with the shape of the thing that is coming. */
   .skeleton {
-    animation: none;
+    border-radius: 0.5rem;
+    background: linear-gradient(
+      90deg,
+      var(--color-ink-100),
+      var(--color-ink-50),
+      var(--color-ink-100)
+    );
+    background-size: 200% 100%;
+    animation: skeleton 1.4s ease-in-out infinite;
   }
-}
 
-/* Skip link: the first thing a keyboard reaches, invisible until focused. */
-.skip-link {
-  position: absolute;
-  left: -9999px;
-  z-index: 50;
-}
+  @keyframes skeleton {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
 
-.skip-link:focus {
-  left: 0.75rem;
-  top: 0.75rem;
-  background: white;
-  border: 1px solid var(--color-ink-300);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
 
-/* A wide table should scroll inside its own box, never the page. */
-table.data th {
-  position: sticky;
-  top: 0;
-  background: white;
-  z-index: 1;
-}
+  /* Skip link: the first thing a keyboard reaches, invisible until focused. */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    z-index: 50;
+  }
 
-/* ---------------------------------------------------------------------------
+  .skip-link:focus {
+    left: 0.75rem;
+    top: 0.75rem;
+    background: white;
+    border: 1px solid var(--color-ink-300);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  /* ---------------------------------------------------------------------------
    Attention queue: severity has to be readable before the words are.
    --------------------------------------------------------------------------- */
-.attn {
-  border: 1px solid var(--color-ink-200);
-  border-left-width: 4px;
-  border-radius: 0.625rem;
-  padding: 0.85rem 1rem;
-  background: white;
-}
+  .attn {
+    border: 1px solid var(--color-ink-200);
+    border-left-width: 4px;
+    border-radius: 0.625rem;
+    padding: 0.85rem 1rem;
+    background: white;
+  }
 
-.attn-high {
-  border-left-color: #b4232a;
-}
+  .attn-high {
+    border-left-color: #b4232a;
+  }
 
-.attn-medium {
-  border-left-color: #d97706;
-}
+  .attn-medium {
+    border-left-color: #d97706;
+  }
 
-.attn-low {
-  border-left-color: var(--color-ink-300);
-}
+  .attn-low {
+    border-left-color: var(--color-ink-300);
+  }
 
-.attn-term {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-ink-400);
-}
+  .attn-term {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-ink-400);
+  }
 
-/* The next action is the only line on the card that is an instruction. */
-.attn-next {
-  margin-top: 0.6rem;
-  border-radius: 0.45rem;
-  background: var(--color-accent-50);
-  padding: 0.45rem 0.6rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-accent-700);
-}
+  /* The next action is the only line on the card that is an instruction. */
+  .attn-next {
+    margin-top: 0.6rem;
+    border-radius: 0.45rem;
+    background: var(--color-accent-50);
+    padding: 0.45rem 0.6rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-accent-700);
+  }
 
-.owner-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  border-radius: 999px;
-  border: 1px solid var(--color-ink-200);
-  background: var(--color-ink-50);
-  padding: 0.1rem 0.5rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--color-ink-600);
-}
+  .owner-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-ink-200);
+    background: var(--color-ink-50);
+    padding: 0.1rem 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-ink-600);
+  }
 
-.owner-chip-unassigned {
-  border-color: #fde68a;
-  background: #fffbeb;
-  color: #78350f;
-}
+  .owner-chip-unassigned {
+    border-color: #fde68a;
+    background: #fffbeb;
+    color: #78350f;
+  }
 
-/* The sign-in screen: one navy block, so the first screen looks like the
+  /* The sign-in screen: one navy block, so the first screen looks like the
    product rather than a form on a blank page. */
-.auth-mark {
-  border-radius: 0.75rem;
-  background: var(--color-navy-900);
-  color: white;
-  padding: 1.1rem 1.25rem;
+  .auth-mark {
+    border-radius: 0.75rem;
+    background: var(--color-navy-900);
+    color: white;
+    padding: 1.1rem 1.25rem;
+  }
+
+  /* ---------------------------------------------------------------------------
+   Shared list furniture.
+
+   Every index page in the workspace has the same three parts — a filter row,
+   a table, and a way to move through the results. They were each being built
+   by hand, so they each looked slightly different. These are the shapes.
+   --------------------------------------------------------------------------- */
+
+  /* The row above a table: search, filters, and whatever acts on the whole list. */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-ink-100);
+    background: white;
+  }
+
+  .toolbar-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .toolbar-field .label {
+    margin-bottom: 0;
+    font-size: 0.75rem;
+    color: var(--color-ink-600);
+  }
+
+  .toolbar .input,
+  .toolbar .select {
+    height: 2.1rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    font-size: 0.85rem;
+  }
+
+  /* Pushes everything after it to the far edge of the row. */
+  .toolbar-spacer {
+    flex: 1 1 auto;
+  }
+
+  /* Which filters are currently narrowing the list, and how to drop one. */
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-accent-100);
+    background: var(--color-accent-50);
+    padding: 0.15rem 0.3rem 0.15rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-accent-700);
+  }
+
+  .filter-chip-clear {
+    display: grid;
+    place-items: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 999px;
+    color: var(--color-accent-700);
+    line-height: 1;
+  }
+
+  .filter-chip-clear:hover {
+    background: var(--color-accent-100);
+  }
+
+  .pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    border-top: 1px solid var(--color-ink-100);
+    font-size: 0.8rem;
+    color: var(--color-ink-500);
+  }
+
+  .pagination-count {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------------------------------------------------------------------------
+   Detail pages: what the record is, then what to do about it.
+   --------------------------------------------------------------------------- */
+
+  /* Key-value pairs that stay readable when a value runs long. */
+  .kv {
+    display: grid;
+    grid-template-columns: minmax(7rem, 11rem) 1fr;
+    gap: 0.15rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .kv dt {
+    color: var(--color-ink-500);
+    padding: 0.3rem 0;
+  }
+
+  .kv dd {
+    color: var(--color-ink-900);
+    padding: 0.3rem 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 480px) {
+    .kv {
+      grid-template-columns: 1fr;
+      gap: 0 0;
+    }
+
+    .kv dt {
+      padding-bottom: 0;
+    }
+
+    .kv dd {
+      padding-top: 0.1rem;
+      border-bottom: 1px solid var(--color-ink-100);
+      padding-bottom: 0.45rem;
+      margin-bottom: 0.35rem;
+    }
+  }
+
+  /* The one thing this page is asking the operator to decide. */
+  .next-action {
+    border: 1px solid var(--color-accent-100);
+    border-left-width: 4px;
+    border-left-color: var(--color-accent-500);
+    border-radius: 0.625rem;
+    background: var(--color-accent-50);
+    padding: 0.85rem 1rem;
+  }
+
+  .next-action-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-accent-700);
+  }
+
+  /* Sub-navigation within one record or one section. */
+  .tabs {
+    display: flex;
+    gap: 0.15rem;
+    border-bottom: 1px solid var(--color-ink-200);
+    overflow-x: auto;
+  }
+
+  .tab {
+    flex: none;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-ink-500);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    white-space: nowrap;
+  }
+
+  .tab:hover {
+    color: var(--color-ink-900);
+  }
+
+  .tab-active {
+    color: var(--color-accent-700);
+    border-bottom-color: var(--color-accent-500);
+  }
+
+  /* ---------------------------------------------------------------------------
+   States. A page with nothing in it still has to explain itself.
+   --------------------------------------------------------------------------- */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+  }
+
+  .empty-glyph {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-bottom: 0.2rem;
+    border-radius: 0.65rem;
+    background: var(--color-ink-100);
+    color: var(--color-ink-400);
+    font-size: 1.1rem;
+  }
+
+  .empty-title {
+    font-size: 0.925rem;
+    font-weight: 650;
+    color: var(--color-ink-900);
+  }
+
+  .empty-body {
+    font-size: 0.85rem;
+    color: var(--color-ink-500);
+    max-width: 44ch;
+  }
+
+  /* One discreet mark on any surface reading from the seeded fixtures, so
+   nobody mistakes the sample network for a real one. */
+  .sample-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-ink-200);
+    background: white;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--color-ink-500);
+    white-space: nowrap;
+  }
+
+  .sample-badge::before {
+    content: '';
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 999px;
+    background: #d97706;
+    flex: none;
+  }
+
+  /* On the navy rail the same mark has to invert. */
+  .sidebar .sample-badge {
+    background: transparent;
+    border-color: var(--color-navy-700);
+    color: var(--color-navy-100);
+  }
+
+  /* A row of mutually exclusive views: one is always selected. */
+  .segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    padding: 0.2rem;
+    border: 1px solid var(--color-ink-200);
+    border-radius: 0.55rem;
+    background: var(--color-ink-50);
+  }
+
+  .segmented-item {
+    border-radius: 0.4rem;
+    padding: 0.28rem 0.65rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-ink-600);
+    white-space: nowrap;
+  }
+
+  .segmented-item:hover {
+    color: var(--color-ink-900);
+    background: white;
+  }
+
+  .segmented-item[aria-current='page'] {
+    background: white;
+    color: var(--color-accent-700);
+    box-shadow:
+      0 0 0 1px var(--color-ink-200),
+      0 1px 2px rgb(32 49 61 / 0.06);
+  }
+
+  /* Attention rows: dense enough that thirty items fit on a screen and a half. */
+  .attn-group + .attn-group {
+    border-top: 1px solid var(--color-ink-100);
+  }
+
+  .attn-group-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.65rem 1rem;
+    background: var(--color-ink-50);
+    border-bottom: 1px solid var(--color-ink-100);
+  }
+
+  .attn-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+    padding: 0.75rem 1rem 0.75rem 1.15rem;
+    border-bottom: 1px solid var(--color-ink-100);
+  }
+
+  .attn-row:last-child {
+    border-bottom: none;
+  }
+
+  .attn-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6rem;
+    bottom: 0.6rem;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--color-ink-300);
+  }
+
+  .attn-row.attn-high::before {
+    background: #b4232a;
+  }
+
+  .attn-row.attn-medium::before {
+    background: #d97706;
+  }
+
+  @media (min-width: 1024px) {
+    .attn-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+    }
+  }
+
+  .attn-facts {
+    display: grid;
+    gap: 0.15rem 1.25rem;
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+  }
+
+  @media (min-width: 768px) {
+    .attn-facts {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  /* Long unbroken values — addresses, references — wrap rather than escape. */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Compact controls for dense rows and toolbars. */
+  .select-sm,
+  .input-sm {
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+    font-size: 0.8rem;
+    line-height: 1.25rem;
+  }
+
+  /* In-page section links for long records. Sticks under the top bar. */
+  .section-nav {
+    position: sticky;
+    top: 3.25rem;
+    z-index: 10;
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    margin: 0 -0.25rem;
+    padding: 0.35rem 0.25rem;
+    background: var(--color-ink-50);
+    border-bottom: 1px solid var(--color-ink-200);
+  }
+
+  .section-nav a {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 0.4rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-ink-600);
+  }
+
+  .section-nav a:hover {
+    background: white;
+    color: var(--color-ink-900);
+  }
+
+  .section-nav-count {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-ink-400);
+  }
+
+  /* In a table, a destructive action is one of many rows: outline it, and keep
+   solid red for the confirmation step where it is the only thing on offer. */
+  table.data .btn-danger:not(:disabled) {
+    background: white;
+    color: #9f1239;
+    border-color: #fecdd3;
+  }
+
+  table.data .btn-danger:hover:not(:disabled) {
+    background: #fff1f2;
+    border-color: #fda4af;
+  }
+
+  table.data .btn-danger.btn-confirming:not(:disabled) {
+    background: #b4232a;
+    color: white;
+    border-color: #b4232a;
+  }
+
+  .public-nav-link {
+    border-radius: 0.4rem;
+    padding: 0.3rem 0.55rem;
+    font-weight: 600;
+    color: var(--color-ink-600);
+  }
+
+  .public-nav-link:hover {
+    background: var(--color-ink-50);
+    color: var(--color-ink-900);
+  }
+
+  /* The sign-in screen's brand panel. */
+  .auth-panel {
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 2rem;
+    padding: 2.5rem 3rem;
+    background:
+      radial-gradient(120% 80% at 0% 0%, rgb(23 107 101 / 0.28), transparent 60%),
+      var(--color-navy-900);
+    color: white;
+  }
+
+  .auth-tick {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.15rem;
+    border-radius: 999px;
+    background: rgb(58 162 148 / 0.25);
+    box-shadow: inset 0 0 0 4px #3aa294;
+  }
+
+  .auth-panel .brand {
+    color: white;
+  }
+
+  /* Outside the workspace nothing sits above the section links. */
+  #portal-main .section-nav,
+  #apply-main .section-nav {
+    top: 0;
+  }
+
+  .progress-steps {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+    counter-reset: step;
+  }
+
+  .progress-step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    text-align: center;
+  }
+
+  /* The connecting line, drawn from each dot back to the previous one. */
+  .progress-step + .progress-step::before {
+    content: '';
+    position: absolute;
+    top: 0.7rem;
+    right: 50%;
+    width: 100%;
+    height: 2px;
+    background: var(--color-ink-200);
+    z-index: 0;
+  }
+
+  .progress-step-done + .progress-step::before {
+    background: var(--color-accent-500);
+  }
+
+  .progress-dot {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 999px;
+    border: 2px solid var(--color-ink-200);
+    background: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--color-ink-400);
+  }
+
+  .progress-step-done .progress-dot {
+    border-color: var(--color-accent-500);
+    background: var(--color-accent-500);
+    color: white;
+  }
+
+  .progress-step-current .progress-dot {
+    border-color: var(--color-accent-500);
+    color: var(--color-accent-700);
+    box-shadow: 0 0 0 3px var(--color-accent-50);
+  }
+
+  .progress-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-ink-500);
+    line-height: 1.2;
+  }
+
+  .progress-step-current .progress-label {
+    color: var(--color-ink-900);
+  }
 }

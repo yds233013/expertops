@@ -1,5 +1,15 @@
 # Staging verification
 
+> **Names in this record are as they were at the time.** On 16 September 2026
+> migration `20260916100000_fixture_display_names` gave seeded fixtures natural
+> display names — `PRACTICE coding review pilot` became `Coding review pilot`,
+> `NET <name> 0NN` became a new, unique plain name derived from the serial — and
+> appended a `fixture.renamed`
+> activity event for each change. IDs, references and emails did not change.
+> Operator accounts (such as `SYNTHETIC Approver`) and records created through
+> the browser (such as `HOSTED APPLICANT Vela Ashworth`) were not renamed.
+
+
 Two runs against the hosted deployment at
 `https://web-production-09e7e.up.railway.app`, on 13 September 2026. The first
 drove the REST API directly; the second drove the browser. Every record is

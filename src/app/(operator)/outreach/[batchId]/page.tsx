@@ -6,7 +6,15 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { getBatch } from '@/server/services/outreach';
 import { listActivity } from '@/server/services/activity';
 import { OutreachBatchActions } from '@/components/outreach-actions';
-import { Badge, Card, EmptyState, FieldRow, ProvenanceTag, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  FieldRow,
+  ProvenanceTag,
+  StatusBadge,
+  PageHeader,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,24 +48,20 @@ export default async function OutreachBatchPage({
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="page-title">{batch.reference}</h1>
+      <PageHeader
+        back={{ href: '/outreach', label: 'Outreach' }}
+        eyebrow={batch.kind === 'REPLACEMENT' ? 'Replacement batch' : 'Outreach batch'}
+        title={batch.reference}
+        meta={
+          <>
             <StatusBadge status={batch.status} />
             <Badge tone={batch.kind === 'REPLACEMENT' ? 'info' : 'muted'}>
               {batch.kind.replace(/_/g, ' ').toLowerCase()}
             </Badge>
-          </div>
-          <p className="mt-1 text-sm text-ink-600">
-            {batch.items.length} recipient{batch.items.length === 1 ? '' : 's'} · {sent} invited
-            {retryable > 0 && ` · ${retryable} outstanding`}
-          </p>
-        </div>
-        <Link className="btn btn-secondary" href="/outreach">
-          All batches
-        </Link>
-      </header>
+          </>
+        }
+        description={`${batch.items.length} recipient${batch.items.length === 1 ? '' : 's'} · ${sent} invited${retryable > 0 ? ` · ${retryable} outstanding` : ''}`}
+      />
 
       {batch.kind === 'REPLACEMENT' && (
         <p className="rounded-md border border-accent-100 bg-accent-50 px-3 py-2 text-sm text-accent-700">

@@ -94,8 +94,8 @@ test.describe('anonymous visitors', () => {
       }
 
       await page.goto('/demo');
-      await expect(page.getByRole('heading', { name: /synthetic demo/i })).toBeVisible();
-      await expect(page.getByText(/Everything here is synthetic/i)).toBeVisible();
+      await expect(page.getByRole('heading', { name: /demo workspace/i, level: 1 })).toBeVisible();
+      await expect(page.getByText(/Everything here is sample data/i)).toBeVisible();
 
       await page.goto('/apply/opportunities');
       await expect(page.getByText(/practice listings, not real jobs/i)).toBeVisible();

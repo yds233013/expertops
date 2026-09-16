@@ -8,7 +8,15 @@ import { workerHealth } from '@/server/services/worker-health';
 import { WorkerHealthPanel } from '@/components/worker-health-panel';
 import { describeJobOutcome } from '@/lib/job-outcome';
 import { ActionButton } from '@/components/action-button';
-import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  ProvenanceTag,
+  StatTile,
+  StatusBadge,
+  PageHeader,
+} from '@/components/ui';
 import { type JobStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -38,17 +46,18 @@ export default async function JobsPage({
 
   return (
     <div className="space-y-5">
-      <header>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="page-title">Background worker</h1>
-          <ProvenanceTag kind="automated" />
-        </div>
-        <p className="mt-1 text-sm text-ink-600">
-          Jobs and schedules live in PostgreSQL. Workers claim rows with{' '}
-          <code>FOR UPDATE SKIP LOCKED</code>, so several can run at once and a restart never loses
-          or repeats work. Start one with <code>npm run worker</code>.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="System"
+        title="Background worker"
+        meta={<ProvenanceTag kind="automated" />}
+        description={
+          <>
+            Jobs and schedules live in PostgreSQL. Workers claim rows with{' '}
+            <code>FOR UPDATE SKIP LOCKED</code>, so several can run at once and a restart never
+            loses or repeats work. Start one with <code>npm run worker</code>.
+          </>
+        }
+      />
 
       <WorkerHealthPanel health={health} />
 

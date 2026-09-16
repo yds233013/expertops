@@ -6,7 +6,7 @@ import { listTemplates } from '@/server/services/screening';
 import { listDomains } from '@/server/services/qualifications';
 import { CreateTemplateForm, NewDraftButton } from '@/components/rubric-actions';
 import { RubricEditor } from '@/components/rubric-editor';
-import { Badge, Card, EmptyState, ProvenanceTag, StatusBadge } from '@/components/ui';
+import { Badge, Card, EmptyState, ProvenanceTag, StatusBadge, PageHeader } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,13 +26,11 @@ export default async function RubricsPage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="page-title">Screening rubrics</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          A published version never changes. Screenings keep the version they started against, so a
-          decision made months ago is still explainable.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Sourcing"
+        title="Screening rubrics"
+        description="A published version never changes. Screenings keep the version they started against, so a decision made months ago is still explainable."
+      />
 
       {canWrite && (
         <Card

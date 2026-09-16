@@ -14,11 +14,16 @@ Everything here is synthetic. Email is simulated, no payment executes, and the
 
 | | |
 | --- | --- |
-| **PRJ-0001 · PRACTICE coding review pilot** | 12 seats, requires *Code Review* at 3/5, 40 people in the area |
-| **PRJ-0002 · PRACTICE enterprise process assessment** | 10 seats, requires *Process Analysis*, 35 people |
-| **PRJ-0003 · PRACTICE security posture review** | 8 seats, requires *Threat Modelling*, 25 people |
+| **PRJ-0001 · Coding review pilot** | 12 seats, requires *Code Review* at 3/5, 40 people in the area |
+| **PRJ-0002 · Enterprise process assessment** | 10 seats, requires *Process Analysis*, 35 people |
+| **PRJ-0003 · Security posture review** | 8 seats, requires *Threat Modelling*, 25 people |
 
-Every expert is prefixed `NET` and every address ends `@example.test`.
+Every address ends `@example.test` and every seeded record carries
+`demoEligible = true`, which is what marks it as a fixture. Display names are
+natural (`Amara Rasmussen`, not `NET Amara Rasmussen 078`): until 16 September
+2026 they carried a `NET`/`PRACTICE` prefix, and migration
+`20260916100000_fixture_display_names` renamed the rows it could prove were
+seeded. See `scripts/fixture-names.ts`.
 
 The 100 arrive by the two routes the product has, and the distinction matters:
 

@@ -6,7 +6,7 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { listScreenings } from '@/server/services/screening';
 import { AssignReviewerPanel, ReviewForm } from '@/components/review-form';
 import { ScreeningDecisionPanel } from '@/components/screening-decision-panel';
-import { Badge, Card, EmptyState, StatusBadge } from '@/components/ui';
+import { Badge, Card, EmptyState, StatusBadge, PageHeader } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,25 +56,19 @@ export default async function ScreeningsPage({
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="page-title">Screening review</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          Each screening is judged against the rubric version it started on. Two reviewers who
-          disagree raise a conflict; the system never breaks the tie.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Sourcing"
+        title="Screening review"
+        description="Each screening is judged against the rubric version it started on. Two reviewers who disagree raise a conflict; the system never breaks the tie."
+      />
 
-      <nav className="flex flex-wrap gap-2" aria-label="Screening filters">
+      <nav className="segmented self-start" aria-label="Screening filters">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
             aria-current={tab.active ? 'page' : undefined}
-            className={
-              tab.active
-                ? 'rounded-md bg-ink-900 px-3 py-1.5 text-sm font-medium text-white'
-                : 'rounded-md border border-ink-200 px-3 py-1.5 text-sm text-ink-700 hover:bg-ink-100'
-            }
+            className="segmented-item"
           >
             {tab.label}
           </Link>
@@ -183,7 +177,7 @@ export default async function ScreeningsPage({
                 )}
 
                 {screening.conflict?.status === 'OPEN' && (
-                  <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                  <p className="alert alert-error">
                     Reviewers disagree: {screening.conflict.summary}. An admin must record a
                     resolution before a decision can be made.
                   </p>

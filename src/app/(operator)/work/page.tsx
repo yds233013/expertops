@@ -10,7 +10,15 @@ import { AssignWorkPanel } from '@/components/assign-work-panel';
 import { ReviewWorkPanel } from '@/components/review-work-panel';
 import { AssignOffboardingTask } from '@/components/assign-offboarding-task';
 import { ConfirmOffboardingTask } from '@/components/confirm-offboarding-task';
-import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  ProvenanceTag,
+  StatTile,
+  StatusBadge,
+  PageHeader,
+} from '@/components/ui';
 import { type WorkItemStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -68,13 +76,11 @@ export default async function DeliveryPage({
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="page-title">Delivery</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          Work items, expert support and offboarding. A review judges one submission; it never
-          changes an expert&rsquo;s standing in the network.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Delivery"
+        title="Work"
+        description="Work items, expert support and offboarding. A review judges one submission; it never changes an expert’s standing in the network."
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile

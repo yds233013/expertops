@@ -8,9 +8,10 @@
  *
  *   npx tsx scripts/practice-scenario.ts
  *
- * Every record is prefixed PRACTICE so it is obvious in a list and easy to find
- * again. Idempotent: it looks for each record before creating it, so running it
- * twice leaves one copy of everything and changes nothing else.
+ * Every record is marked as a seeded fixture (`demoEligible`) and every address
+ * ends @example.test; the page, not the name, says it is sample data.
+ * Idempotent: it looks for each record before creating it, so running it twice
+ * leaves one copy of everything and changes nothing else.
  *
  * It deliberately stops short of the interesting part. Nothing is invited,
  * nobody is staffed and no work exists — those are the steps to practise.
@@ -24,17 +25,24 @@ import { createProject } from '@/server/services/projects';
 import { createCandidate } from '@/server/services/candidates';
 import { createDraftVersion, createTemplate, publishVersion } from '@/server/services/screening';
 import { ensureOnboardingCase } from '@/server/services/onboarding';
+import {
+  DOMAIN_RENAMES,
+  PERSON_RENAMES,
+  PROJECT_RENAMES,
+  RUBRIC_RENAMES,
+  SAMPLE_CLIENT,
+  eitherName,
+} from './fixture-names';
 
-const PREFIX = 'PRACTICE';
 const SKILL = 'Evaluation Design';
 
 /** The three experts, and what each one is for. */
 const EXPERTS = [
   {
     key: 'ready',
-    fullName: `${PREFIX} Nadia Halvorsen`,
+    fullName: PERSON_RENAMES['practice.nadia.halvorsen@example.test']!.current,
     email: 'practice.nadia.halvorsen@example.test',
-    headline: `${PREFIX} record — ready to staff`,
+    headline: PERSON_RENAMES['practice.nadia.halvorsen@example.test']!.headline.current,
     yearsExperience: 11,
     hourlyRateCents: 19_000,
     /** Verified and available: the one a seat can be confirmed for. */
@@ -42,9 +50,9 @@ const EXPERTS = [
   },
   {
     key: 'blocked',
-    fullName: `${PREFIX} Tomas Ferreira`,
+    fullName: PERSON_RENAMES['practice.tomas.ferreira@example.test']!.current,
     email: 'practice.tomas.ferreira@example.test',
-    headline: `${PREFIX} record — onboarding not finished`,
+    headline: PERSON_RENAMES['practice.tomas.ferreira@example.test']!.headline.current,
     yearsExperience: 9,
     hourlyRateCents: 18_500,
     /**
@@ -55,9 +63,9 @@ const EXPERTS = [
   },
   {
     key: 'replacement',
-    fullName: `${PREFIX} Ingrid Sørensen`,
+    fullName: PERSON_RENAMES['practice.ingrid.sorensen@example.test']!.current,
     email: 'practice.ingrid.sorensen@example.test',
-    headline: `${PREFIX} record — holds back as a replacement`,
+    headline: PERSON_RENAMES['practice.ingrid.sorensen@example.test']!.headline.current,
     yearsExperience: 13,
     hourlyRateCents: 21_000,
     readiness: 'ready' as const,
@@ -110,6 +118,7 @@ async function main() {
     });
     experts[definition.key] = expert.id;
     created.push(definition.fullName);
+    await prisma.expert.update({ where: { id: expert.id }, data: { demoEligible: true } });
 
     if (definition.readiness === 'ready') {
       // Verified, with availability on file: a seat can be confirmed.
@@ -121,7 +130,7 @@ async function main() {
           startAt: now,
           endAt: new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000),
           hoursPerWeek: 25,
-          note: `${PREFIX} availability`,
+          note: 'Declared availability',
         },
       });
     } else {
@@ -133,12 +142,14 @@ async function main() {
   }
 
   // --- project -------------------------------------------------------------
-  const projectTitle = `${PREFIX} evaluation pilot`;
-  let project = await prisma.project.findFirst({ where: { title: projectTitle } });
+  const projectTitle = PROJECT_RENAMES.evaluation.current;
+  let project = await prisma.project.findFirst({
+    where: { title: eitherName(PROJECT_RENAMES.evaluation) },
+  });
   if (!project) {
     project = await createProject(prisma, actor, {
       title: projectTitle,
-      clientName: `${PREFIX} Client (practice only)`,
+      clientName: SAMPLE_CLIENT,
       description:
         'Practice scenario. No real client and no real work. Two seats, one skill, ' +
         'and three experts in the network at different stages of readiness.',
@@ -151,25 +162,28 @@ async function main() {
   } else {
     kept.push(projectTitle);
   }
+  await prisma.project.update({ where: { id: project.id }, data: { demoEligible: true } });
 
   // --- rubric, so screening can be practised --------------------------------
-  const domainSlug = `${PREFIX.toLowerCase()}-evaluation`;
+  const domainSlug = 'practice-evaluation';
   let domain = await prisma.domain.findUnique({ where: { slug: domainSlug } });
   if (!domain) {
     domain = await prisma.domain.create({
       data: {
         slug: domainSlug,
-        name: `${PREFIX} Evaluation`,
+        name: DOMAIN_RENAMES[domainSlug].current,
         description: 'Practice domain. Not a real area of work.',
       },
     });
-    created.push(`${PREFIX} Evaluation domain`);
+    created.push(`${DOMAIN_RENAMES[domainSlug].current} domain`);
   } else {
-    kept.push(`${PREFIX} Evaluation domain`);
+    kept.push(`${DOMAIN_RENAMES[domainSlug].current} domain`);
   }
 
-  const templateName = `${PREFIX} evaluation screening`;
-  let template = await prisma.screeningTemplate.findFirst({ where: { name: templateName } });
+  const templateName = RUBRIC_RENAMES.evaluation.current;
+  let template = await prisma.screeningTemplate.findFirst({
+    where: { name: eitherName(RUBRIC_RENAMES.evaluation) },
+  });
   if (!template) {
     template = await createTemplate(prisma, actor, {
       name: templateName,
@@ -208,14 +222,14 @@ async function main() {
   });
   if (!existingCandidate) {
     await createCandidate(prisma, actor, {
-      fullName: `${PREFIX} Rosa Imani`,
+      fullName: PERSON_RENAMES[candidateEmail]!.current,
       email: candidateEmail,
-      headline: `${PREFIX} applicant — awaiting a screening`,
+      headline: PERSON_RENAMES[candidateEmail]!.headline.current,
       yearsExperience: 8,
     });
-    created.push(`${PREFIX} Rosa Imani`);
+    created.push(PERSON_RENAMES[candidateEmail]!.current);
   } else {
-    kept.push(`${PREFIX} Rosa Imani`);
+    kept.push(PERSON_RENAMES[candidateEmail]!.current);
   }
 
   console.log(`\n  Practice scenario on ${target.redactedUrl}\n`);
@@ -225,10 +239,10 @@ async function main() {
   console.log(`    blocked            ${EXPERTS[1]!.fullName} (onboarding unfinished)`);
   console.log(`    replacement        ${EXPERTS[2]!.fullName}`);
   console.log(`    rubric             ${templateName}`);
-  console.log(`    candidate          ${PREFIX} Rosa Imani`);
+  console.log(`    candidate          ${PERSON_RENAMES[candidateEmail]!.current}`);
   console.log(`\n    created this run   ${created.length ? created.join(', ') : 'nothing'}`);
   console.log(`    already present    ${kept.length ? kept.join(', ') : 'nothing'}`);
-  console.log('\n  Every record is synthetic and prefixed PRACTICE. Nothing is invited or');
+  console.log('\n  Every record is synthetic sample data. Nothing is invited or');
   console.log('  staffed: those are the steps to practise.\n');
 }
 

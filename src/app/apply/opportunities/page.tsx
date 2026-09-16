@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { formatDate } from '@/lib/time';
 import { listPublishedOpportunities } from '@/server/services/opportunities';
-import { Alert, Badge, Card, EmptyState } from '@/components/ui';
+import { Alert, Badge, EmptyState } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,14 +19,18 @@ const KIND_LABEL = {
  */
 export default async function OpportunitiesPage() {
   const opportunities = await listPublishedOpportunities(prisma);
+  const open = opportunities.filter((opportunity) => opportunity.open);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header>
+        <span className="eyebrow">
+          {open.length} open {open.length === 1 ? 'listing' : 'listings'}
+        </span>
         <h1 className="page-title">Open opportunities</h1>
         <p className="page-subtitle">
           Apply to a specific engagement, or to join the expert network generally. You do not need
-          an account: give your details once and we will be in touch about next steps.
+          an account: give your details once and an operator will be in touch about next steps.
         </p>
       </header>
 
@@ -38,60 +42,84 @@ export default async function OpportunitiesPage() {
         directly.
       </Alert>
 
-      <p className="text-sm text-ink-600">
-        Looking at this as a reviewer rather than an applicant?{' '}
-        <Link className="text-accent-600 hover:underline" href="/demo">
-          Explore the synthetic demo
-        </Link>{' '}
-        — a read-only view of the operator side.
-      </p>
-
       {opportunities.length === 0 ? (
-        <EmptyState
-          title="Nothing open at the moment"
-          hint="New opportunities appear here as they are published."
-        />
+        <div className="card">
+          <EmptyState
+            title="Nothing open at the moment"
+            hint="New opportunities appear here as they are published."
+          />
+        </div>
       ) : (
-        <ul className="space-y-3">
+        <ul className="grid gap-3">
           {opportunities.map((opportunity) => (
             <li key={opportunity.slug}>
-              <Card>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="section-title">{opportunity.title}</h2>
-                      <Badge tone={opportunity.kind === 'NETWORK_MEMBERSHIP' ? 'muted' : 'info'}>
-                        {KIND_LABEL[opportunity.kind]}
-                      </Badge>
-                      {!opportunity.open && <Badge tone="warning">closed</Badge>}
-                    </div>
-                    <p className="mt-1 text-sm text-ink-600">{opportunity.summary}</p>
-                    <p className="mt-2 text-xs text-ink-500">
-                      {opportunity.domainName}
-                      {opportunity.weeklyHoursMin || opportunity.weeklyHoursMax ? (
-                        <>
-                          {' · '}
-                          {opportunity.weeklyHoursMin ?? '—'}–{opportunity.weeklyHoursMax ?? '—'}{' '}
-                          h/week
-                        </>
-                      ) : null}
-                      {opportunity.applicationDeadline && (
-                        <> · apply by {formatDate(opportunity.applicationDeadline)}</>
-                      )}
-                    </p>
-                  </div>
+              {/* The whole card is clickable through the title's link, stretched
+                  over it; the explicit link at the foot stays for anyone
+                  tabbing or reading by links. */}
+              <section className="card group relative px-5 py-4 transition-shadow hover:border-ink-300 hover:shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="warning" title="Practice listing: nobody is hired from it">
+                    Sample listing
+                  </Badge>
+                  <Badge tone={opportunity.kind === 'NETWORK_MEMBERSHIP' ? 'muted' : 'info'}>
+                    {KIND_LABEL[opportunity.kind]}
+                  </Badge>
+                  {!opportunity.open && <Badge tone="muted">closed</Badge>}
+                </div>
+                <h2 className="mt-2 text-base font-semibold text-ink-900 group-hover:text-accent-700">
                   <Link
-                    className="btn btn-secondary"
                     href={`/apply/opportunities/${opportunity.slug}`}
+                    className="after:absolute after:inset-0 after:rounded-[0.75rem] focus-visible:outline-none"
+                    tabIndex={-1}
                   >
-                    View and apply
+                    {opportunity.title}
+                  </Link>
+                </h2>
+                {opportunity.summary && (
+                  <p className="mt-1 text-sm text-ink-600">{opportunity.summary}</p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 pt-3">
+                  <dl className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-ink-500">
+                    <div>
+                      <dt className="sr-only">Area</dt>
+                      <dd>{opportunity.domainName}</dd>
+                    </div>
+                    {(opportunity.weeklyHoursMin || opportunity.weeklyHoursMax) && (
+                      <div>
+                        <dt className="sr-only">Hours</dt>
+                        <dd>
+                          {opportunity.weeklyHoursMin ?? '—'}–{opportunity.weeklyHoursMax ?? '—'}{' '}
+                          hours a week
+                        </dd>
+                      </div>
+                    )}
+                    {opportunity.applicationDeadline && (
+                      <div>
+                        <dt className="sr-only">Deadline</dt>
+                        <dd>Apply by {formatDate(opportunity.applicationDeadline)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  <Link
+                    href={`/apply/opportunities/${opportunity.slug}`}
+                    className="relative z-10 text-sm font-semibold text-accent-700 hover:underline"
+                  >
+                    View and apply <span aria-hidden="true">→</span>
                   </Link>
                 </div>
-              </Card>
+              </section>
             </li>
           ))}
         </ul>
       )}
+
+      <p className="text-sm text-ink-600">
+        Looking at this as a reviewer rather than an applicant?{' '}
+        <Link className="font-medium text-accent-700 hover:underline" href="/demo">
+          Explore the read-only demo
+        </Link>{' '}
+        of the operator side.
+      </p>
     </div>
   );
 }

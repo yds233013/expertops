@@ -5,7 +5,14 @@ import { formatDateTime, formatRelative } from '@/lib/time';
 import { requireCapability } from '@/server/http/context';
 import { listMessages, outboxCounts } from '@/server/services/outbox';
 import { SimulatedDeliveryNote } from '@/components/delivery-note';
-import { Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Card,
+  EmptyState,
+  ProvenanceTag,
+  StatTile,
+  StatusBadge,
+  PageHeader,
+} from '@/components/ui';
 import { type OutboxStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -32,17 +39,18 @@ export default async function OutboxPage({
 
   return (
     <div className="space-y-5">
-      <header>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="page-title">Simulated outbox</h1>
-          <ProvenanceTag kind="simulated" />
-        </div>
-        <p className="mt-1 text-sm text-ink-600">
-          Every message below was rendered and stored locally. &ldquo;Marked delivered&rdquo; means
-          the worker updated this row, and nothing more.
-        </p>
-        <SimulatedDeliveryNote className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900" />
-      </header>
+      <PageHeader
+        eyebrow="System"
+        title="Simulated outbox"
+        meta={<ProvenanceTag kind="simulated" />}
+        description={
+          <>
+            Every message below was rendered and stored locally. &ldquo;Marked delivered&rdquo;
+            means the worker updated this row, and nothing more.
+          </>
+        }
+      />
+      <SimulatedDeliveryNote className="alert alert-warning text-xs" />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatTile label="Queued" value={counts.QUEUED} hint="worker picks up" tone="warning" />

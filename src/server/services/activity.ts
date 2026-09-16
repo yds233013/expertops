@@ -73,6 +73,8 @@ export interface ActivityQuery {
   entityType?: string;
   entityId?: string;
   actions?: string[];
+  /** Leave these out, e.g. sign-ins, which are routine and drown a short feed. */
+  excludeActions?: string[];
   actorType?: ActorType;
   limit?: number;
   cursor?: string;
@@ -88,6 +90,7 @@ export async function listActivity(db: Db, query: ActivityQuery = {}) {
   if (query.entityId) where.entityId = query.entityId;
   if (query.actorType) where.actorType = query.actorType;
   if (query.actions?.length) where.action = { in: query.actions };
+  else if (query.excludeActions?.length) where.action = { notIn: query.excludeActions };
 
   const rows = await db.activityEvent.findMany({
     where,

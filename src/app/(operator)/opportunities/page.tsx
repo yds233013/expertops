@@ -3,7 +3,15 @@ import { prisma } from '@/lib/db';
 import { formatDate, formatRelative } from '@/lib/time';
 import { requireCapability } from '@/server/http/context';
 import { listOpportunities, opportunityCounts } from '@/server/services/opportunities';
-import { Badge, Card, EmptyState, PageHeader, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  CellPrimary,
+  EmptyState,
+  PageHeader,
+  StatTile,
+  StatusBadge,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +30,7 @@ export default async function OpportunitiesPage() {
   return (
     <div className="space-y-5">
       <PageHeader
+        eyebrow="Sourcing"
         title="Opportunities"
         description="What people can apply to. A draft is invisible to applicants; a closed one refuses new applications."
         actions={
@@ -32,49 +41,55 @@ export default async function OpportunitiesPage() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile label="Draft" value={counts.DRAFT} hint="not listed" tone="muted" />
-        <StatTile label="Published" value={counts.PUBLISHED} tone="success" />
-        <StatTile label="Closed" value={counts.CLOSED} tone="muted" />
+        <StatTile label="Published" value={counts.PUBLISHED} sub="Open to applicants" />
+        <StatTile label="Draft" value={counts.DRAFT} sub="Not visible to anyone outside" />
+        <StatTile label="Closed" value={counts.CLOSED} sub="Refusing new applications" />
         <StatTile
           label="Applications"
           value={opportunities.reduce((sum, row) => sum + row._count.applications, 0)}
+          sub="Across every listing"
         />
       </div>
 
-      <Card title={`All opportunities (${opportunities.length})`}>
+      <Card flush title={`All opportunities (${opportunities.length})`}>
         {opportunities.length === 0 ? (
           <EmptyState
             title="No opportunities yet"
             hint="Create one, then publish it when the description is ready."
+            action={
+              <Link className="btn btn-primary btn-sm" href="/opportunities/new">
+                New opportunity
+              </Link>
+            }
           />
         ) : (
           <div className="scroll-x">
             <table className="data">
               <thead>
                 <tr>
-                  <th>Reference</th>
-                  <th>Title</th>
+                  <th>Opportunity</th>
                   <th>Kind</th>
                   <th>Status</th>
                   <th>Linked to</th>
-                  <th>Applications</th>
+                  <th className="text-right">Applications</th>
                   <th>Deadline</th>
                 </tr>
               </thead>
               <tbody>
                 {opportunities.map((opportunity) => (
                   <tr key={opportunity.id}>
-                    <td>
-                      <Link
-                        className="font-mono text-accent-600 hover:underline"
+                    <td className="min-w-56">
+                      <CellPrimary
                         href={`/opportunities/${opportunity.id}`}
+                        meta={
+                          <>
+                            <span className="font-mono">{opportunity.reference}</span> ·{' '}
+                            {opportunity.domain.name}
+                          </>
+                        }
                       >
-                        {opportunity.reference}
-                      </Link>
-                    </td>
-                    <td>
-                      <div className="font-medium text-ink-900">{opportunity.title}</div>
-                      <div className="text-xs text-ink-500">{opportunity.domain.name}</div>
+                        {opportunity.title}
+                      </CellPrimary>
                     </td>
                     <td>
                       <Badge tone={opportunity.kind === 'NETWORK_MEMBERSHIP' ? 'muted' : 'info'}>
@@ -101,7 +116,7 @@ export default async function OpportunitiesPage() {
                         <span className="text-ink-400">—</span>
                       )}
                     </td>
-                    <td className="tabular-nums">{opportunity._count.applications}</td>
+                    <td className="text-right tabular-nums">{opportunity._count.applications}</td>
                     <td className="text-xs">
                       {opportunity.applicationDeadline
                         ? formatDate(opportunity.applicationDeadline)

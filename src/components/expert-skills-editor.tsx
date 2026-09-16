@@ -76,7 +76,10 @@ export function ExpertSkillsEditor({
       </datalist>
 
       {rows.map((row, index) => (
-        <div key={index} className="grid grid-cols-[1fr_7rem_7rem_2.5rem] items-end gap-2">
+        <div
+          key={index}
+          className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-end gap-2 sm:grid-cols-[minmax(10rem,1fr)_7rem_7rem_2.5rem]"
+        >
           <div>
             <label className="label" htmlFor={`skill-name-${index}`}>
               Skill
@@ -143,12 +146,12 @@ export function ExpertSkillsEditor({
       </button>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p role="status" className="alert alert-success">
           {notice}
         </p>
       )}

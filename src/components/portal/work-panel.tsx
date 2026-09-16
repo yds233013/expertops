@@ -120,40 +120,31 @@ export function WorkPanel({ items }: { items: PortalWorkItem[] }) {
                 {open ? (
                   <div className="mt-3 space-y-2">
                     <div>
-                      <label
-                        htmlFor={`work-summary-${item.id}`}
-                        className="text-xs font-semibold text-ink-700"
-                      >
+                      <label htmlFor={`work-summary-${item.id}`} className="label">
                         One-line summary
                       </label>
                       <input
                         id={`work-summary-${item.id}`}
-                        className="input mt-1 w-full"
+                        className="input"
                         value={draft.summary}
                         onChange={(event) => patch(item.id, { summary: event.target.value })}
                       />
                     </div>
                     <div>
-                      <label
-                        htmlFor={`work-content-${item.id}`}
-                        className="text-xs font-semibold text-ink-700"
-                      >
+                      <label htmlFor={`work-content-${item.id}`} className="label">
                         What you did
                       </label>
                       <textarea
                         id={`work-content-${item.id}`}
                         rows={4}
-                        className="input mt-1 w-full"
+                        className="input"
                         value={draft.content}
                         onChange={(event) => patch(item.id, { content: event.target.value })}
                       />
                     </div>
                     {item.basis === 'HOURLY' && (
                       <div>
-                        <label
-                          htmlFor={`work-hours-${item.id}`}
-                          className="text-xs font-semibold text-ink-700"
-                        >
+                        <label htmlFor={`work-hours-${item.id}`} className="label">
                           Hours worked
                         </label>
                         <input

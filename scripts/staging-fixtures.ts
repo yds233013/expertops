@@ -4,7 +4,7 @@
  * A staging box with an empty database tells a tester nothing, and a staging
  * box seeded with `prisma/seed.ts` would carry the shared demo operator
  * accounts. This is the middle: a couple of experts and one project, every
- * record labelled SYNTHETIC, and no operator accounts at all.
+ * record a seeded fixture (`demoEligible`), and no operator accounts at all.
  *
  *   npx tsx scripts/staging-fixtures.ts
  *
@@ -17,22 +17,21 @@ import { parseDatabaseUrl } from '@/lib/database-safety';
 import { SYSTEM_ACTOR, type Actor } from '@/server/services/activity';
 import { createExpert } from '@/server/services/experts';
 import { createProject } from '@/server/services/projects';
-
-const MARKER = 'SYNTHETIC';
+import { PERSON_RENAMES, PROJECT_RENAMES, SAMPLE_CLIENT, eitherName } from './fixture-names';
 
 const EXPERTS = [
   {
-    fullName: 'SYNTHETIC Avery Lindqvist',
+    fullName: PERSON_RENAMES['synthetic.avery.lindqvist@example.test']!.current,
     email: 'synthetic.avery.lindqvist@example.test',
-    headline: 'SYNTHETIC staging record — evaluation operations',
+    headline: PERSON_RENAMES['synthetic.avery.lindqvist@example.test']!.headline.current,
     yearsExperience: 9,
     hourlyRateCents: 18_000,
     skills: [{ name: 'Evaluation Design', proficiency: 4, yearsUsed: 5 }],
   },
   {
-    fullName: 'SYNTHETIC Bo Okonkwo',
+    fullName: PERSON_RENAMES['synthetic.bo.okonkwo@example.test']!.current,
     email: 'synthetic.bo.okonkwo@example.test',
-    headline: 'SYNTHETIC staging record — clinical operations',
+    headline: PERSON_RENAMES['synthetic.bo.okonkwo@example.test']!.headline.current,
     yearsExperience: 12,
     hourlyRateCents: 20_000,
     skills: [{ name: 'Evaluation Design', proficiency: 5, yearsUsed: 8 }],
@@ -42,17 +41,17 @@ const EXPERTS = [
   // staging box with exactly as many experts as seats can only ever
   // demonstrate the happy path.
   {
-    fullName: 'SYNTHETIC Cleo Marchetti',
+    fullName: PERSON_RENAMES['synthetic.cleo.marchetti@example.test']!.current,
     email: 'synthetic.cleo.marchetti@example.test',
-    headline: 'SYNTHETIC staging record — survey methodology',
+    headline: PERSON_RENAMES['synthetic.cleo.marchetti@example.test']!.headline.current,
     yearsExperience: 7,
     hourlyRateCents: 17_500,
     skills: [{ name: 'Evaluation Design', proficiency: 4, yearsUsed: 4 }],
   },
   {
-    fullName: 'SYNTHETIC Dara Nkemelu',
+    fullName: PERSON_RENAMES['synthetic.dara.nkemelu@example.test']!.current,
     email: 'synthetic.dara.nkemelu@example.test',
-    headline: 'SYNTHETIC staging record — programme evaluation',
+    headline: PERSON_RENAMES['synthetic.dara.nkemelu@example.test']!.headline.current,
     yearsExperience: 15,
     hourlyRateCents: 22_000,
     skills: [{ name: 'Evaluation Design', proficiency: 5, yearsUsed: 10 }],
@@ -79,12 +78,16 @@ async function main() {
   for (const definition of EXPERTS) {
     const existing = await prisma.expert.findUnique({ where: { email: definition.email } });
     if (existing) continue;
-    await createExpert(prisma, actor, definition);
+    const expert = await createExpert(prisma, actor, definition);
+    // Only the script that made a record can vouch for where it came from.
+    await prisma.expert.update({ where: { id: expert.id }, data: { demoEligible: true } });
     created += 1;
   }
 
-  const projectTitle = `${MARKER} staging sandbox project`;
-  let project = await prisma.project.findFirst({ where: { title: projectTitle } });
+  const projectTitle = PROJECT_RENAMES.staging.current;
+  let project = await prisma.project.findFirst({
+    where: { title: eitherName(PROJECT_RENAMES.staging) },
+  });
   if (!project) {
     // `createProject` requires a signed-in operator, so this needs the first
     // operator to exist. That ordering is deliberate: bootstrap the operator,
@@ -100,7 +103,7 @@ async function main() {
       { type: 'OPERATOR', userId: owner.id, label: `${owner.name} <${owner.email}>` },
       {
         title: projectTitle,
-        clientName: 'SYNTHETIC Client (staging only)',
+        clientName: SAMPLE_CLIENT,
         description:
           'Synthetic record for the staging environment. No real client, no real work, and every message this project produces is simulated.',
         seatsRequested: 2,
@@ -110,6 +113,8 @@ async function main() {
       },
     );
   }
+
+  await prisma.project.update({ where: { id: project.id }, data: { demoEligible: true } });
 
   console.log(`\n  Staging fixtures on ${target.redactedUrl}`);
   console.log(`    experts created this run  ${created}`);

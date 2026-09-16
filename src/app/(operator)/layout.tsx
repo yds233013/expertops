@@ -3,19 +3,11 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { environmentLabel } from '@/lib/env';
 import { capabilitiesFor } from '@/server/auth/permissions';
+import { workloadQueues } from '@/server/services/workload';
 import { currentOperator } from '@/server/http/context';
-import { jobCounts } from '@/server/services/jobs';
-import { outboxCounts } from '@/server/services/outbox';
-import { onboardingCounts } from '@/server/services/onboarding';
-import { attentionCounts } from '@/server/services/attention';
-import { candidateCountsByStage } from '@/server/services/candidates';
-import { workCounts } from '@/server/services/work';
-import { supportCounts } from '@/server/services/support';
-import { listBatches } from '@/server/services/outreach';
-import { paymentCounts } from '@/server/services/payments';
 import { OperatorNav, type NavGroup } from '@/components/operator-nav';
 import { SignOutButton } from '@/components/sign-out-button';
-import { Badge } from '@/components/ui';
+import { Badge, SampleDataBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,48 +61,24 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/** Two letters for the account chip. A photo would be inventing a person. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? '?';
+  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+  return `${first}${last}`.toUpperCase();
+}
+
 export default async function OperatorLayout({ children }: { children: React.ReactNode }) {
   const operator = await currentOperator();
   if (!operator) redirect('/login');
 
-  const [
-    outbox,
-    jobs,
-    onboarding,
-    attention,
-    candidates,
-    work,
-    payments,
-    support,
-    awaitingOutreach,
-    newApplications,
-  ] = await Promise.all([
-    outboxCounts(prisma),
-    jobCounts(prisma),
-    onboardingCounts(prisma),
-    attentionCounts(prisma),
-    candidateCountsByStage(prisma),
-    workCounts(prisma),
-    paymentCounts(prisma),
-    supportCounts(prisma),
-    listBatches(prisma, { status: 'PENDING_APPROVAL', limit: 200 }),
-    prisma.application.count({ where: { status: 'SUBMITTED', withdrawnAt: null } }),
-  ]);
-
-  // Badges show work waiting on a person, not raw record counts.
-  const badges: Record<string, number> = {
-    '/attention': attention.total,
-    '/candidates':
-      candidates.DUPLICATE_HOLD + candidates.SCREENING_SUBMITTED + candidates.IN_REVIEW,
-    '/opportunities': newApplications,
-    '/onboarding': onboarding.SUBMITTED,
-    '/work': work.SUBMITTED + work.IN_REVIEW,
-    '/support': support.OPEN + support.WAITING_ON_OPS,
-    '/outreach': awaitingOutreach.length,
-    '/payments': payments.withOpenDiscrepancies,
-    '/outbox': outbox.QUEUED,
-    '/jobs': jobs.DEAD + jobs.FAILED,
-  };
+  // Badges show work waiting on a person, not raw record counts, and come from
+  // the same service as the dashboard's queue so the two cannot disagree.
+  const { queues } = await workloadQueues(prisma);
+  const badges: Record<string, number> = Object.fromEntries(
+    queues.map((queue) => [queue.href, queue.count]),
+  );
 
   // One number for the mobile trigger: if nothing is waiting, the menu says so
   // by staying plain.
@@ -123,35 +91,56 @@ export default async function OperatorLayout({ children }: { children: React.Rea
         Skip to content
       </a>
       <div className="sidebar">
-        <div className="sidebar-inner flex items-center justify-between gap-3 px-4 py-4 lg:block">
-          <Link href="/dashboard" className="brand">
-            ExpertOps
+        <div className="sidebar-inner flex items-center justify-between gap-3 px-3 py-3.5 lg:block lg:px-3.5 lg:py-4">
+          <Link href="/dashboard" className="brand px-1.5">
+            <span className="brand-mark" aria-hidden="true">
+              EO
+            </span>
+            <span>
+              ExpertOps
+              <span className="brand-sub">Operator workspace</span>
+            </span>
           </Link>
           <div className="lg:mt-5">
             <OperatorNav groups={NAV_GROUPS} badges={badges} total={waitingTotal} />
+          </div>
+          {/* Sits under the last section rather than above the first: the rail
+              is for navigating, and this is a standing caveat, not a control. */}
+          <div className="mt-6 hidden px-1.5 lg:block">
+            <SampleDataBadge />
           </div>
         </div>
       </div>
 
       <div className="flex min-h-screen flex-col">
         <header className="topbar">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-ink-800">{operator.name}</div>
-              <div className="truncate text-xs text-ink-500">{operator.email}</div>
+          <span className="hidden text-xs text-ink-500 sm:inline">{environmentLabel()}</span>
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <div className="account">
+              <span className="avatar" aria-hidden="true">
+                {initials(operator.name)}
+              </span>
+              <div className="hidden min-w-0 sm:block">
+                <div className="truncate text-sm font-semibold leading-tight text-ink-800">
+                  {operator.name}
+                </div>
+                <div className="truncate text-xs leading-tight text-ink-500">{operator.email}</div>
+              </div>
             </div>
-            <Badge tone="info" title={capabilitiesFor(operator.role).join(', ')}>
-              {operator.role}
-            </Badge>
+            <span className="hidden sm:inline-flex">
+              <Badge tone="info" title={capabilitiesFor(operator.role).join(', ')}>
+                {operator.role}
+              </Badge>
+            </span>
             <SignOutButton />
           </div>
         </header>
-        <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
+        <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:py-7">
           {children}
         </main>
-        <footer className="mx-auto w-full max-w-6xl px-4 pb-8 text-xs text-ink-500 sm:px-6">
-          {environmentLabel()}. Email delivery is simulated, all data is synthetic, and nothing here
-          is connected to an external service.
+        <footer className="mx-auto w-full max-w-6xl px-4 pb-8 pt-2 text-xs text-ink-500 sm:px-6">
+          Email delivery is simulated, all data is synthetic, and nothing here is connected to an
+          external service.
         </footer>
       </div>
     </div>

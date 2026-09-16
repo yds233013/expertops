@@ -6,7 +6,15 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { listBatches } from '@/server/services/outreach';
 import { getLatestMatchRun } from '@/server/services/matching';
 import { OutreachBuilder, type RecipientOption } from '@/components/outreach-builder';
-import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  ProvenanceTag,
+  StatTile,
+  StatusBadge,
+  PageHeader,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,13 +80,11 @@ export default async function OutreachPage({
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="page-title">Bulk outreach</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          The system assembles who is worth contacting. It never contacts them: a batch waits in
-          approval until a named operator approves it, and dispatch is a separate, explicit step.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Staffing"
+        title="Outreach"
+        description="The system assembles who is worth contacting. It never contacts them: a batch waits in approval until a named operator approves it, and dispatch is a separate, explicit step."
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Drafts" value={byStatus('DRAFT')} />

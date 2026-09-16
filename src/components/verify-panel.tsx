@@ -64,7 +64,7 @@ export function VerifyPanel({ expertId, expertName }: { expertId: string; expert
         </button>
       </div>
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-800">
+        <p role="alert" className="alert alert-error text-xs">
           {error}
         </p>
       )}

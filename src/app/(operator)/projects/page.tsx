@@ -5,7 +5,7 @@ import { formatDate } from '@/lib/time';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { listProjects, projectCountsByStatus } from '@/server/services/projects';
-import { Badge, Card, EmptyState, StatusBadge } from '@/components/ui';
+import { Badge, Card, EmptyState, StatusBadge, PageHeader } from '@/components/ui';
 import { type ProjectStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -38,19 +38,18 @@ export default async function ProjectsPage({
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="page-title">Projects</h1>
-          <p className="mt-1 text-sm text-ink-600">
-            Each project moves draft → matching → inviting → staffing → active.
-          </p>
-        </div>
-        {roleHasCapability(operator.role, 'project:write') && (
-          <Link className="btn btn-primary" href="/projects/new">
-            New project
-          </Link>
-        )}
-      </header>
+      <PageHeader
+        eyebrow="Staffing"
+        title="Projects"
+        description="Each project moves draft → matching → inviting → staffing → active."
+        actions={
+          roleHasCapability(operator.role, 'project:write') && (
+            <Link className="btn btn-primary" href="/projects/new">
+              New project
+            </Link>
+          )
+        }
+      />
 
       <form className="card flex flex-wrap items-end gap-3 px-4 py-3" method="get">
         <div className="min-w-56 flex-1">

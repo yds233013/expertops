@@ -4,7 +4,16 @@ import { centsToRateDisplay } from '@/lib/money';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { buildExpertWhere, expertCountsByStatus, listExperts } from '@/server/services/experts';
-import { Badge, Card, EmptyState, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  CellPrimary,
+  CursorPagination,
+  EmptyState,
+  PageHeader,
+  StatusBadge,
+  TableShell,
+  ToolbarField,
+} from '@/components/ui';
 import { type ExpertStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +29,11 @@ const STATUSES: ExpertStatus[] = [
   'REJECTED',
   'ARCHIVED',
 ];
+
+function statusLabel(status: string): string {
+  const words = status.replace(/_/g, ' ').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 export default async function ExpertsPage({
   searchParams,
@@ -56,112 +70,129 @@ export default async function ExpertsPage({
     return text ? `/experts?${text}` : '/experts';
   };
 
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const filtered = Boolean(status || params.search);
+
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="page-title">Expert network</h1>
-          <p className="mt-1 text-sm text-ink-600">
-            Professional records only. No protected personal attributes are collected or stored.
-          </p>
-        </div>
-        {roleHasCapability(operator.role, 'expert:write') && (
-          <Link className="btn btn-primary" href="/experts/new">
-            Add expert
-          </Link>
-        )}
-      </header>
-
-      <form className="card flex flex-wrap items-end gap-3 px-4 py-3" method="get">
-        <div className="min-w-56 flex-1">
-          <label className="label" htmlFor="search">
-            Search
-          </label>
-          <input
-            id="search"
-            name="search"
-            className="input"
-            defaultValue={params.search ?? ''}
-            placeholder="Name, email, reference or headline"
-          />
-        </div>
-        <div className="w-56">
-          <label className="label" htmlFor="status">
-            Status
-          </label>
-          <select id="status" name="status" className="select" defaultValue={status ?? ''}>
-            <option value="">All ({Object.values(counts).reduce((a, b) => a + b, 0)})</option>
-            {STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {value.replace(/_/g, ' ').toLowerCase()} ({counts[value]})
-              </option>
-            ))}
-          </select>
-        </div>
-        <button className="btn btn-secondary" type="submit">
-          Apply
-        </button>
-      </form>
-
-      <Card
-        title={
-          matching > shown || params.cursor
-            ? `${shown} of ${matching} experts`
-            : `${shown} expert${shown === 1 ? '' : 's'}`
+      <PageHeader
+        eyebrow="Staffing"
+        title="Expert network"
+        description="Professional records only. No protected personal attributes are collected or stored."
+        actions={
+          roleHasCapability(operator.role, 'expert:write') && (
+            <Link className="btn btn-primary" href="/experts/new">
+              Add expert
+            </Link>
+          )
         }
-        description={
-          matching > PAGE_SIZE
-            ? `Shown ${PAGE_SIZE} at a time. Search or filter to narrow it.`
-            : undefined
-        }
-      >
+      />
+
+      <section className="card overflow-hidden">
+        <form method="get" className="toolbar">
+          <ToolbarField label="Search" htmlFor="search" className="min-w-56 flex-1">
+            <input
+              id="search"
+              name="search"
+              type="search"
+              className="input"
+              defaultValue={params.search ?? ''}
+              placeholder="Name, email, reference or headline"
+            />
+          </ToolbarField>
+          <ToolbarField label="Status" htmlFor="status" className="w-full sm:w-56">
+            <select id="status" name="status" className="select" defaultValue={status ?? ''}>
+              <option value="">All ({total})</option>
+              {STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {`${statusLabel(value)} (${counts[value]})`}
+                </option>
+              ))}
+            </select>
+          </ToolbarField>
+          <div className="flex items-center gap-2">
+            <button className="btn btn-primary" type="submit">
+              Apply
+            </button>
+            {filtered && (
+              <Link className="btn btn-secondary" href="/experts">
+                Clear
+              </Link>
+            )}
+          </div>
+        </form>
+
+        <header className="card-header items-center">
+          <h2 className="section-title">
+            {matching > shown || params.cursor
+              ? `${shown} of ${matching} experts`
+              : `${shown} expert${shown === 1 ? '' : 's'}`}
+          </h2>
+          {matching > PAGE_SIZE && (
+            <p className="text-xs text-ink-500">
+              {PAGE_SIZE} at a time. Search or filter to narrow it.
+            </p>
+          )}
+        </header>
+
         {experts.length === 0 ? (
           <EmptyState
+            glyph="⌕"
             title="No experts match that filter"
             hint="Clear the search or pick another status."
+            action={
+              filtered ? (
+                <Link className="btn btn-secondary btn-sm" href="/experts">
+                  Clear filters
+                </Link>
+              ) : undefined
+            }
           />
         ) : (
-          <div className="scroll-x">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>Reference</th>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th>Headline</th>
-                  <th>Skills</th>
-                  <th>Experience</th>
-                  <th>Rate</th>
-                  <th>Timezone</th>
-                </tr>
-              </thead>
-              <tbody>
-                {experts.map((expert) => (
-                  <tr key={expert.id}>
-                    <td>
-                      <Link
-                        className="font-mono text-xs text-accent-600 hover:underline"
-                        href={`/experts/${expert.id}`}
-                      >
-                        {expert.reference}
-                      </Link>
-                    </td>
-                    <td>
-                      <Link
-                        className="font-medium text-ink-900 hover:underline"
-                        href={`/experts/${expert.id}`}
-                      >
-                        {expert.fullName}
-                      </Link>
-                      <div className="text-xs text-ink-500">{expert.email}</div>
-                    </td>
-                    <td>
-                      <StatusBadge status={expert.status} />
-                    </td>
-                    <td className="max-w-64 text-ink-600">{expert.headline}</td>
-                    <td>
-                      <div className="flex flex-wrap gap-1">
-                        {expert.skills.slice(0, 3).map((link) => (
+          <TableShell label="Experts">
+            <thead>
+              <tr>
+                <th>Expert</th>
+                <th>Status</th>
+                <th>Focus</th>
+                <th>Skills</th>
+                <th className="text-right">Experience</th>
+                <th className="text-right">Rate</th>
+                <th>Timezone</th>
+              </tr>
+            </thead>
+            <tbody>
+              {experts.map((expert) => (
+                <tr key={expert.id}>
+                  <td className="min-w-52 max-w-80">
+                    <CellPrimary
+                      href={`/experts/${expert.id}`}
+                      meta={
+                        <>
+                          <span className="font-mono" data-reference>
+                            {expert.reference}
+                          </span>{' '}
+                          · {expert.email}
+                        </>
+                      }
+                    >
+                      {expert.fullName}
+                    </CellPrimary>
+                  </td>
+                  <td>
+                    <StatusBadge status={expert.status} />
+                  </td>
+                  <td className="max-w-60">
+                    <span className="line-clamp-2 text-ink-600" title={expert.headline}>
+                      {expert.headline}
+                    </span>
+                  </td>
+                  <td className="min-w-44">
+                    {expert.skills.length === 0 ? (
+                      <span className="text-xs text-ink-400">None on file</span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 whitespace-nowrap">
+                        {expert.skills.slice(0, 1).map((link) => (
                           <Badge
                             key={link.id}
                             tone="muted"
@@ -170,38 +201,44 @@ export default async function ExpertsPage({
                             {link.skill.name}
                           </Badge>
                         ))}
-                        {expert.skills.length > 3 && (
-                          <Badge tone="muted">+{expert.skills.length - 3}</Badge>
+                        {expert.skills.length > 1 && (
+                          <span
+                            className="text-xs text-ink-500"
+                            title={expert.skills
+                              .slice(1)
+                              .map((link) => link.skill.name)
+                              .join(', ')}
+                          >
+                            +{expert.skills.length - 1} more
+                          </span>
                         )}
-                      </div>
-                    </td>
-                    <td className="tabular-nums">{expert.yearsExperience}y</td>
-                    <td className="tabular-nums">
-                      {centsToRateDisplay(expert.hourlyRateCents, expert.currency)}
-                    </td>
-                    <td className="text-ink-600">{expert.timezone}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </span>
+                    )}
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {expert.yearsExperience} {expert.yearsExperience === 1 ? 'yr' : 'yrs'}
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {centsToRateDisplay(expert.hourlyRateCents, expert.currency)}
+                  </td>
+                  <td className="whitespace-nowrap text-ink-600">{expert.timezone}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableShell>
         )}
 
-        {(nextCursor || params.cursor) && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {params.cursor && (
-              <Link className="btn btn-secondary btn-sm" href={pageHref(null)}>
-                Back to the start
-              </Link>
-            )}
-            {nextCursor && (
-              <Link className="btn btn-secondary btn-sm" href={pageHref(nextCursor)}>
-                Next {PAGE_SIZE}
-              </Link>
-            )}
-          </div>
+        {experts.length > 0 && (
+          <CursorPagination
+            shown={shown}
+            total={matching}
+            unit="experts"
+            firstHref={params.cursor ? pageHref(null) : null}
+            nextHref={nextCursor ? pageHref(nextCursor) : null}
+            nextLabel={`Next ${PAGE_SIZE}`}
+          />
         )}
-      </Card>
+      </section>
     </div>
   );
 }

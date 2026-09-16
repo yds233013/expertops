@@ -32,7 +32,7 @@ const APPLICANT = {
   name: `APPLICANT Marta Oyelaran ${STAMP}`,
   email: `applicant.marta.${STAMP}@example.test`,
 };
-const PROJECT_TITLE = 'PRACTICE enterprise process assessment';
+const PROJECT_TITLE = 'Enterprise process assessment';
 const SKILL = 'Process Analysis';
 
 let operator: { context: BrowserContext; page: Page };
@@ -57,17 +57,22 @@ test('1. a stranger browses the published opportunities and applies', async () =
   await page.goto('/apply/opportunities');
   await expect(page.getByRole('heading', { name: 'Open opportunities' })).toBeVisible();
 
-  // All three practice listings are live, and nothing internal is on the page.
-  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(3);
+  // The three exercise listings are live, and nothing internal is on the page.
+  // Named rather than counted: the hands-on practice listing is published
+  // beside them, and a count of three went stale the day it was added.
+  for (const title of [
+    'Code review specialist',
+    'Enterprise process analyst',
+    'Security reviewer',
+  ]) {
+    await expect(page.getByRole('heading', { name: title, level: 2 })).toBeVisible();
+  }
   expect(await page.content()).not.toContain('Client identity would live here');
 
-  const listing = page
-    .locator('section')
-    .filter({ hasText: 'PRACTICE enterprise process analyst' })
-    .first();
+  const listing = page.locator('section').filter({ hasText: 'Enterprise process analyst' }).first();
   await listing.getByRole('link', { name: 'View and apply' }).first().click();
   await expect(
-    page.getByRole('heading', { name: 'PRACTICE enterprise process analyst', level: 1 }),
+    page.getByRole('heading', { name: 'Enterprise process analyst', level: 1 }),
   ).toBeVisible();
 
   await page.getByLabel('Your name').fill(APPLICANT.name);
@@ -95,12 +100,12 @@ test('2. the operator finds the applicant among the others and reads what they s
   // The reference is the link; the title sits beside it in the row.
   await page
     .getByRole('row')
-    .filter({ hasText: 'PRACTICE enterprise process analyst' })
+    .filter({ hasText: 'Enterprise process analyst' })
     .getByRole('link')
     .first()
     .click();
   await expect(
-    page.getByRole('heading', { name: 'PRACTICE enterprise process analyst', level: 1 }),
+    page.getByRole('heading', { name: 'Enterprise process analyst', level: 1 }),
   ).toBeVisible();
 
   // Search, on a list that has other applicants in it.

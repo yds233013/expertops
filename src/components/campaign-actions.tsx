@@ -114,24 +114,24 @@ export function CreateCampaignForm({
       }}
     >
       <div>
-        <label htmlFor="campaign-name" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="campaign-name" className="label">
           Campaign name
         </label>
         <input
           id="campaign-name"
-          className="input mt-1 w-full"
+          className="input"
           required
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
       </div>
       <div>
-        <label htmlFor="campaign-domain" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="campaign-domain" className="label">
           Domain
         </label>
         <select
           id="campaign-domain"
-          className="input mt-1 w-full"
+          className="select"
           value={domainId}
           onChange={(event) => setDomainId(event.target.value)}
         >
@@ -143,12 +143,12 @@ export function CreateCampaignForm({
         </select>
       </div>
       <div>
-        <label htmlFor="campaign-project" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="campaign-project" className="label">
           Project it feeds
         </label>
         <select
           id="campaign-project"
-          className="input mt-1 w-full"
+          className="select"
           value={projectId}
           onChange={(event) => setProjectId(event.target.value)}
         >
@@ -161,12 +161,12 @@ export function CreateCampaignForm({
         </select>
       </div>
       <div>
-        <label htmlFor="campaign-owner" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="campaign-owner" className="label">
           Owner
         </label>
         <select
           id="campaign-owner"
-          className="input mt-1 w-full"
+          className="select"
           value={ownerId}
           onChange={(event) => setOwnerId(event.target.value)}
         >
@@ -179,7 +179,7 @@ export function CreateCampaignForm({
         </select>
       </div>
       <div>
-        <label htmlFor="campaign-target" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="campaign-target" className="label">
           Qualified target
         </label>
         <input
@@ -187,7 +187,7 @@ export function CreateCampaignForm({
           type="number"
           min={1}
           max={500}
-          className="input mt-1 w-full"
+          className="input"
           value={targetCount}
           onChange={(event) => setTargetCount(Number(event.target.value))}
         />
@@ -200,10 +200,7 @@ export function CreateCampaignForm({
       </div>
 
       {error && (
-        <p
-          role="alert"
-          className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 sm:col-span-2 lg:col-span-5"
-        >
+        <p role="alert" className="alert alert-error sm:col-span-2 lg:col-span-5">
           {error}
         </p>
       )}

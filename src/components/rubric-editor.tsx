@@ -154,7 +154,7 @@ export function RubricEditor({
             type="number"
             min={0}
             max={200}
-            className="input mt-1 w-full"
+            className="input"
             value={passThreshold}
             aria-describedby={`threshold-help-${versionId}`}
             onChange={(event) => setPassThreshold(Number(event.target.value))}
@@ -172,7 +172,7 @@ export function RubricEditor({
           </label>
           <input
             id={`change-note-${versionId}`}
-            className="input mt-1 w-full"
+            className="input"
             value={changeNote}
             onChange={(event) => setChangeNote(event.target.value)}
           />
@@ -189,7 +189,7 @@ export function RubricEditor({
         <textarea
           id={`guidance-${versionId}`}
           rows={3}
-          className="input mt-1 w-full"
+          className="input"
           value={guidance}
           onChange={(event) => setGuidance(event.target.value)}
         />
@@ -205,24 +205,18 @@ export function RubricEditor({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label
-                  htmlFor={`label-${versionId}-${index}`}
-                  className="text-xs font-semibold text-ink-700"
-                >
+                <label htmlFor={`label-${versionId}-${index}`} className="label">
                   Label
                 </label>
                 <input
                   id={`label-${versionId}-${index}`}
-                  className="input mt-1 w-full"
+                  className="input"
                   value={criterion.label}
                   onChange={(event) => update(index, { label: event.target.value })}
                 />
               </div>
               <div>
-                <label
-                  htmlFor={`key-${versionId}-${index}`}
-                  className="text-xs font-semibold text-ink-700"
-                >
+                <label htmlFor={`key-${versionId}-${index}`} className="label">
                   Key
                 </label>
                 <input
@@ -236,16 +230,13 @@ export function RubricEditor({
             </div>
 
             <div className="mt-3">
-              <label
-                htmlFor={`scoring-${versionId}-${index}`}
-                className="text-xs font-semibold text-ink-700"
-              >
+              <label htmlFor={`scoring-${versionId}-${index}`} className="label">
                 What a reviewer should look for
               </label>
               <textarea
                 id={`scoring-${versionId}-${index}`}
                 rows={2}
-                className="input mt-1 w-full"
+                className="input"
                 value={criterion.scoringGuidance}
                 onChange={(event) => update(index, { scoringGuidance: event.target.value })}
               />
@@ -253,10 +244,7 @@ export function RubricEditor({
 
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <div>
-                <label
-                  htmlFor={`max-${versionId}-${index}`}
-                  className="text-xs font-semibold text-ink-700"
-                >
+                <label htmlFor={`max-${versionId}-${index}`} className="label">
                   Max score
                 </label>
                 <input
@@ -264,16 +252,13 @@ export function RubricEditor({
                   type="number"
                   min={1}
                   max={10}
-                  className="input mt-1 w-full"
+                  className="input"
                   value={criterion.maxScore}
                   onChange={(event) => update(index, { maxScore: Number(event.target.value) })}
                 />
               </div>
               <div>
-                <label
-                  htmlFor={`weight-${versionId}-${index}`}
-                  className="text-xs font-semibold text-ink-700"
-                >
+                <label htmlFor={`weight-${versionId}-${index}`} className="label">
                   Weight
                 </label>
                 <input
@@ -281,21 +266,18 @@ export function RubricEditor({
                   type="number"
                   min={1}
                   max={10}
-                  className="input mt-1 w-full"
+                  className="input"
                   value={criterion.weight}
                   onChange={(event) => update(index, { weight: Number(event.target.value) })}
                 />
               </div>
               <div>
-                <label
-                  htmlFor={`evidence-${versionId}-${index}`}
-                  className="text-xs font-semibold text-ink-700"
-                >
+                <label htmlFor={`evidence-${versionId}-${index}`} className="label">
                   Required evidence
                 </label>
                 <select
                   id={`evidence-${versionId}-${index}`}
-                  className="input mt-1 w-full"
+                  className="select"
                   value={criterion.requiredEvidence}
                   onChange={(event) => update(index, { requiredEvidence: event.target.value })}
                 >
@@ -342,12 +324,12 @@ export function RubricEditor({
       </div>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p role="status" className="alert alert-success">
           {notice}
         </p>
       )}

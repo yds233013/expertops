@@ -40,24 +40,24 @@ export function CreateTemplateForm({ domains }: { domains: { id: string; name: s
       }}
     >
       <div>
-        <label htmlFor="template-name" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="template-name" className="label">
           Template name
         </label>
         <input
           id="template-name"
-          className="input mt-1 w-full"
+          className="input"
           required
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
       </div>
       <div>
-        <label htmlFor="template-domain" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="template-domain" className="label">
           Domain
         </label>
         <select
           id="template-domain"
-          className="input mt-1 w-full"
+          className="select"
           value={domainId}
           onChange={(event) => setDomainId(event.target.value)}
         >
@@ -69,12 +69,12 @@ export function CreateTemplateForm({ domains }: { domains: { id: string; name: s
         </select>
       </div>
       <div>
-        <label htmlFor="template-description" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="template-description" className="label">
           Description
         </label>
         <input
           id="template-description"
-          className="input mt-1 w-full"
+          className="input"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
         />

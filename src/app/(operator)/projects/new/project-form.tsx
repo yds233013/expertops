@@ -255,7 +255,7 @@ export function ProjectForm({
       </fieldset>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}

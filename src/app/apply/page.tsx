@@ -6,7 +6,7 @@ import { WithdrawApplicationButton } from '@/components/apply/withdraw-applicati
 import { listScreeningsForCandidate } from '@/server/services/screening';
 import { ScreeningForm } from '@/components/apply/screening-form';
 import { SignOutButton } from '@/components/sign-out-button';
-import { Badge, Card, EmptyState, StatusBadge } from '@/components/ui';
+import { Badge, Card, EmptyState, NextAction, ProgressSteps, StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +19,15 @@ const APPLICATION_NEXT_STEP: Record<string, string> = {
   CLOSED_REJECTED: 'This one was not taken further. You are welcome to apply to others.',
   CLOSED_WITHDRAWN: 'You withdrew this application.',
 };
+
+/** Which of Received, Screening, Review, Decision an application has reached. */
+function applicationStep(status: string, screeningStatus?: string): number {
+  if (status.startsWith('CLOSED_')) return 4;
+  if (status === 'SCREENING_STARTED') {
+    return screeningStatus && ['SUBMITTED', 'IN_REVIEW'].includes(screeningStatus) ? 2 : 1;
+  }
+  return 0;
+}
 
 /**
  * The candidate's whole view of their application.
@@ -49,14 +58,14 @@ export default async function ApplyHome() {
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
+          <span className="eyebrow">
+            Your application · <span className="font-mono">{candidate.reference}</span>
+          </span>
           <h1 className="page-title">Hello, {candidate.fullName}</h1>
-          <p className="mt-1 text-sm text-ink-600">
-            Application <span className="font-mono">{candidate.reference}</span>
-          </p>
-          <p className="mt-1 text-sm text-ink-600">
-            You reached this page through a single-use link sent to you. It is the only way in;
-            there is no account to create.
+          <p className="page-subtitle">
+            You reached this page through a single-use link. It is the only way in; there is no
+            account to create.
           </p>
         </div>
         <SignOutButton url="/api/apply/session" redirectTo="/" label="Sign out" />
@@ -69,7 +78,7 @@ export default async function ApplyHome() {
         >
           <ul className="space-y-3">
             {applications.map((application) => (
-              <li key={application.id} className="rounded-lg border border-ink-200 px-3 py-3">
+              <li key={application.id} className="rounded-lg border border-ink-200 px-4 py-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="section-title">
@@ -79,12 +88,19 @@ export default async function ApplyHome() {
                       <span className="font-mono">{application.reference}</span> · submitted{' '}
                       {formatRelative(application.submittedAt)}
                     </p>
-                    <p className="mt-1.5 text-sm text-ink-700">
-                      {APPLICATION_NEXT_STEP[application.status]}
-                    </p>
                   </div>
                   <StatusBadge status={application.status} />
                 </div>
+                <div className="mt-4">
+                  <ProgressSteps
+                    label={`Progress of ${application.reference}`}
+                    steps={['Received', 'Screening', 'Review', 'Decision']}
+                    current={applicationStep(application.status, screenings[0]?.status)}
+                  />
+                </div>
+                <p className="mt-4 rounded-md bg-ink-50 px-3 py-2 text-sm text-ink-700">
+                  {APPLICATION_NEXT_STEP[application.status]}
+                </p>
                 {!application.withdrawnAt &&
                   application.status !== 'CLOSED_QUALIFIED' &&
                   application.status !== 'CLOSED_REJECTED' && (
@@ -120,10 +136,7 @@ export default async function ApplyHome() {
             actions={<StatusBadge status={screening.status} />}
           >
             <div className="space-y-4">
-              <p className="rounded-md bg-accent-50 px-3 py-2 text-sm text-accent-700">
-                <span className="font-semibold">Next step: </span>
-                {screening.nextStep}
-              </p>
+              <NextAction title={screening.nextStep} />
 
               {screening.canSubmit && (
                 <p className="text-xs text-ink-600">
@@ -160,7 +173,7 @@ export default async function ApplyHome() {
               {screening.revisionFeedback && (
                 <section
                   aria-labelledby={`feedback-${screening.id}`}
-                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2"
+                  className="alert alert-warning"
                 >
                   <h3
                     id={`feedback-${screening.id}`}
@@ -203,7 +216,7 @@ export default async function ApplyHome() {
               {latestSubmission && !latestSubmission.isComplete && (
                 <section
                   aria-labelledby={`missing-${screening.id}`}
-                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2"
+                  className="alert alert-warning"
                 >
                   <h3
                     id={`missing-${screening.id}`}

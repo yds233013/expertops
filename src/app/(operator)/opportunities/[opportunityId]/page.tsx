@@ -7,7 +7,15 @@ import { getOpportunity, toPublicOpportunity } from '@/server/services/opportuni
 import { listApplicationsForOpportunity } from '@/server/services/applications';
 import { OpportunityActions } from '@/components/opportunity-actions';
 import { OpportunityForm } from '@/components/opportunity-form';
-import { Alert, Badge, Card, EmptyState, PageHeader, StatusBadge } from '@/components/ui';
+import {
+  Alert,
+  Badge,
+  Card,
+  CellPrimary,
+  EmptyState,
+  PageHeader,
+  StatusBadge,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +60,7 @@ export default async function OpportunityDetailPage({
   return (
     <div className="space-y-5">
       <PageHeader
+        back={{ href: '/opportunities', label: 'Opportunities' }}
         title={opportunity.title}
         meta={<StatusBadge status={opportunity.status} />}
         description={
@@ -70,77 +79,231 @@ export default async function OpportunityDetailPage({
             )}
           </>
         }
-        actions={
-          <Link className="btn btn-secondary" href="/opportunities">
-            All opportunities
-          </Link>
-        }
       />
 
-      <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <Card
-          title="Preview"
-          description="Exactly what an applicant sees. Internal notes are not on it."
-        >
-          <div className="rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="section-title">{preview.title}</h3>
-              <Badge tone={preview.kind === 'NETWORK_MEMBERSHIP' ? 'muted' : 'info'}>
-                {preview.kind === 'NETWORK_MEMBERSHIP' ? 'Expert network' : 'Project engagement'}
-              </Badge>
-            </div>
-            {preview.summary && <p className="mt-1 text-sm text-ink-700">{preview.summary}</p>}
-            <dl className="mt-2 text-xs text-ink-600">
-              <div>
-                {preview.domainName}
-                {(preview.weeklyHoursMin || preview.weeklyHoursMax) && (
-                  <>
-                    {' · '}
-                    {preview.weeklyHoursMin ?? '—'}–{preview.weeklyHoursMax ?? '—'} h/week
-                  </>
-                )}
-                {preview.applicationDeadline && (
-                  <> · apply by {formatDate(preview.applicationDeadline)}</>
-                )}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
+        <div className="min-w-0 space-y-5">
+          <Card
+            flush
+            title={`Applicants (${applications.length})`}
+            description="Open one to read what they submitted and send a screening."
+          >
+            <form className="toolbar" method="get">
+              <div className="toolbar-field min-w-56 flex-1">
+                <label className="label" htmlFor="applicant-search">
+                  Search
+                </label>
+                <input
+                  id="applicant-search"
+                  name="search"
+                  className="input"
+                  defaultValue={query.search ?? ''}
+                  placeholder="Name, email or reference"
+                />
               </div>
-            </dl>
-            {preview.description && (
-              <p className="mt-2 whitespace-pre-wrap text-sm text-ink-700">{preview.description}</p>
-            )}
-            {preview.requiredSkills.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {preview.requiredSkills.map((skill) => (
-                  <Badge key={skill} tone="info">
-                    {skill}
-                  </Badge>
-                ))}
+              <div className="toolbar-field w-full sm:w-56">
+                <label className="label" htmlFor="applicant-stage">
+                  Stage
+                </label>
+                <select
+                  id="applicant-stage"
+                  name="stage"
+                  className="select"
+                  defaultValue={query.stage ?? ''}
+                >
+                  <option value="">All stages</option>
+                  {STAGE_FILTERS.map((stage) => (
+                    <option key={stage} value={stage}>
+                      {stage.charAt(0) + stage.slice(1).replace(/_/g, ' ').toLowerCase()}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
-            {preview.questions.length > 0 && (
-              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-ink-600">
-                {preview.questions.map((question) => (
-                  <li key={question.key}>
-                    {question.label}
-                    {question.required ? '' : ' (optional)'}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {opportunity.status === 'PUBLISHED' && (
-            <p className="mt-2 text-xs text-ink-500">
-              Live at{' '}
-              <Link
-                className="text-accent-600 hover:underline"
-                href={`/apply/opportunities/${opportunity.slug}`}
-              >
-                /apply/opportunities/{opportunity.slug}
-              </Link>
-            </p>
-          )}
-        </Card>
+              <button className="btn btn-primary" type="submit">
+                Apply
+              </button>
+            </form>
 
-        <div className="space-y-4">
+            {applications.length === 0 ? (
+              <EmptyState
+                title="No applications yet"
+                hint={
+                  opportunity.status === 'PUBLISHED'
+                    ? 'They appear here as people apply.'
+                    : 'This opportunity is not published, so nobody can apply to it.'
+                }
+              />
+            ) : (
+              <div className="scroll-x">
+                <table className="data">
+                  <thead>
+                    <tr>
+                      <th>Application</th>
+                      <th>Applicant</th>
+                      <th>Stage</th>
+                      <th>Submitted</th>
+                      <th>Next action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {applications.map((application) => (
+                      <tr key={application.id}>
+                        <td>
+                          <Link
+                            className="font-mono text-accent-600 hover:underline"
+                            href={`/opportunities/${opportunity.id}/applicants/${application.id}`}
+                          >
+                            {application.reference}
+                          </Link>
+                          {application.withdrawnAt && (
+                            <div className="mt-1">
+                              <Badge tone="muted">withdrawn</Badge>
+                            </div>
+                          )}
+                        </td>
+                        <td className="min-w-52">
+                          <CellPrimary
+                            href={`/candidates/${application.candidate.id}`}
+                            meta={application.candidate.email}
+                          >
+                            {application.candidate.fullName}
+                          </CellPrimary>
+                        </td>
+                        <td>
+                          <StatusBadge status={application.candidate.stage} />
+                        </td>
+                        <td className="text-xs" title={application.submittedAt.toISOString()}>
+                          {formatRelative(application.submittedAt)}
+                        </td>
+                        <td className="text-xs text-ink-700">{nextAction(application)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          <Card
+            title="Listing preview"
+            description="Exactly what an applicant sees. Internal notes are not on it."
+          >
+            <div className="rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="section-title">{preview.title}</h3>
+                <Badge tone={preview.kind === 'NETWORK_MEMBERSHIP' ? 'muted' : 'info'}>
+                  {preview.kind === 'NETWORK_MEMBERSHIP' ? 'Expert network' : 'Project engagement'}
+                </Badge>
+              </div>
+              {preview.summary && <p className="mt-1 text-sm text-ink-700">{preview.summary}</p>}
+              <dl className="mt-2 text-xs text-ink-600">
+                <div>
+                  {preview.domainName}
+                  {(preview.weeklyHoursMin || preview.weeklyHoursMax) && (
+                    <>
+                      {' · '}
+                      {preview.weeklyHoursMin ?? '—'}–{preview.weeklyHoursMax ?? '—'} h/week
+                    </>
+                  )}
+                  {preview.applicationDeadline && (
+                    <> · apply by {formatDate(preview.applicationDeadline)}</>
+                  )}
+                </div>
+              </dl>
+              {preview.description && (
+                <p className="mt-2 whitespace-pre-wrap text-sm text-ink-700">
+                  {preview.description}
+                </p>
+              )}
+              {preview.requiredSkills.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {preview.requiredSkills.map((skill) => (
+                    <Badge key={skill} tone="info">
+                      {skill}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {preview.questions.length > 0 && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-ink-600">
+                  {preview.questions.map((question) => (
+                    <li key={question.key}>
+                      {question.label}
+                      {question.required ? '' : ' (optional)'}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {opportunity.status === 'PUBLISHED' && (
+              <p className="mt-2 text-xs text-ink-500">
+                Live at{' '}
+                <Link
+                  className="text-accent-600 hover:underline"
+                  href={`/apply/opportunities/${opportunity.slug}`}
+                >
+                  /apply/opportunities/{opportunity.slug}
+                </Link>
+              </p>
+            )}
+          </Card>
+
+          {canWrite && opportunity.status !== 'CLOSED' && (
+            <details className="card group">
+              <summary className="card-header cursor-pointer list-none items-center">
+                <span>
+                  <span className="section-title block">Edit this listing</span>
+                  <span className="mt-0.5 block text-xs text-ink-500">
+                    Changes what new applicants see. Never changes what earlier applicants
+                    submitted.
+                  </span>
+                </span>
+                <span className="btn btn-secondary btn-sm" aria-hidden="true">
+                  <span className="group-open:hidden">Edit</span>
+                  <span className="hidden group-open:inline">Close</span>
+                </span>
+              </summary>
+              <div className="card-body">
+                <Alert tone="info" className="mb-3">
+                  Each application keeps a copy of this opportunity as it read when it was
+                  submitted.
+                </Alert>
+                <OpportunityForm
+                  domains={domains}
+                  projects={projects}
+                  campaigns={campaigns}
+                  existing={{
+                    id: opportunity.id,
+                    title: opportunity.title,
+                    kind: opportunity.kind,
+                    projectId: opportunity.projectId,
+                    summary: opportunity.summary,
+                    description: opportunity.description,
+                    responsibilities: opportunity.responsibilities,
+                    requiredSkills: (opportunity.requiredSkills as string[]) ?? [],
+                    questions: (
+                      (opportunity.questions as unknown as Array<{
+                        label: string;
+                        helpText?: string;
+                        required: boolean;
+                      }>) ?? []
+                    ).map((question) => ({
+                      label: question.label,
+                      helpText: question.helpText ?? '',
+                      required: question.required,
+                    })),
+                    weeklyHoursMin: opportunity.weeklyHoursMin,
+                    weeklyHoursMax: opportunity.weeklyHoursMax,
+                    applicationDeadline: opportunity.applicationDeadline?.toISOString() ?? null,
+                    compensationNote: opportunity.compensationNote,
+                    internalNotes: opportunity.internalNotes,
+                  }}
+                />
+              </div>
+            </details>
+          )}
+        </div>
+        <aside className="min-w-0 space-y-5">
           <Card title="Status">
             {canWrite ? (
               <OpportunityActions opportunityId={opportunity.id} status={opportunity.status} />
@@ -160,151 +323,8 @@ export default async function OpportunityDetailPage({
               <p className="text-sm text-ink-500">Nothing recorded.</p>
             )}
           </Card>
-        </div>
+        </aside>
       </div>
-
-      <Card
-        title={`Applicants (${applications.length})`}
-        description="Open one to read what they submitted and send a screening."
-      >
-        <form className="mb-3 flex flex-wrap items-end gap-3" method="get">
-          <div className="min-w-56 flex-1">
-            <label className="label" htmlFor="applicant-search">
-              Search
-            </label>
-            <input
-              id="applicant-search"
-              name="search"
-              className="input"
-              defaultValue={query.search ?? ''}
-              placeholder="Name, email or reference"
-            />
-          </div>
-          <div className="w-56">
-            <label className="label" htmlFor="applicant-stage">
-              Stage
-            </label>
-            <select
-              id="applicant-stage"
-              name="stage"
-              className="select"
-              defaultValue={query.stage ?? ''}
-            >
-              <option value="">All stages</option>
-              {STAGE_FILTERS.map((stage) => (
-                <option key={stage} value={stage}>
-                  {stage.replace(/_/g, ' ').toLowerCase()}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button className="btn btn-secondary" type="submit">
-            Apply
-          </button>
-        </form>
-
-        {applications.length === 0 ? (
-          <EmptyState
-            title="No applications yet"
-            hint={
-              opportunity.status === 'PUBLISHED'
-                ? 'They appear here as people apply.'
-                : 'This opportunity is not published, so nobody can apply to it.'
-            }
-          />
-        ) : (
-          <div className="scroll-x">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>Application</th>
-                  <th>Applicant</th>
-                  <th>Stage</th>
-                  <th>Submitted</th>
-                  <th>Next action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {applications.map((application) => (
-                  <tr key={application.id}>
-                    <td>
-                      <Link
-                        className="font-mono text-accent-600 hover:underline"
-                        href={`/opportunities/${opportunity.id}/applicants/${application.id}`}
-                      >
-                        {application.reference}
-                      </Link>
-                      {application.withdrawnAt && (
-                        <div className="mt-1">
-                          <Badge tone="muted">withdrawn</Badge>
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <Link
-                        className="font-medium text-accent-600 hover:underline"
-                        href={`/candidates/${application.candidate.id}`}
-                      >
-                        {application.candidate.fullName}
-                      </Link>
-                      <div className="text-xs text-ink-500">{application.candidate.email}</div>
-                    </td>
-                    <td>
-                      <StatusBadge status={application.candidate.stage} />
-                    </td>
-                    <td className="text-xs" title={application.submittedAt.toISOString()}>
-                      {formatRelative(application.submittedAt)}
-                    </td>
-                    <td className="text-xs text-ink-700">{nextAction(application)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      {canWrite && opportunity.status !== 'CLOSED' && (
-        <Card
-          title="Edit"
-          description="Editing a published opportunity changes what new applicants see. It never changes what earlier applicants submitted."
-        >
-          <Alert tone="info" className="mb-3">
-            Each application keeps a copy of this opportunity as it read when it was submitted.
-          </Alert>
-          <OpportunityForm
-            domains={domains}
-            projects={projects}
-            campaigns={campaigns}
-            existing={{
-              id: opportunity.id,
-              title: opportunity.title,
-              kind: opportunity.kind,
-              projectId: opportunity.projectId,
-              summary: opportunity.summary,
-              description: opportunity.description,
-              responsibilities: opportunity.responsibilities,
-              requiredSkills: (opportunity.requiredSkills as string[]) ?? [],
-              questions: (
-                (opportunity.questions as unknown as Array<{
-                  label: string;
-                  helpText?: string;
-                  required: boolean;
-                }>) ?? []
-              ).map((question) => ({
-                label: question.label,
-                helpText: question.helpText ?? '',
-                required: question.required,
-              })),
-              weeklyHoursMin: opportunity.weeklyHoursMin,
-              weeklyHoursMax: opportunity.weeklyHoursMax,
-              applicationDeadline: opportunity.applicationDeadline?.toISOString() ?? null,
-              compensationNote: opportunity.compensationNote,
-              internalNotes: opportunity.internalNotes,
-            }}
-          />
-        </Card>
-      )}
     </div>
   );
 }

@@ -5,7 +5,15 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { listVerificationQueue, onboardingCounts } from '@/server/services/onboarding';
 import { VerifyPanel } from '@/components/verify-panel';
-import { Badge, Card, EmptyState, ProvenanceTag, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  ProvenanceTag,
+  StatTile,
+  StatusBadge,
+  PageHeader,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,16 +27,12 @@ export default async function VerificationQueuePage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="page-title">Verification queue</h1>
-          <ProvenanceTag kind="operator" />
-        </div>
-        <p className="mt-1 text-sm text-ink-600">
-          Nothing on this page is decided automatically. An operator must approve or return each
-          submission before the expert becomes staffable.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Staffing"
+        title="Verification queue"
+        meta={<ProvenanceTag kind="operator" />}
+        description="Nothing on this page is decided automatically. An operator must approve or return each submission before the expert becomes staffable."
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatTile

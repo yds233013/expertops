@@ -119,33 +119,33 @@ export function ReviewForm({
       </p>
 
       <div>
-        <label htmlFor={`public-${reviewId}`} className="text-xs font-semibold text-ink-700">
+        <label htmlFor={`public-${reviewId}`} className="label">
           Feedback the candidate will read
         </label>
         <textarea
           id={`public-${reviewId}`}
           rows={3}
-          className="input mt-1 w-full"
+          className="input"
           value={publicFeedback}
           onChange={(event) => setPublicFeedback(event.target.value)}
         />
       </div>
 
       <div>
-        <label htmlFor={`private-${reviewId}`} className="text-xs font-semibold text-ink-700">
+        <label htmlFor={`private-${reviewId}`} className="label">
           Private notes, never shown to the candidate
         </label>
         <textarea
           id={`private-${reviewId}`}
           rows={3}
-          className="input mt-1 w-full"
+          className="input"
           value={privateNotes}
           onChange={(event) => setPrivateNotes(event.target.value)}
         />
       </div>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}
@@ -198,7 +198,7 @@ export function AssignReviewerPanel({
   return (
     <div className="flex flex-wrap items-end gap-2">
       <div>
-        <label htmlFor={`reviewer-${screeningId}`} className="text-xs font-semibold text-ink-700">
+        <label htmlFor={`reviewer-${screeningId}`} className="label">
           Assign a reviewer
         </label>
         <select

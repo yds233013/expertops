@@ -15,16 +15,21 @@ import { parseDatabaseUrl } from '@/lib/database-safety';
 import { type Actor } from '@/server/services/activity';
 import { createProject } from '@/server/services/projects';
 import { createOpportunity, publishOpportunity } from '@/server/services/opportunities';
-
-const PREFIX = 'PRACTICE';
+import {
+  DOMAIN_RENAMES,
+  OPPORTUNITY_RENAMES,
+  PROJECT_RENAMES,
+  SAMPLE_CLIENT,
+  eitherName,
+} from './fixture-names';
 
 const AREAS = [
   {
     slug: 'practice-coding',
-    domain: `${PREFIX} Coding`,
-    projectTitle: `${PREFIX} coding review pilot`,
+    domain: DOMAIN_RENAMES['practice-coding'].current,
+    project: PROJECT_RENAMES.coding,
     skill: 'Code Review',
-    title: `${PREFIX} code review specialist`,
+    opportunity: OPPORTUNITY_RENAMES.coding,
     summary: 'Review synthetic pull requests and write short, specific notes.',
     description:
       'A practice engagement. You would read small changesets and say what you would ' +
@@ -37,10 +42,10 @@ const AREAS = [
   },
   {
     slug: 'practice-enterprise-business',
-    domain: `${PREFIX} Enterprise Business`,
-    projectTitle: `${PREFIX} enterprise process assessment`,
+    domain: DOMAIN_RENAMES['practice-enterprise-business'].current,
+    project: PROJECT_RENAMES.enterprise,
     skill: 'Process Analysis',
-    title: `${PREFIX} enterprise process analyst`,
+    opportunity: OPPORTUNITY_RENAMES.enterprise,
     summary: 'Map a synthetic back-office process and find where it stalls.',
     description:
       'A practice engagement. You would document how a fictional process actually runs, ' +
@@ -53,10 +58,10 @@ const AREAS = [
   },
   {
     slug: 'practice-cybersecurity',
-    domain: `${PREFIX} Cybersecurity`,
-    projectTitle: `${PREFIX} security posture review`,
+    domain: DOMAIN_RENAMES['practice-cybersecurity'].current,
+    project: PROJECT_RENAMES.cyber,
     skill: 'Threat Modelling',
-    title: `${PREFIX} security reviewer`,
+    opportunity: OPPORTUNITY_RENAMES.cyber,
     summary: 'Threat-model a synthetic system and rank what actually matters.',
     description:
       'A practice engagement. You would work from an architecture description and say ' +
@@ -110,30 +115,32 @@ async function main() {
       kept.push(area.domain);
     }
 
-    let project = await prisma.project.findFirst({ where: { title: area.projectTitle } });
+    let project = await prisma.project.findFirst({ where: { title: eitherName(area.project) } });
     if (!project) {
       project = await createProject(prisma, actor, {
-        title: area.projectTitle,
-        clientName: `${PREFIX} Client (practice only)`,
+        title: area.project.current,
+        clientName: SAMPLE_CLIENT,
         description: 'Practice project. No real client and no real work.',
         seatsRequested: 2,
         minYearsExperience: 3,
         maxHourlyRateCents: 25_000,
         requirements: [{ skillName: area.skill, required: true, minProficiency: 3 }],
       });
-      created.push(`${project.code} ${area.projectTitle}`);
+      created.push(`${project.code} ${area.project.current}`);
     } else {
-      kept.push(area.projectTitle);
+      kept.push(area.project.current);
     }
 
-    const existing = await prisma.opportunity.findFirst({ where: { title: area.title } });
+    const existing = await prisma.opportunity.findFirst({
+      where: { title: eitherName(area.opportunity) },
+    });
     if (existing) {
-      kept.push(area.title);
+      kept.push(area.opportunity.current);
       continue;
     }
 
     const opportunity = await createOpportunity(prisma, actor, {
-      title: area.title,
+      title: area.opportunity.current,
       kind: 'PROJECT_ENGAGEMENT',
       domainId: domain.id,
       projectId: project.id,
@@ -146,7 +153,7 @@ async function main() {
       applicationDeadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       compensationNote: 'Practice listing — no compensation is offered or implied.',
       internalNotes:
-        'PRACTICE record. Client identity and rate ceiling would live here on a real ' +
+        'Sample record. Client identity and rate ceiling would live here on a real ' +
         'listing, and never reach the candidate-facing page.',
       questions: [
         { key: 'relevant-work', label: area.question, required: true },
@@ -158,7 +165,7 @@ async function main() {
       ],
     });
     await publishOpportunity(prisma, actor, opportunity.id);
-    created.push(`${opportunity.reference} ${area.title}`);
+    created.push(`${opportunity.reference} ${area.opportunity.current}`);
   }
 
   const experts = await prisma.expert.count();
@@ -166,17 +173,20 @@ async function main() {
 
   console.log(`\n  Practice opportunities on ${target.redactedUrl}\n`);
   for (const area of AREAS) {
-    console.log(`    /apply/opportunities/${await slugFor(area.title)}`);
+    console.log(`    /apply/opportunities/${await slugFor(area.opportunity.current)}`);
   }
   console.log(`\n    created this run   ${created.length ? created.join(', ') : 'nothing'}`);
   console.log(`    already present    ${kept.length ? kept.join(', ') : 'nothing'}`);
   console.log(`\n    experts in the network   ${experts} (untouched; none of them applied)`);
   console.log(`    applications so far      ${applications}`);
-  console.log('\n  Every record is synthetic and prefixed PRACTICE.\n');
+  console.log('\n  Every record is synthetic sample data.\n');
 }
 
 async function slugFor(title: string): Promise<string> {
-  const row = await prisma.opportunity.findFirst({ where: { title }, select: { slug: true } });
+  const row = await prisma.opportunity.findFirst({
+    where: { title },
+    select: { slug: true },
+  });
   return row?.slug ?? '(not found)';
 }
 

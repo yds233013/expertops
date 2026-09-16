@@ -23,7 +23,9 @@
  *    like they applied — applicants arrive through /apply/opportunities and
  *    nowhere else.
  *
- * Every record is prefixed NET and every address is @example.test.
+ * Every address is @example.test and every record is marked `demoEligible`,
+ * which is what identifies a fixture. Display names are deliberately natural:
+ * a prefix on every row taught nothing and made the product look like a dump.
  */
 import 'dotenv/config';
 import { prisma } from '@/lib/db';
@@ -33,6 +35,16 @@ import { createExpert, updateExpert } from '@/server/services/experts';
 import { createProject, updateProject, setProjectStatus } from '@/server/services/projects';
 import { createOpportunity, publishOpportunity } from '@/server/services/opportunities';
 import { declareAvailability } from '@/server/services/availability';
+import {
+  DOMAIN_RENAMES,
+  OPPORTUNITY_RENAMES,
+  PROJECT_RENAMES,
+  RUBRIC_RENAMES,
+  SAMPLE_CLIENT,
+  eitherName,
+  networkMemberName,
+  type Rename,
+} from './fixture-names';
 import { runMatching } from '@/server/services/matching';
 import {
   createBatch as createOutreachBatch,
@@ -72,77 +84,17 @@ import { createCandidate } from '@/server/services/candidates';
 import { createOperator } from '@/server/services/auth';
 import { grantQualification } from '@/server/services/qualifications';
 
-const PREFIX = 'NET';
+/**
+ * Seeded fixtures carry a natural display name and a fixture address.
+ *
+ * The name used to be "NET Ada Nowak 001", which made every list in the
+ * product read as a database dump and taught nobody anything about how it
+ * looks in use. Provenance now lives where it belongs: in the address, in the
+ * `demoEligible` column, and in one badge on the page.
+ */
+const FIXTURE_EMAIL_DOMAIN = 'example.test';
 const DAY = 24 * 60 * 60 * 1000;
 
-/** Deterministic, so a second run produces the same hundred people. */
-function mulberry32(seed: number) {
-  let a = seed;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const GIVEN = [
-  'Amara',
-  'Bo',
-  'Chidi',
-  'Dara',
-  'Eli',
-  'Faye',
-  'Gil',
-  'Hana',
-  'Ines',
-  'Jian',
-  'Kofi',
-  'Lena',
-  'Mila',
-  'Nils',
-  'Oona',
-  'Petra',
-  'Quinn',
-  'Rafa',
-  'Sena',
-  'Tariq',
-  'Ulla',
-  'Vik',
-  'Wren',
-  'Xia',
-  'Yusuf',
-  'Zara',
-];
-const FAMILY = [
-  'Abiodun',
-  'Bergstrom',
-  'Castellanos',
-  'Dlamini',
-  'Eriksen',
-  'Farooqi',
-  'Gustafsson',
-  'Haddad',
-  'Ivanova',
-  'Jonsdottir',
-  'Kowalski',
-  'Lindqvist',
-  'Mbeki',
-  'Nakamura',
-  'Oyelaran',
-  'Petrova',
-  'Quintero',
-  'Rasmussen',
-  'Sorokin',
-  'Tanaka',
-  'Ustinov',
-  'Vasquez',
-  'Wojcik',
-  'Xu',
-  'Yamada',
-  'Zielinski',
-];
 const TIMEZONES = [
   'UTC',
   'Europe/Berlin',
@@ -167,51 +119,51 @@ interface AreaSpec {
   key: string;
   slug: string;
   domainName: string;
-  projectTitle: string;
-  opportunityTitle: string;
+  project: Rename;
+  opportunity: Rename;
   skill: string;
   secondarySkills: string[];
   experts: number;
   seats: number;
-  rubricName: string;
+  rubric: Rename;
 }
 
 const AREAS: AreaSpec[] = [
   {
     key: 'coding',
     slug: 'practice-coding',
-    domainName: 'PRACTICE Coding',
-    projectTitle: 'PRACTICE coding review pilot',
-    opportunityTitle: 'PRACTICE code review specialist',
+    domainName: DOMAIN_RENAMES['practice-coding'].current,
+    project: PROJECT_RENAMES.coding,
+    opportunity: OPPORTUNITY_RENAMES.coding,
     skill: 'Code Review',
     secondarySkills: ['Static Analysis', 'Refactoring', 'Test Design'],
     experts: 40,
     seats: 12,
-    rubricName: 'PRACTICE coding screening',
+    rubric: RUBRIC_RENAMES.coding,
   },
   {
     key: 'enterprise',
     slug: 'practice-enterprise-business',
-    domainName: 'PRACTICE Enterprise Business',
-    projectTitle: 'PRACTICE enterprise process assessment',
-    opportunityTitle: 'PRACTICE enterprise process analyst',
+    domainName: DOMAIN_RENAMES['practice-enterprise-business'].current,
+    project: PROJECT_RENAMES.enterprise,
+    opportunity: OPPORTUNITY_RENAMES.enterprise,
     skill: 'Process Analysis',
     secondarySkills: ['Stakeholder Interviewing', 'Cost Modelling', 'Change Management'],
     experts: 35,
     seats: 10,
-    rubricName: 'PRACTICE enterprise screening',
+    rubric: RUBRIC_RENAMES.enterprise,
   },
   {
     key: 'cyber',
     slug: 'practice-cybersecurity',
-    domainName: 'PRACTICE Cybersecurity',
-    projectTitle: 'PRACTICE security posture review',
-    opportunityTitle: 'PRACTICE security reviewer',
+    domainName: DOMAIN_RENAMES['practice-cybersecurity'].current,
+    project: PROJECT_RENAMES.cyber,
+    opportunity: OPPORTUNITY_RENAMES.cyber,
     skill: 'Threat Modelling',
     secondarySkills: ['Incident Response', 'Cloud Security', 'Risk Ranking'],
     experts: 25,
     seats: 8,
-    rubricName: 'PRACTICE security screening',
+    rubric: RUBRIC_RENAMES.cyber,
   },
 ];
 
@@ -221,6 +173,17 @@ const RATE_CEILING_CENTS = 25_000;
 function fail(message: string): never {
   console.error(`\n  ${message}\n`);
   process.exit(1);
+}
+
+/**
+ * Mark a seeded record as showable in the anonymous demo.
+ *
+ * Deliberately a direct write and deliberately only here: eligibility is a
+ * statement about where a record came from, and only the thing that created it
+ * can make that statement. Nothing reachable over HTTP sets this.
+ */
+async function markDemoEligible(expertId: string) {
+  await prisma.expert.update({ where: { id: expertId }, data: { demoEligible: true } });
 }
 
 const log: string[] = [];
@@ -264,11 +227,8 @@ function planExperts(): Seeded[] {
   const plan: Seeded[] = [];
   let serial = 0;
   for (const area of AREAS) {
-    const random = mulberry32(area.experts * 7919 + area.key.length);
     for (let i = 0; i < area.experts; i += 1) {
       serial += 1;
-      const given = GIVEN[Math.floor(random() * GIVEN.length)] ?? 'Sam';
-      const family = FAMILY[Math.floor(random() * FAMILY.length)] ?? 'Nowak';
       const serialText = String(serial).padStart(3, '0');
       // The first three-quarters clear every hard filter; the rest are built to
       // be excluded, one reason at a time, so the run shows each of them.
@@ -277,8 +237,8 @@ function planExperts(): Seeded[] {
       plan.push({
         index: i,
         area,
-        fullName: `${PREFIX} ${given} ${family} ${serialText}`,
-        email: `net.${area.key}.${serialText}@example.test`,
+        fullName: networkMemberName(serial),
+        email: `net.${area.key}.${serialText}@${FIXTURE_EMAIL_DOMAIN}`,
         yearsExperience: strong ? MIN_YEARS + (i % 14) : 1 + (i % 2),
         hourlyRateCents: 9_000 + ((i * 1700) % 22_000),
         timezone: TIMEZONES[i % TIMEZONES.length] ?? 'UTC',
@@ -410,11 +370,11 @@ async function main() {
         });
       }
 
-      let project = await prisma.project.findFirst({ where: { title: area.projectTitle } });
+      let project = await prisma.project.findFirst({ where: { title: eitherName(area.project) } });
       if (!project) {
         project = await createProject(prisma, lead, {
-          title: area.projectTitle,
-          clientName: 'PRACTICE Client (practice only)',
+          title: area.project.current,
+          clientName: SAMPLE_CLIENT,
           description: 'Practice project. No real client and no real work.',
           seatsRequested: area.seats,
           minYearsExperience: MIN_YEARS,
@@ -424,15 +384,16 @@ async function main() {
       } else if (project.seatsRequested !== area.seats) {
         project = await updateProject(prisma, lead, project.id, { seatsRequested: area.seats });
       }
+      await prisma.project.update({ where: { id: project.id }, data: { demoEligible: true } });
 
       // The opportunity people apply to. Created by the earlier practice script
       // on a deployment; created here when the database is fresh.
       const existingOpportunity = await prisma.opportunity.findFirst({
-        where: { title: area.opportunityTitle },
+        where: { title: eitherName(area.opportunity) },
       });
       if (!existingOpportunity) {
         const opportunity = await createOpportunity(prisma, lead, {
-          title: area.opportunityTitle,
+          title: area.opportunity.current,
           kind: 'PROJECT_ENGAGEMENT',
           domainId: domain.id,
           projectId: project.id,
@@ -444,7 +405,7 @@ async function main() {
           weeklyHoursMax: 16,
           applicationDeadline: new Date(Date.now() + 30 * DAY),
           compensationNote: 'Practice listing — no compensation is offered or implied.',
-          internalNotes: 'PRACTICE record. Client identity would live here, never on the listing.',
+          internalNotes: 'Sample record. Client identity would live here, never on the listing.',
           questions: [
             {
               key: 'relevant-work',
@@ -463,10 +424,12 @@ async function main() {
 
       // One published rubric per area, so qualifications have something real to
       // be granted against.
-      let template = await prisma.screeningTemplate.findFirst({ where: { name: area.rubricName } });
+      let template = await prisma.screeningTemplate.findFirst({
+        where: { name: eitherName(area.rubric) },
+      });
       if (!template) {
         template = await createTemplate(prisma, lead, {
-          name: area.rubricName,
+          name: area.rubric.current,
           domainId: domain.id,
           description: 'Practice rubric for the network exercise.',
         });
@@ -495,7 +458,7 @@ async function main() {
         where: { templateId: template.id, status: 'PUBLISHED' },
         orderBy: { version: 'desc' },
       });
-      if (!version) fail(`${area.rubricName} has no published version.`);
+      if (!version) fail(`${area.rubric.current} has no published version.`);
 
       ids[area.key] = {
         domainId: domain.id,
@@ -522,7 +485,7 @@ async function main() {
       }
 
       const profile = {
-        headline: `${PREFIX} network member — ${person.area.domainName}`,
+        headline: `Network member — ${person.area.domainName}`,
         bio: 'Synthetic record created for the network exercise. Not a real person.',
         yearsExperience: person.yearsExperience,
         timezone: person.timezone,
@@ -617,6 +580,7 @@ async function main() {
       // The conversion carries name, email and headline. The rest of the
       // profile is what an operator would fill in next.
       await updateExpert(prisma, lead, granted.expertId, profile);
+      await markDemoEligible(granted.expertId);
       expertIdByEmail.set(person.email, granted.expertId);
       screened += 1;
     }
@@ -636,7 +600,7 @@ async function main() {
         startAt: start,
         endAt: new Date(start.getTime() + 150 * DAY),
         hoursPerWeek: Math.min(person.weeklyCapacityHours, 40),
-        note: `${PREFIX} declared availability`,
+        note: 'Declared availability',
       });
       added += 1;
     }
@@ -725,7 +689,7 @@ async function main() {
           where: { projectId },
           orderBy: { createdAt: 'desc' },
         });
-        if (!run) fail(`No match run for ${area.projectTitle}.`);
+        if (!run) fail(`No match run for ${area.project.current}.`);
         const shortlist = await prisma.matchCandidate.findMany({
           where: { matchRunId: run.id, excluded: false },
           orderBy: { score: 'desc' },
@@ -733,14 +697,14 @@ async function main() {
         });
         if (shortlist.length < area.seats) {
           fail(
-            `${area.projectTitle} has only ${shortlist.length} eligible experts for ${area.seats} seats.`,
+            `${area.project.current} has only ${shortlist.length} eligible experts for ${area.seats} seats.`,
           );
         }
 
         const batch = await createOutreachBatch(prisma, coordinator, {
           kind: 'REPLACEMENT',
           projectId,
-          reason: `Network exercise: staffing ${area.projectTitle}`,
+          reason: `Network exercise: staffing ${area.project.current}`,
           items: shortlist.map((candidate) => ({
             expertId: candidate.expertId,
             rationale: 'Top of the ranking and clears every hard filter.',
@@ -755,7 +719,7 @@ async function main() {
           note: 'Network exercise: approved by a different account than the creator.',
         });
         await dispatchBatch(prisma, approver, batch.id, {
-          message: `You are invited to ${area.projectTitle}.`,
+          message: `You are invited to ${area.project.current}.`,
         });
         batchReference = batch.reference;
       }
@@ -837,7 +801,7 @@ async function main() {
         { key: 'nda_accepted', value: 'true' },
         { key: 'conflict_check', value: 'None.' },
         { key: 'engagement_terms', value: 'true' },
-        { key: 'billing_reference', value: `${PREFIX}-BILL-${expert.reference}` },
+        { key: 'billing_reference', value: `NET-BILL-${expert.reference}` },
         { key: 'working_notes', value: 'Seeded network member.' },
       ]);
       await submitOnboarding(prisma, { type: 'EXPERT', expertId, label: fullName }, expertId);
@@ -924,7 +888,7 @@ async function main() {
             endAt: new Date(start.getTime() + 80 * DAY),
             hoursPerWeek: 5,
             projectId,
-            note: `${PREFIX} capacity already committed on ${area.projectTitle}`,
+            note: `Capacity already committed on ${area.project.current}`,
           },
         );
         declared += 1;
@@ -1103,12 +1067,19 @@ async function main() {
     for (const [position, seat] of seats.entries()) {
       const hours = 6 + position;
       let workItem = await prisma.workItem.findFirst({
-        where: { assignmentId: seat.id, title: { startsWith: `${PREFIX} scoping note` } },
+        where: {
+          assignmentId: seat.id,
+          // Either spelling: rows seeded before the rename carry the old prefix.
+          OR: [
+            { title: { startsWith: 'Scoping note' } },
+            { title: { startsWith: 'NET scoping note' } },
+          ],
+        },
       });
       if (!workItem) {
         workItem = await createWorkItem(prisma, lead, {
           assignmentId: seat.id,
-          title: `${PREFIX} scoping note ${position + 1}`,
+          title: `Scoping note ${position + 1}`,
           instructions: 'Two pages on where the process stalls. Synthetic exercise only.',
           basis: 'HOURLY',
           dueAt: new Date(Date.now() + 7 * DAY),
@@ -1169,7 +1140,7 @@ async function main() {
     const batch = await createPaymentBatch(prisma, coordinator, {
       periodStart: new Date(Date.now() - 14 * DAY),
       periodEnd: new Date(),
-      note: `${PREFIX} network exercise`,
+      note: 'Network exercise',
       itemIds: readyItems.map((item) => item.id),
     });
     await submitPaymentForApproval(prisma, coordinator, batch.id);
@@ -1222,7 +1193,9 @@ async function main() {
 
   // --- 10. the shape of the network afterwards ------------------------------
   const byStatus = await prisma.expert.groupBy({ by: ['status'], _count: true });
-  const seededCount = await prisma.expert.count({ where: { fullName: { startsWith: PREFIX } } });
+  const seededCount = await prisma.expert.count({
+    where: { email: { startsWith: 'net.', endsWith: `@${FIXTURE_EMAIL_DOMAIN}` } },
+  });
   const applicantCount = await prisma.application.count();
   const assignmentCounts = await prisma.assignment.groupBy({ by: ['status'], _count: true });
   const attention = await prisma.attentionItem.count({ where: { status: 'OPEN' } });
@@ -1232,7 +1205,7 @@ async function main() {
   say(
     `       experts by status   ${byStatus.map((row) => `${row.status} ${row._count}`).join(', ')}`,
   );
-  say(`       seeded (${PREFIX}) experts  ${seededCount} — none of them applied`);
+  say(`       seeded experts            ${seededCount} — none of them applied`);
   say(`       applications        ${applicantCount} (from /apply/opportunities only)`);
   say(
     `       assignments         ${assignmentCounts.map((row) => `${row.status} ${row._count}`).join(', ')}`,

@@ -34,7 +34,7 @@ export function CandidateForm({
 
   return (
     <form
-      className="space-y-3"
+      className="space-y-4"
       onSubmit={async (event) => {
         event.preventDefault();
         setPending(true);
@@ -71,120 +71,135 @@ export function CandidateForm({
         }
       }}
     >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label htmlFor="candidate-name" className="text-xs font-semibold text-ink-700">
-            Full name
-          </label>
-          <input
-            id="candidate-name"
-            className="input mt-1 w-full"
-            required
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-          />
+      <fieldset className="fieldset">
+        <legend className="legend">The person</legend>
+        <p className="legend-hint">
+          Name and address are checked against everyone on file before anything is saved.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="candidate-name" className="label">
+              Full name
+            </label>
+            <input
+              id="candidate-name"
+              className="input"
+              required
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="candidate-email" className="label">
+              Email
+            </label>
+            <input
+              id="candidate-email"
+              type="email"
+              className="input"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="candidate-headline" className="label">
+              Headline
+            </label>
+            <input
+              id="candidate-headline"
+              className="input"
+              value={headline}
+              onChange={(event) => setHeadline(event.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="candidate-years" className="label">
+              Years of experience
+            </label>
+            <input
+              id="candidate-years"
+              type="number"
+              min={0}
+              max={60}
+              className="input"
+              value={yearsExperience}
+              onChange={(event) => setYearsExperience(Number(event.target.value))}
+            />
+          </div>
         </div>
-        <div>
-          <label htmlFor="candidate-email" className="text-xs font-semibold text-ink-700">
-            Email
-          </label>
-          <input
-            id="candidate-email"
-            type="email"
-            className="input mt-1 w-full"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
+      </fieldset>
+
+      <fieldset className="fieldset">
+        <legend className="legend">Where they came from</legend>
+        <p className="legend-hint">
+          Recorded so source effectiveness is measured on who qualifies, not on volume.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <label htmlFor="candidate-channel" className="label">
+              Source
+            </label>
+            <select
+              id="candidate-channel"
+              className="select"
+              value={sourceChannelId}
+              onChange={(event) => setSourceChannelId(event.target.value)}
+            >
+              <option value="">Not recorded</option>
+              {channels.map((channel) => (
+                <option key={channel.id} value={channel.id}>
+                  {channel.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="candidate-campaign" className="label">
+              Campaign
+            </label>
+            <select
+              id="candidate-campaign"
+              className="select"
+              value={campaignId}
+              onChange={(event) => setCampaignId(event.target.value)}
+            >
+              <option value="">No campaign</option>
+              {campaigns.map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>
+                  {campaign.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="candidate-owner" className="label">
+              Relationship owner
+            </label>
+            <select
+              id="candidate-owner"
+              className="select"
+              value={relationshipOwnerId}
+              onChange={(event) => setRelationshipOwnerId(event.target.value)}
+            >
+              <option value="">Me</option>
+              {owners.map((owner) => (
+                <option key={owner.id} value={owner.id}>
+                  {owner.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div>
-          <label htmlFor="candidate-headline" className="text-xs font-semibold text-ink-700">
-            Headline
-          </label>
-          <input
-            id="candidate-headline"
-            className="input mt-1 w-full"
-            value={headline}
-            onChange={(event) => setHeadline(event.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="candidate-years" className="text-xs font-semibold text-ink-700">
-            Years of experience
-          </label>
-          <input
-            id="candidate-years"
-            type="number"
-            min={0}
-            max={60}
-            className="input mt-1 w-full"
-            value={yearsExperience}
-            onChange={(event) => setYearsExperience(Number(event.target.value))}
-          />
-        </div>
-        <div>
-          <label htmlFor="candidate-channel" className="text-xs font-semibold text-ink-700">
-            Source
-          </label>
-          <select
-            id="candidate-channel"
-            className="input mt-1 w-full"
-            value={sourceChannelId}
-            onChange={(event) => setSourceChannelId(event.target.value)}
-          >
-            <option value="">Not recorded</option>
-            {channels.map((channel) => (
-              <option key={channel.id} value={channel.id}>
-                {channel.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="candidate-campaign" className="text-xs font-semibold text-ink-700">
-            Campaign
-          </label>
-          <select
-            id="candidate-campaign"
-            className="input mt-1 w-full"
-            value={campaignId}
-            onChange={(event) => setCampaignId(event.target.value)}
-          >
-            <option value="">No campaign</option>
-            {campaigns.map((campaign) => (
-              <option key={campaign.id} value={campaign.id}>
-                {campaign.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="candidate-owner" className="text-xs font-semibold text-ink-700">
-            Relationship owner
-          </label>
-          <select
-            id="candidate-owner"
-            className="input mt-1 w-full"
-            value={relationshipOwnerId}
-            onChange={(event) => setRelationshipOwnerId(event.target.value)}
-          >
-            <option value="">Me</option>
-            {owners.map((owner) => (
-              <option key={owner.id} value={owner.id}>
-                {owner.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      </fieldset>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p role="status" className="alert alert-success">
           {notice}
         </p>
       )}

@@ -3,7 +3,8 @@
 A scripted run through the parts of ExpertOps worth rehearsing, on records that
 already exist so you are not building a board before you can play on it.
 
-Every practice record is prefixed **PRACTICE**. Nothing here is real: email is
+Every practice record is sample data, marked by a "Demo workspace · Sample data"
+label rather than a name prefix. Nothing here is real: email is
 simulated, no payment executes, and the client does not exist.
 
 The longer reference guide is [`walkthrough.md`](walkthrough.md). This one is
@@ -18,12 +19,12 @@ time, so it is safe if you want the board back after experimenting.
 
 | Record | What it is for |
 | --- | --- |
-| **PRJ-0002 · PRACTICE evaluation pilot** | Two seats, requires *Evaluation Design*, rate ceiling $250/h |
-| **PRACTICE Nadia Halvorsen** | Verified, availability on file. The seat can be confirmed for her |
-| **PRACTICE Tomas Ferreira** | Onboarding unfinished. Looks staffable in a list and is not |
-| **PRACTICE Ingrid Sørensen** | Held back. Use her when somebody withdraws |
-| **PRACTICE evaluation screening** | A published rubric, v1 |
-| **PRACTICE Rosa Imani** | A candidate waiting to be screened |
+| **PRJ-0002 · Evaluation pilot** | Two seats, requires *Evaluation Design*, rate ceiling $250/h |
+| **Nadia Halvorsen** | Verified, availability on file. The seat can be confirmed for her |
+| **Tomas Ferreira** | Onboarding unfinished. Looks staffable in a list and is not |
+| **Ingrid Sørensen** | Held back. Use her when somebody withdraws |
+| **Evaluation screening** | A published rubric, v1 |
+| **Rosa Imani** | A candidate waiting to be screened |
 
 Nothing is invited and nobody is staffed. Those are the steps to practise.
 
@@ -50,8 +51,8 @@ the first rather than sitting beside it.
 
 | | |
 | --- | --- |
-| **Where** | Sidebar → **Sourcing** → **Candidates** → open *PRACTICE Rosa Imani* |
-| **Enter** | Choose **PRACTICE evaluation screening** as the published rubric version, then click **Send screening** |
+| **Where** | Sidebar → **Sourcing** → **Candidates** → open *Rosa Imani* |
+| **Enter** | Choose **Evaluation screening** as the published rubric version, then click **Send screening** |
 | **Expect** | A reference like `SCR-0001` appears on the candidate |
 | **If not** | If the rubric is not in the list, it has no published version — open **Rubrics**, check v1 says *published*, not *draft* |
 
@@ -89,14 +90,14 @@ finally **Qualify** with a decision note. Rosa becomes an expert.
 
 | | |
 | --- | --- |
-| **Where** | Sidebar → **Staffing** → **Projects** → *PRACTICE evaluation pilot* |
+| **Where** | Sidebar → **Staffing** → **Projects** → *Evaluation pilot* |
 | **Enter** | Click **Open for matching**, then **Run matching** |
 | **Expect** | A ranking naming the algorithm version, how many were considered, ranked and excluded. Anyone excluded is listed with a reason |
 | **If not** | If Nadia is missing, check she has *Evaluation Design* on her record — a required skill is a hard filter, and an expert without it is excluded from every match |
 
 | | |
 | --- | --- |
-| **Where** | The ranking row for **PRACTICE Nadia Halvorsen** |
+| **Where** | The ranking row for **Nadia Halvorsen** |
 | **Enter** | Click **Invite**, add a short note, then **Send invitation** |
 | **Expect** | The row reads *sent*. A moment later the message is in the Outbox |
 | **If not** | If the project refuses invitations, check its status — an `ACTIVE` project accepts none, because it has no seat to offer |
@@ -128,7 +129,7 @@ cannot happen rather than simply leaving him out.
 | | |
 | --- | --- |
 | **Where** | Sidebar → **Delivery** → **Work** |
-| **Enter** | Choose Nadia's seat. Title: `PRACTICE scoping note`. Instructions: two sentences. Basis: *Hourly*. **Due date: set one** |
+| **Enter** | Choose Nadia's seat. Title: `Scoping note`. Instructions: two sentences. Basis: *Hourly*. **Due date: set one** |
 | **Expect** | `WRK-…` is created and appears in the expert's portal |
 | **If not** | "No confirmed seats yet" means nobody is staffed — finish step 2 first |
 
@@ -217,7 +218,7 @@ batch, so for a clean second run use fresh names.
 
 ## 6. Apply to an opportunity yourself
 
-The three `PRACTICE` opportunities are published and waiting. This journey is
+The three practice opportunities are published and waiting. This journey is
 deliberately left for you to complete; nothing about it has been done for you.
 
 **Actor: applicant.** Open the opportunities page in a browser profile that is
@@ -255,7 +256,7 @@ applicant rather than two.
 | **If not** | Check the email you used; the applicant list is scoped to that opportunity |
 
 Open the application, read what you submitted, then **send a screening** using
-the `PRACTICE evaluation screening` rubric. From there the existing screening,
+the `Evaluation screening` rubric. From there the existing screening,
 revision, qualification and project-invitation steps in this guide apply
 unchanged — an applicant becomes a candidate becomes an expert.
 

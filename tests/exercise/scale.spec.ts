@@ -71,7 +71,7 @@ test('search narrows the network by name, email and reference', async ({ browser
     await expect(page.getByText('net.coding.')).toHaveCount(0);
 
     // One person, by reference.
-    const reference = (await page.locator('tbody tr td').first().innerText()).trim();
+    const reference = (await page.locator('tbody tr [data-reference]').first().innerText()).trim();
     await page.getByLabel('Search').fill(reference);
     await clickUntilVisible(
       () => page.getByRole('button', { name: 'Apply' }).click(),
@@ -124,9 +124,14 @@ test('every project reports full capacity, and the seats add up to thirty', asyn
   try {
     await page.goto('/projects');
 
-    const rows = page.getByRole('row').filter({ hasText: /^PRJ-/ });
+    // The three exercise projects, by name. The one-seat hands-on practice
+    // project sits beside them and is deliberately left empty, so counting every
+    // row added its seat to the thirty.
+    const rows = page.getByRole('row').filter({
+      hasText: /Coding review pilot|Enterprise process assessment|Security posture review/,
+    });
     const count = await rows.count();
-    expect(count).toBeGreaterThanOrEqual(3);
+    expect(count).toBe(3);
 
     let filled = 0;
     let requested = 0;

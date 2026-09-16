@@ -104,171 +104,296 @@ export default async function AttentionPage({
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatTile label="Open items" value={counts.total} />
-        <StatTile label="High severity" value={counts.high} tone="danger" hint="act first" />
-        <StatTile label="Unassigned" value={counts.unassigned} tone="warning" hint="no owner" />
-        <StatTile label="Overdue" value={counts.overdue} tone="danger" />
+        <StatTile label="Open items" value={counts.total} href="/attention" />
+        <StatTile
+          label="High severity"
+          value={counts.high}
+          sub="Act on these first"
+          href="/attention?severity=HIGH"
+        />
+        <StatTile
+          label="Unassigned"
+          value={counts.unassigned}
+          sub="Nobody owns these yet"
+          href="/attention?unassigned=true"
+        />
+        <StatTile label="Overdue" value={counts.overdue} sub="Past their due date" />
         <StatTile
           label="Automation failures"
           value={counts.automationFailures}
-          tone={counts.automationFailures > 0 ? 'danger' : 'neutral'}
-          hint="not business"
+          sub="Engineering, not business"
+          href="#automation"
         />
       </div>
 
-      <nav className="card flex flex-wrap items-center gap-2 px-4 py-3" aria-label="Filters">
-        <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">Filter</span>
-        <FilterLink
-          href="/attention"
-          active={!kind && !severity && !params.mine && !params.unassigned}
-        >
-          Everything
-        </FilterLink>
-        <FilterLink href="/attention?mine=true" active={params.mine === 'true'}>
-          Mine
-        </FilterLink>
-        <FilterLink href="/attention?unassigned=true" active={params.unassigned === 'true'}>
-          Unassigned
-        </FilterLink>
-        {SEVERITY_ORDER.map((value) => (
-          <FilterLink key={value} href={`/attention?severity=${value}`} active={severity === value}>
-            {value.toLowerCase()}
-          </FilterLink>
-        ))}
-      </nav>
+      <section className="card overflow-hidden" aria-labelledby="blockers-heading">
+        <header className="card-header items-center">
+          <div>
+            <h2 id="blockers-heading" className="section-title">
+              Business blockers{' '}
+              <span className="font-normal tabular-nums text-ink-500">({business.length})</span>
+            </h2>
+            <p className="mt-0.5 text-xs text-ink-500">
+              Grouped by what is stuck. The most severe group comes first.
+            </p>
+          </div>
+          <nav className="segmented" aria-label="Filters">
+            <FilterLink
+              href="/attention"
+              active={!kind && !severity && !params.mine && !params.unassigned}
+            >
+              Everything
+            </FilterLink>
+            <FilterLink href="/attention?mine=true" active={params.mine === 'true'}>
+              Mine
+            </FilterLink>
+            <FilterLink href="/attention?unassigned=true" active={params.unassigned === 'true'}>
+              Unassigned
+            </FilterLink>
+            {SEVERITY_ORDER.map((value) => (
+              <FilterLink
+                key={value}
+                href={`/attention?severity=${value}`}
+                active={severity === value}
+              >
+                {value.charAt(0) + value.slice(1).toLowerCase()}
+              </FilterLink>
+            ))}
+          </nav>
+        </header>
 
-      <Card
-        title={`Business blockers (${business.length})`}
-        description="Real-world problems an operator can unblock."
-      >
         {business.length === 0 ? (
           <EmptyState
+            glyph="✓"
             title="Nothing is blocked"
             hint="New items appear here automatically when something gets stuck."
           />
         ) : (
-          <ul className="space-y-3">
-            {business.map((item) => {
-              const overdue = item.dueAt !== null && item.dueAt.getTime() <= now.getTime();
-              return (
-                <li key={item.id} className={clsx('attn', `attn-${item.severity.toLowerCase()}`)}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge tone={severityTone(item.severity)}>
-                          {item.severity.toLowerCase()}
-                        </Badge>
-                        <h3 className="text-sm font-semibold text-ink-900">{item.title}</h3>
-                        <code className="text-[0.7rem] text-ink-400">{item.category}</code>
-                      </div>
-
-                      <dl className="mt-2 space-y-1.5 text-sm">
-                        <div className="flex gap-2">
-                          <dt className="attn-term w-16 shrink-0 pt-0.5">Blocker</dt>
-                          <dd className="text-ink-800">{item.blocker}</dd>
+          groupByCategory(business).map((group) => (
+            <div key={group.category} className="attn-group">
+              <div className="attn-group-header">
+                <h3 className="text-sm font-semibold text-ink-900">
+                  {categoryLabel(group.category)}
+                  <span className="ml-2 font-normal tabular-nums text-ink-500">
+                    {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
+                  </span>
+                </h3>
+                <Badge tone={severityTone(group.severity)}>
+                  {group.severity.toLowerCase()} severity
+                </Badge>
+              </div>
+              {/* Twenty-six rows with the same three sentences are one
+                  explanation and twenty-six names. Say it once. */}
+              {group.shared && (
+                <div className="border-b border-ink-100 px-4 py-3">
+                  <Facts item={group.items[0]!} />
+                </div>
+              )}
+              <ul>
+                {group.items.map((item) => {
+                  const overdue = item.dueAt !== null && item.dueAt.getTime() <= now.getTime();
+                  return (
+                    <li
+                      key={item.id}
+                      className={clsx('attn-row', `attn-${item.severity.toLowerCase()}`)}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <h4 className="text-sm font-semibold text-ink-900">{item.title}</h4>
+                          {overdue && <Badge tone="danger">overdue</Badge>}
                         </div>
-                        <div className="flex gap-2">
-                          <dt className="attn-term w-16 shrink-0 pt-0.5">Impact</dt>
-                          <dd className="text-ink-600">{item.impact}</dd>
-                        </div>
-                      </dl>
 
-                      {/* Separated from the description above: everything else on
-                          the card explains the situation, this is the instruction. */}
-                      <p className="attn-next">
-                        <span className="attn-term mr-2 text-accent-600">Do next</span>
-                        {item.nextAction}
-                      </p>
+                        {!group.shared && <Facts item={item} />}
 
-                      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
-                        <span
-                          className={clsx('owner-chip', !item.owner && 'owner-chip-unassigned')}
+                        <div
+                          className={clsx(
+                            'flex flex-wrap items-center gap-x-3 gap-y-1 text-xs',
+                            group.shared ? 'mt-1' : 'mt-2',
+                          )}
                         >
-                          {item.owner ? item.owner.name : 'Unassigned'}
-                        </span>
-                        {overdue && <Badge tone="danger">overdue</Badge>}
-                        <span className={overdue ? 'font-semibold text-rose-700' : 'text-ink-500'}>
-                          {item.dueAt
-                            ? `${overdue ? 'Overdue since' : 'Due'} ${formatRelative(item.dueAt)}`
-                            : 'No due date'}
-                        </span>
-                        <span className="text-ink-400" title={formatDateTime(item.createdAt)}>
-                          raised {formatRelative(item.createdAt)}
-                        </span>
+                          <span
+                            className={clsx('owner-chip', !item.owner && 'owner-chip-unassigned')}
+                          >
+                            {item.owner ? item.owner.name : 'Unassigned'}
+                          </span>
+                          <span
+                            className={overdue ? 'font-semibold text-rose-700' : 'text-ink-500'}
+                          >
+                            {item.dueAt
+                              ? `${overdue ? 'Overdue since' : 'Due'} ${formatRelative(item.dueAt)}`
+                              : 'No due date'}
+                          </span>
+                          <span className="text-ink-500" title={formatDateTime(item.createdAt)}>
+                            Raised {formatRelative(item.createdAt)}
+                          </span>
+                          {item.project && (
+                            <Link
+                              className="font-medium text-accent-700 hover:underline"
+                              href={`/projects/${item.project.id}`}
+                            >
+                              {item.project.code}
+                            </Link>
+                          )}
+                          {item.expert && (
+                            <Link
+                              className="font-medium text-accent-700 hover:underline"
+                              href={`/experts/${item.expert.id}`}
+                            >
+                              {item.expert.fullName}
+                            </Link>
+                          )}
+                          {item.candidate && (
+                            <Link
+                              className="font-medium text-accent-700 hover:underline"
+                              href={`/candidates/${item.candidate.id}`}
+                            >
+                              {item.candidate.fullName}
+                            </Link>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        {item.project && (
-                          <Link
-                            className="text-accent-600 hover:underline"
-                            href={`/projects/${item.project.id}`}
-                          >
-                            {item.project.code}
-                          </Link>
-                        )}
-                        {item.expert && (
-                          <Link
-                            className="text-accent-600 hover:underline"
-                            href={`/experts/${item.expert.id}`}
-                          >
-                            {item.expert.fullName}
-                          </Link>
-                        )}
-                        {item.candidate && (
-                          <Link
-                            className="text-accent-600 hover:underline"
-                            href={`/candidates/${item.candidate.id}`}
-                          >
-                            {item.candidate.fullName}
-                          </Link>
-                        )}
-                      </div>
+                      {canManage && (
+                        <AttentionActions
+                          itemId={item.id}
+                          currentOwnerId={item.ownerId}
+                          operators={operators}
+                          selfId={operator.id}
+                        />
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))
+        )}
+      </section>
+
+      <div id="automation" className="scroll-mt-20">
+        <Card
+          title={`Automation failures (${automation.length})`}
+          description="Jobs that stopped retrying. These are engineering problems, not business blockers, and are listed separately for that reason."
+        >
+          {automation.length === 0 ? (
+            <EmptyState
+              glyph="✓"
+              title="The automation is healthy"
+              hint="No job has exhausted its retries."
+            />
+          ) : (
+            <ul className="space-y-2">
+              {automation.map((item) => (
+                <li
+                  key={item.id}
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-rose-900">{item.title}</h3>
+                      <p className="mt-1 text-sm text-rose-800">{item.blocker}</p>
+                      <p className="mt-1 text-xs text-rose-700">{item.impact}</p>
+                      <p className="mt-1 text-xs font-medium text-rose-900">{item.nextAction}</p>
                     </div>
-
-                    {canManage && (
-                      <AttentionActions
-                        itemId={item.id}
-                        currentOwnerId={item.ownerId}
-                        operators={operators}
-                        selfId={operator.id}
-                      />
-                    )}
+                    <Link className="btn btn-secondary btn-sm" href="/jobs">
+                      Open the worker screen
+                    </Link>
                   </div>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      <Card
-        title={`Automation failures (${automation.length})`}
-        description="Jobs that stopped retrying. These are engineering problems, not business blockers, and are listed separately for that reason."
-      >
-        {automation.length === 0 ? (
-          <EmptyState title="The automation is healthy" hint="No job has exhausted its retries." />
-        ) : (
-          <ul className="space-y-2">
-            {automation.map((item) => (
-              <li key={item.id} className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-rose-900">{item.title}</h3>
-                    <p className="mt-1 text-sm text-rose-800">{item.blocker}</p>
-                    <p className="mt-1 text-xs text-rose-700">{item.impact}</p>
-                    <p className="mt-1 text-xs font-medium text-rose-900">{item.nextAction}</p>
-                  </div>
-                  <Link className="btn btn-secondary btn-sm" href="/jobs">
-                    Open the worker screen
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
     </div>
   );
+}
+
+/**
+ * Items of one kind, together.
+ *
+ * Twenty-three "seat has no work assigned" cards in a row read as twenty-three
+ * problems. Under one heading they read as one problem with twenty-three
+ * instances, which is what they are and how an operator will work through them.
+ */
+interface FactsSource {
+  category: string;
+  severity: AttentionSeverity;
+  blocker: string;
+  impact: string;
+  nextAction: string;
+}
+
+function Facts({ item }: { item: FactsSource }) {
+  return (
+    <>
+      <dl className="attn-facts">
+        <div className="flex gap-2">
+          <dt className="attn-term w-14 shrink-0 pt-px">Blocker</dt>
+          <dd className="text-ink-800">{item.blocker}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="attn-term w-14 shrink-0 pt-px">Impact</dt>
+          <dd className="text-ink-600">{item.impact}</dd>
+        </div>
+      </dl>
+      {/* Separated from the facts above: they explain the situation, this is
+          the instruction. */}
+      <p className="attn-next mt-2">
+        <span className="attn-term mr-2 text-accent-600">Do next</span>
+        {item.nextAction}
+      </p>
+    </>
+  );
+}
+
+function groupByCategory<T extends FactsSource>(items: T[]) {
+  const groups = new Map<
+    string,
+    { category: string; severity: AttentionSeverity; items: T[]; shared: boolean }
+  >();
+  for (const item of items) {
+    const group = groups.get(item.category);
+    if (group) {
+      group.items.push(item);
+      if (SEVERITY_ORDER.indexOf(item.severity) < SEVERITY_ORDER.indexOf(group.severity)) {
+        group.severity = item.severity;
+      }
+    } else {
+      groups.set(item.category, {
+        category: item.category,
+        severity: item.severity,
+        items: [item],
+        shared: false,
+      });
+    }
+  }
+  for (const group of groups.values()) {
+    const [first, ...rest] = group.items;
+    group.shared =
+      first !== undefined &&
+      rest.length > 0 &&
+      rest.every(
+        (item) =>
+          item.blocker === first.blocker &&
+          item.impact === first.impact &&
+          item.nextAction === first.nextAction,
+      );
+  }
+  return [...groups.values()].sort(
+    (a, b) =>
+      SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) ||
+      b.items.length - a.items.length,
+  );
+}
+
+/** `delivery.no_work_assigned` → "Delivery · no work assigned". */
+function categoryLabel(category: string): string {
+  const [area = '', ...rest] = category.split('.');
+  const detail = rest.join(' ').replace(/_/g, ' ');
+  const head = area.replace(/_/g, ' ');
+  const title = head.charAt(0).toUpperCase() + head.slice(1);
+  return detail ? `${title} · ${detail}` : title;
 }
 
 function FilterLink({
@@ -281,15 +406,7 @@ function FilterLink({
   children: React.ReactNode;
 }) {
   return (
-    <Link
-      href={href}
-      aria-current={active ? 'page' : undefined}
-      className={
-        active
-          ? 'rounded-md bg-accent-500 px-2.5 py-1 text-xs font-semibold text-white'
-          : 'rounded-md border border-ink-200 px-2.5 py-1 text-xs text-ink-700 hover:bg-ink-100'
-      }
-    >
+    <Link href={href} aria-current={active ? 'page' : undefined} className="segmented-item">
       {children}
     </Link>
   );

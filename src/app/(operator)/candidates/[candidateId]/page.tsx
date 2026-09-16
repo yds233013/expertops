@@ -9,7 +9,17 @@ import { listTemplates } from '@/server/services/screening';
 import { StartScreeningPanel } from '@/components/start-screening-panel';
 import { ScreeningDecisionPanel } from '@/components/screening-decision-panel';
 import { ResolveDuplicate } from '@/components/resolve-duplicate';
-import { Badge, Card, EmptyState, FieldRow, ProvenanceTag, StatusBadge } from '@/components/ui';
+import { ActivityList } from '@/components/activity-list';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  FieldRow,
+  NextAction,
+  PageHeader,
+  ProvenanceTag,
+  StatusBadge,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,23 +51,24 @@ export default async function CandidateDetailPage({
       })),
   );
 
+  const next = nextStepFor(candidate.stage, openDuplicates.length);
+
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="page-title">{candidate.fullName}</h1>
+      <PageHeader
+        back={{ href: '/candidates', label: 'Candidate pipeline' }}
+        eyebrow={<span className="font-mono">{candidate.reference}</span>}
+        title={candidate.fullName}
+        meta={
+          <>
             <StatusBadge status={candidate.stage} />
             {candidate.contactOptOutAt && <Badge tone="muted">opted out of contact</Badge>}
-          </div>
-          <p className="mt-1 text-sm text-ink-600">
-            <span className="font-mono text-xs">{candidate.reference}</span> · {candidate.email}
-          </p>
-        </div>
-        <Link className="btn btn-secondary" href="/candidates">
-          Back to pipeline
-        </Link>
-      </header>
+          </>
+        }
+        description={[candidate.email, candidate.headline].filter(Boolean).join(' · ')}
+      />
+
+      {next && <NextAction title={next.title}>{next.detail}</NextAction>}
 
       {openDuplicates.length > 0 && (
         <Card
@@ -78,192 +89,224 @@ export default async function CandidateDetailPage({
         </Card>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card title="Relationship">
-          <dl>
-            <FieldRow label="Source">{candidate.sourceChannel?.name ?? '—'}</FieldRow>
-            <FieldRow label="Campaign">
-              {candidate.campaign ? `${candidate.campaign.code} · ${candidate.campaign.name}` : '—'}
-            </FieldRow>
-            <FieldRow label="Referred by">{candidate.referredByExpert?.fullName ?? '—'}</FieldRow>
-            <FieldRow label="Owner">{candidate.relationshipOwner?.name ?? 'unassigned'}</FieldRow>
-            <FieldRow label="Next action">
-              {candidate.nextActionAt ? (
-                <>
-                  {formatDate(candidate.nextActionAt)}
-                  <div className="text-xs text-ink-500">{candidate.nextActionNote}</div>
-                </>
-              ) : (
-                '—'
-              )}
-            </FieldRow>
-            <FieldRow label="Became expert">
-              {candidate.expert ? (
-                <Link
-                  className="text-accent-600 hover:underline"
-                  href={`/experts/${candidate.expert.id}`}
-                >
-                  {candidate.expert.reference}
-                </Link>
-              ) : (
-                'not yet'
-              )}
-            </FieldRow>
-          </dl>
-          {candidate.notes && <p className="mt-3 text-sm text-ink-600">{candidate.notes}</p>}
-        </Card>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
+        <div className="min-w-0 space-y-5">
+          <Card
+            title="Screenings"
+            description="A screening runs against one immutable rubric version and keeps it forever."
+            actions={<ProvenanceTag kind="operator" />}
+          >
+            {candidate.screenings.length === 0 ? (
+              <div className="space-y-3">
+                <EmptyState title="No screening started" />
+                {canScreen && publishedVersions.length > 0 && (
+                  <StartScreeningPanel candidateId={candidate.id} versions={publishedVersions} />
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {candidate.screenings.map((screening) => (
+                  <div
+                    key={screening.id}
+                    className="rounded-lg border border-ink-200 bg-white px-4 py-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs">{screening.reference}</span>
+                      <StatusBadge status={screening.status} />
+                      <span className="text-sm text-ink-800">
+                        {screening.rubricVersion.template.domain.name}, rubric v
+                        {screening.rubricVersion.version}
+                      </span>
+                      <span
+                        className="text-xs text-ink-500"
+                        title={formatDateTime(screening.dueAt)}
+                      >
+                        due {formatRelative(screening.dueAt)}
+                      </span>
+                    </div>
 
-        <Card title="Applications" className="lg:col-span-2">
-          {candidate.applications.length === 0 ? (
-            <EmptyState title="No applications on file" />
-          ) : (
-            <ul className="space-y-2">
-              {candidate.applications.map((application) => (
-                <li key={application.id} className="rounded-lg border border-ink-200 px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs">{application.reference}</span>
-                    <StatusBadge status={application.status} />
-                    <span className="text-sm text-ink-800">{application.domain.name}</span>
-                    <span className="text-xs text-ink-500">
-                      {formatRelative(application.submittedAt)}
-                    </span>
-                  </div>
-                  {Array.isArray(application.workSampleLinks) &&
-                    application.workSampleLinks.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 text-xs">
-                        {(application.workSampleLinks as string[]).map((link) => (
-                          <li key={link} className="text-ink-600">
-                            {/* Recorded as text. The application never fetches it. */}
-                            <code>{link}</code>
+                    {screening.submissions.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {screening.submissions.map((submission) => (
+                          <div key={submission.id} className="text-xs">
+                            <Badge tone={submission.isComplete ? 'success' : 'warning'}>
+                              revision {submission.revision}
+                              {submission.isComplete ? ' complete' : ' incomplete'}
+                            </Badge>{' '}
+                            <span className="text-ink-500">
+                              {formatRelative(submission.submittedAt)}
+                            </span>
+                            {Array.isArray(submission.missingEvidence) &&
+                              submission.missingEvidence.length > 0 && (
+                                <ul className="mt-0.5 list-disc pl-5 text-amber-800">
+                                  {(submission.missingEvidence as string[]).map((missing) => (
+                                    <li key={missing}>{missing}</li>
+                                  ))}
+                                </ul>
+                              )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {screening.reviews.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs">
+                        {screening.reviews.map((review) => (
+                          <li key={review.id} className="text-ink-700">
+                            {review.reviewer.name}:{' '}
+                            <strong>{review.decision ?? review.state}</strong>
+                            {review.publicFeedback ? ` — ${review.publicFeedback}` : ''}
+                            {review.privateNotes ? (
+                              <span className="ml-1 rounded bg-ink-100 px-1 text-ink-600">
+                                internal: {review.privateNotes}
+                              </span>
+                            ) : null}
                           </li>
                         ))}
                       </ul>
                     )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
 
-      <Card
-        title="Screenings"
-        description="A screening runs against one immutable rubric version and keeps it forever."
-        actions={<ProvenanceTag kind="operator" />}
-      >
-        {candidate.screenings.length === 0 ? (
-          <div className="space-y-3">
-            <EmptyState title="No screening started" />
-            {canScreen && publishedVersions.length > 0 && (
-              <StartScreeningPanel candidateId={candidate.id} versions={publishedVersions} />
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {candidate.screenings.map((screening) => (
-              <div key={screening.id} className="rounded-lg border border-ink-200 px-3 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs">{screening.reference}</span>
-                  <StatusBadge status={screening.status} />
-                  <span className="text-sm text-ink-800">
-                    {screening.rubricVersion.template.domain.name}, rubric v
-                    {screening.rubricVersion.version}
-                  </span>
-                  <span className="text-xs text-ink-500" title={formatDateTime(screening.dueAt)}>
-                    due {formatRelative(screening.dueAt)}
-                  </span>
-                </div>
+                    {screening.conflict && screening.conflict.status === 'OPEN' && (
+                      <p className="alert alert-error mt-2 text-xs">
+                        Reviewers disagree: {screening.conflict.summary}. The system will not
+                        choose; an admin must record a resolution.
+                      </p>
+                    )}
 
-                {screening.submissions.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {screening.submissions.map((submission) => (
-                      <div key={submission.id} className="text-xs">
-                        <Badge tone={submission.isComplete ? 'success' : 'warning'}>
-                          revision {submission.revision}
-                          {submission.isComplete ? ' complete' : ' incomplete'}
-                        </Badge>{' '}
-                        <span className="text-ink-500">
-                          {formatRelative(submission.submittedAt)}
-                        </span>
-                        {Array.isArray(submission.missingEvidence) &&
-                          submission.missingEvidence.length > 0 && (
-                            <ul className="mt-0.5 list-disc pl-5 text-amber-800">
-                              {(submission.missingEvidence as string[]).map((missing) => (
-                                <li key={missing}>{missing}</li>
-                              ))}
-                            </ul>
+                    {canDecide && ['SUBMITTED', 'IN_REVIEW'].includes(screening.status) && (
+                      <div className="mt-3">
+                        <ScreeningDecisionPanel
+                          screeningId={screening.id}
+                          reference={screening.reference}
+                          hasOpenConflict={screening.conflict?.status === 'OPEN'}
+                          canResolveConflict={roleHasCapability(
+                            operator.role,
+                            'screening:resolve_conflict',
                           )}
+                        />
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-
-                {screening.reviews.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-xs">
-                    {screening.reviews.map((review) => (
-                      <li key={review.id} className="text-ink-700">
-                        {review.reviewer.name}: <strong>{review.decision ?? review.state}</strong>
-                        {review.publicFeedback ? ` — ${review.publicFeedback}` : ''}
-                        {review.privateNotes ? (
-                          <span className="ml-1 rounded bg-ink-100 px-1 text-ink-600">
-                            internal: {review.privateNotes}
-                          </span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {screening.conflict && screening.conflict.status === 'OPEN' && (
-                  <p className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                    Reviewers disagree: {screening.conflict.summary}. The system will not choose; an
-                    admin must record a resolution.
-                  </p>
-                )}
-
-                {canDecide && ['SUBMITTED', 'IN_REVIEW'].includes(screening.status) && (
-                  <div className="mt-3">
-                    <ScreeningDecisionPanel
-                      screeningId={screening.id}
-                      reference={screening.reference}
-                      hasOpenConflict={screening.conflict?.status === 'OPEN'}
-                      canResolveConflict={roleHasCapability(
-                        operator.role,
-                        'screening:resolve_conflict',
-                      )}
-                    />
-                  </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
+            )}
+          </Card>
 
-      <Card
-        title="History"
-        description="Append-only record of everything that touched this person."
-      >
-        {activity.events.length === 0 ? (
-          <EmptyState title="No history yet" />
-        ) : (
-          <ol className="space-y-2">
-            {activity.events.map((event) => (
-              <li key={event.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-                <span
-                  className="text-xs tabular-nums text-ink-400"
-                  title={formatDateTime(event.createdAt)}
-                >
-                  {formatRelative(event.createdAt)}
-                </span>
-                <StatusBadge status={event.actorType} />
-                <span className="text-ink-800">{event.summary}</span>
-                <code className="text-[0.7rem] text-ink-400">{event.action}</code>
-              </li>
-            ))}
-          </ol>
-        )}
-      </Card>
+          <Card title="Applications">
+            {candidate.applications.length === 0 ? (
+              <EmptyState title="No applications on file" />
+            ) : (
+              <ul className="space-y-2">
+                {candidate.applications.map((application) => (
+                  <li key={application.id} className="rounded-lg border border-ink-200 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs">{application.reference}</span>
+                      <StatusBadge status={application.status} />
+                      <span className="text-sm text-ink-800">{application.domain.name}</span>
+                      <span className="text-xs text-ink-500">
+                        {formatRelative(application.submittedAt)}
+                      </span>
+                    </div>
+                    {Array.isArray(application.workSampleLinks) &&
+                      application.workSampleLinks.length > 0 && (
+                        <ul className="mt-1 space-y-0.5 text-xs">
+                          {(application.workSampleLinks as string[]).map((link) => (
+                            <li key={link} className="text-ink-600">
+                              {/* Recorded as text. The application never fetches it. */}
+                              <code>{link}</code>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+          <Card
+            title="History"
+            description="Append-only record of everything that touched this person."
+          >
+            {activity.events.length === 0 ? (
+              <EmptyState title="No history yet" />
+            ) : (
+              <ActivityList events={activity.events} />
+            )}
+          </Card>
+        </div>
+        <aside className="min-w-0 space-y-5">
+          <Card title="Relationship">
+            <dl>
+              <FieldRow label="Source">{candidate.sourceChannel?.name ?? '—'}</FieldRow>
+              <FieldRow label="Campaign">
+                {candidate.campaign
+                  ? `${candidate.campaign.code} · ${candidate.campaign.name}`
+                  : '—'}
+              </FieldRow>
+              <FieldRow label="Referred by">{candidate.referredByExpert?.fullName ?? '—'}</FieldRow>
+              <FieldRow label="Owner">{candidate.relationshipOwner?.name ?? 'unassigned'}</FieldRow>
+              <FieldRow label="Next action">
+                {candidate.nextActionAt ? (
+                  <>
+                    {formatDate(candidate.nextActionAt)}
+                    <div className="text-xs text-ink-500">{candidate.nextActionNote}</div>
+                  </>
+                ) : (
+                  '—'
+                )}
+              </FieldRow>
+              <FieldRow label="Became expert">
+                {candidate.expert ? (
+                  <Link
+                    className="text-accent-600 hover:underline"
+                    href={`/experts/${candidate.expert.id}`}
+                  >
+                    {candidate.expert.reference}
+                  </Link>
+                ) : (
+                  'not yet'
+                )}
+              </FieldRow>
+            </dl>
+            {candidate.notes && <p className="mt-3 text-sm text-ink-600">{candidate.notes}</p>}
+          </Card>
+        </aside>
+      </div>
     </div>
   );
+}
+
+/** What this person's record is waiting for, in the words an operator would use. */
+function nextStepFor(stage: string, duplicates: number): { title: string; detail: string } | null {
+  if (duplicates > 0) {
+    return {
+      title: 'Decide whether this is someone already on file',
+      detail: 'The record is on hold until a person resolves the possible duplicate below.',
+    };
+  }
+  switch (stage) {
+    case 'NEW':
+      return {
+        title: 'Send a screening',
+        detail: 'Choose a published rubric version under Screenings. The invitation is simulated.',
+      };
+    case 'SCREENING_INVITED':
+      return {
+        title: 'Waiting for the candidate to submit',
+        detail: 'Reminders go out automatically, up to the reminder cap.',
+      };
+    case 'SCREENING_SUBMITTED':
+    case 'IN_REVIEW':
+      return {
+        title: 'Review the submission',
+        detail: 'Score it against the rubric, then request a revision, qualify or decline.',
+      };
+    case 'REVISION_REQUESTED':
+      return {
+        title: 'Waiting for a revised submission',
+        detail: 'The candidate has the reviewer’s public feedback. Private notes stay here.',
+      };
+    default:
+      return null;
+  }
 }

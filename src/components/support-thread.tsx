@@ -87,7 +87,7 @@ export function SupportThread({
 
       {canRespond && status !== 'CLOSED' && (
         <div className="space-y-2 rounded-lg border border-ink-200 px-3 py-3">
-          <label htmlFor={`reply-${requestId}`} className="text-xs font-semibold text-ink-700">
+          <label htmlFor={`reply-${requestId}`} className="label">
             Reply to {reference}
           </label>
           <textarea
@@ -151,16 +151,13 @@ export function SupportThread({
           </div>
 
           <div className="border-t border-ink-100 pt-2">
-            <label
-              htmlFor={`resolution-${requestId}`}
-              className="text-xs font-semibold text-ink-700"
-            >
+            <label htmlFor={`resolution-${requestId}`} className="label">
               Resolution
             </label>
             <textarea
               id={`resolution-${requestId}`}
               rows={2}
-              className="input mt-1 w-full"
+              className="input"
               placeholder="What was done. Required to resolve."
               value={resolution}
               onChange={(event) => setResolution(event.target.value)}
@@ -184,7 +181,7 @@ export function SupportThread({
       )}
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}

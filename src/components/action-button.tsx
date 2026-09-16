@@ -64,7 +64,12 @@ export function ActionButton({
         <button
           type="button"
           disabled={pending || disabled}
-          className={clsx('btn', `btn-${variant}`, size === 'sm' && 'btn-sm')}
+          className={clsx(
+            'btn',
+            `btn-${variant}`,
+            size === 'sm' && 'btn-sm',
+            confirming && 'btn-confirming',
+          )}
           onClick={() => {
             if (confirm && !confirming) {
               setConfirming(true);

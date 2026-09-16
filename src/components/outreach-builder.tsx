@@ -94,13 +94,13 @@ export function OutreachBuilder({
       }}
     >
       <div>
-        <label htmlFor="outreach-reason" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="outreach-reason" className="label">
           Why these people, and what to say
         </label>
         <textarea
           id="outreach-reason"
           rows={2}
-          className="input mt-1 w-full"
+          className="input"
           placeholder="Included in the invitation each recipient receives."
           value={reason}
           onChange={(event) => setReason(event.target.value)}
@@ -138,7 +138,7 @@ export function OutreachBuilder({
       </fieldset>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}

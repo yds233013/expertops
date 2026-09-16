@@ -138,6 +138,12 @@ model Expert {
   // Self-reported weekly capacity, refined per project via AvailabilityWindow.
   weeklyCapacityHours    Int               @default(0)
   notes                  String            @default("")
+  /// Whether this record may appear in the anonymous demo.
+  ///
+  /// Set only by a seeding script, never by anything reachable over HTTP. It
+  /// replaced a filter that matched on a name prefix, which anybody could adopt
+  /// by typing "NET" into an application form.
+  demoEligible           Boolean           @default(false)
   // Structured, and deliberately separate from `notes`. See ContactPreference.
   contactPreference      ContactPreference @default(UNKNOWN)
   // When the person themselves last set it, as opposed to it never being asked.
@@ -171,6 +177,7 @@ model Expert {
   @@index([status, hourlyRateCents])
   @@index([timezone])
   @@index([contactPreference])
+  @@index([demoEligible])
 }
 
 model Skill {
@@ -272,6 +279,8 @@ model Project {
   maxHourlyRateCents Int?
   // Preferred working timezone for scheduling overlap scoring.
   preferredTimezone  String        @default("UTC")
+  /// Whether this project may appear in the anonymous demo. See Expert.demoEligible.
+  demoEligible       Boolean       @default(false)
   startDate          DateTime?
   endDate            DateTime?
   createdById        String

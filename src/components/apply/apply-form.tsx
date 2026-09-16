@@ -63,7 +63,7 @@ export function ApplyForm({ slug, questions }: { slug: string; questions: Questi
 
   return (
     <form
-      className="space-y-3"
+      className="space-y-4"
       onSubmit={async (event) => {
         event.preventDefault();
         const values = formValues(event.currentTarget);
@@ -93,79 +93,104 @@ export function ApplyForm({ slug, questions }: { slug: string; questions: Questi
         }
       }}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="apply-name">
-            Your name
-          </label>
-          <input id="apply-name" name="fullName" className="input" required />
+      <fieldset className="fieldset">
+        <legend className="legend">About you</legend>
+        <p className="legend-hint">Your name and address are only visible to operators.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="apply-name">
+              Your name
+            </label>
+            <input id="apply-name" name="fullName" className="input" required />
+          </div>
+          <div>
+            <label className="label" htmlFor="apply-email">
+              Email
+            </label>
+            <input id="apply-email" name="email" className="input" type="email" required />
+            <p className="field-hint">
+              Identifies your application. In this demo nothing is actually emailed to it.
+            </p>
+          </div>
         </div>
-        <div>
-          <label className="label" htmlFor="apply-email">
-            Email
-          </label>
-          <input id="apply-email" name="email" className="input" type="email" required />
-          <p className="field-hint">We use this to send you a screening link.</p>
-        </div>
-      </div>
+      </fieldset>
 
-      <div>
-        <label className="label" htmlFor="apply-experience">
-          Relevant experience
-        </label>
-        <textarea id="apply-experience" name="experience" className="textarea" rows={5} required />
-        <p className="field-hint">Work you have actually done that bears on this.</p>
-      </div>
+      <fieldset className="fieldset">
+        <legend className="legend">Your experience</legend>
+        <p className="legend-hint">A person reads this. Specific examples help more than a list.</p>
+        <div className="space-y-3">
+          <div>
+            <label className="label" htmlFor="apply-experience">
+              Relevant experience
+            </label>
+            <textarea
+              id="apply-experience"
+              name="experience"
+              className="textarea"
+              rows={5}
+              required
+            />
+            <p className="field-hint">Work you have actually done that bears on this.</p>
+          </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="apply-skills">
-            Skills
-          </label>
-          <input id="apply-skills" name="skills" className="input" />
-          <p className="field-hint">Comma separated.</p>
-        </div>
-        <div>
-          <label className="label" htmlFor="apply-hours">
-            Hours per week you are available
-          </label>
-          <input
-            id="apply-hours"
-            name="weeklyHours"
-            className="input"
-            type="number"
-            min={1}
-            max={80}
-          />
-        </div>
-      </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="apply-skills">
+                Skills
+              </label>
+              <input id="apply-skills" name="skills" className="input" />
+              <p className="field-hint">Comma separated.</p>
+            </div>
+            <div>
+              <label className="label" htmlFor="apply-hours">
+                Hours per week you are available
+              </label>
+              <input
+                id="apply-hours"
+                name="weeklyHours"
+                className="input"
+                type="number"
+                min={1}
+                max={80}
+              />
+            </div>
+          </div>
 
-      {questions.map((question) => (
-        <div key={question.key}>
-          <label className="label" htmlFor={`q-${question.key}`}>
-            {question.label}
-            {question.required ? '' : ' (optional)'}
-          </label>
-          <textarea
-            id={`q-${question.key}`}
-            name={`q-${question.key}`}
-            className="textarea"
-            rows={3}
-            required={question.required}
-          />
-          {question.helpText && <p className="field-hint">{question.helpText}</p>}
+          <div>
+            <label className="label" htmlFor="apply-links">
+              Work sample links (optional)
+            </label>
+            <textarea id="apply-links" name="workSampleLinks" className="textarea" rows={2} />
+            <p className="field-hint">
+              One URL per line. Links are recorded as text and are never opened by ExpertOps.
+            </p>
+          </div>
         </div>
-      ))}
+      </fieldset>
 
-      <div>
-        <label className="label" htmlFor="apply-links">
-          Work sample links (optional)
-        </label>
-        <textarea id="apply-links" name="workSampleLinks" className="textarea" rows={2} />
-        <p className="field-hint">
-          One URL per line. Links are recorded as text and are never opened by ExpertOps.
-        </p>
-      </div>
+      {questions.length > 0 && (
+        <fieldset className="fieldset">
+          <legend className="legend">Questions for this listing</legend>
+          <div className="space-y-3">
+            {questions.map((question) => (
+              <div key={question.key}>
+                <label className="label" htmlFor={`q-${question.key}`}>
+                  {question.label}
+                  {question.required ? '' : ' (optional)'}
+                </label>
+                <textarea
+                  id={`q-${question.key}`}
+                  name={`q-${question.key}`}
+                  className="textarea"
+                  rows={3}
+                  required={question.required}
+                />
+                {question.helpText && <p className="field-hint">{question.helpText}</p>}
+              </div>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       {error && <Alert tone="error">{error}</Alert>}
 

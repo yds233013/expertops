@@ -5,7 +5,7 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { listCampaigns, sourceChannelEffectiveness } from '@/server/services/sourcing';
 import { listDomains } from '@/server/services/qualifications';
 import { CreateCampaignForm } from '@/components/campaign-actions';
-import { Badge, Card, EmptyState, ProvenanceTag, StatusBadge } from '@/components/ui';
+import { Badge, Card, EmptyState, ProvenanceTag, StatusBadge, PageHeader } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,13 +32,11 @@ export default async function CampaignsPage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="page-title">Sourcing campaigns</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          A campaign exists to close a specific shortage. Progress is counted in qualified people,
-          not in applications received.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Sourcing"
+        title="Sourcing campaigns"
+        description="A campaign exists to close a specific shortage. Progress is counted in qualified people, not in applications received."
+      />
 
       {canWrite && (
         <Card title="Open a campaign" actions={<ProvenanceTag kind="operator" />}>

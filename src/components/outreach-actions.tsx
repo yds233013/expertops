@@ -121,13 +121,13 @@ export function OutreachBatchActions({
 
       {status === 'PENDING_APPROVAL' && canApprove && (
         <div>
-          <label htmlFor={`note-${batchId}`} className="text-xs font-semibold text-ink-700">
+          <label htmlFor={`note-${batchId}`} className="label">
             Note (required to reject)
           </label>
           <textarea
             id={`note-${batchId}`}
             rows={2}
-            className="input mt-1 w-full"
+            className="input"
             value={note}
             onChange={(event) => setNote(event.target.value)}
           />
@@ -156,7 +156,7 @@ export function OutreachBatchActions({
       )}
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}

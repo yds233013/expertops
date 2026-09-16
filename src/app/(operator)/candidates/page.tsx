@@ -11,7 +11,16 @@ import {
 import { listCampaigns, sourceChannelEffectiveness } from '@/server/services/sourcing';
 import { CandidateForm } from '@/components/candidate-form';
 import { ResolveDuplicate } from '@/components/resolve-duplicate';
-import { Badge, Card, EmptyState, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  CellPrimary,
+  EmptyState,
+  PageHeader,
+  StatTile,
+  StatusBadge,
+  ToolbarField,
+} from '@/components/ui';
 import { type CandidateStage } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +36,11 @@ const STAGES: CandidateStage[] = [
   'REJECTED',
   'WITHDRAWN',
 ];
+
+function stageLabel(stage: string): string {
+  const words = stage.replace(/_/g, ' ').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 export default async function CandidatesPage({
   searchParams,
@@ -59,15 +73,23 @@ export default async function CandidatesPage({
 
   const canWrite = roleHasCapability(operator.role, 'candidate:write');
 
+  const filtered = Boolean(stage || params.search || params.due === 'true');
+  const stageHref = (value: CandidateStage) => `/candidates?stage=${value}`;
+
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="page-title">Candidate pipeline</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          People being assessed for the network. A candidate becomes an expert only after a human
-          qualification decision.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Sourcing"
+        title="Candidate pipeline"
+        description="People being assessed for the network. A candidate becomes an expert only after a human qualification decision."
+        actions={
+          canWrite && (
+            <a className="btn btn-primary" href="#add-candidate">
+              Add candidate
+            </a>
+          )
+        }
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
@@ -79,20 +101,26 @@ export default async function CandidatesPage({
             counts.IN_REVIEW +
             counts.REVISION_REQUESTED
           }
+          sub="New, screening or in review"
         />
         <StatTile
           label="Awaiting review"
           value={counts.SCREENING_SUBMITTED + counts.IN_REVIEW}
-          tone="warning"
-          hint="operator action"
+          sub="A reviewer needs to score these"
+          href={stageHref('SCREENING_SUBMITTED')}
         />
         <StatTile
           label="Duplicate holds"
           value={counts.DUPLICATE_HOLD}
-          tone={counts.DUPLICATE_HOLD > 0 ? 'danger' : 'neutral'}
-          hint="you decide"
+          sub="Only a person can resolve these"
+          href={stageHref('DUPLICATE_HOLD')}
         />
-        <StatTile label="Qualified" value={counts.QUALIFIED} tone="success" />
+        <StatTile
+          label="Qualified"
+          value={counts.QUALIFIED}
+          sub="Now experts in the network"
+          href={stageHref('QUALIFIED')}
+        />
       </div>
 
       {duplicates.length > 0 && (
@@ -148,62 +176,65 @@ export default async function CandidatesPage({
         </Card>
       )}
 
-      {canWrite && (
-        <Card
-          title="Add a candidate"
-          description="Duplicate detection runs on save. A possible duplicate goes on hold for a human decision; nothing is merged."
-        >
-          <CandidateForm
-            channels={channels.map((channel) => ({ id: channel.id, name: channel.name }))}
-            campaigns={openCampaigns.map((campaign) => ({
-              id: campaign.id,
-              label: `${campaign.code} · ${campaign.name}`,
-            }))}
-            owners={operators}
-          />
-        </Card>
-      )}
-
-      <form className="card flex flex-wrap items-end gap-3 px-4 py-3" method="get">
-        <div className="min-w-56 flex-1">
-          <label className="label" htmlFor="search">
-            Search
+      <section className="card overflow-hidden">
+        <form method="get" className="toolbar">
+          <ToolbarField label="Search" htmlFor="search" className="min-w-56 flex-1">
+            <input
+              id="search"
+              name="search"
+              type="search"
+              className="input"
+              defaultValue={params.search ?? ''}
+              placeholder="Name, email or reference"
+            />
+          </ToolbarField>
+          <ToolbarField label="Stage" htmlFor="stage" className="w-full sm:w-56">
+            <select id="stage" name="stage" className="select" defaultValue={stage ?? ''}>
+              <option value="">All stages</option>
+              {STAGES.map((value) => (
+                <option key={value} value={value}>
+                  {`${stageLabel(value)} (${counts[value]})`}
+                </option>
+              ))}
+            </select>
+          </ToolbarField>
+          <label className="flex h-[2.1rem] items-center gap-2 text-sm text-ink-700">
+            <input type="checkbox" name="due" value="true" defaultChecked={params.due === 'true'} />
+            Next action due
           </label>
-          <input
-            id="search"
-            name="search"
-            className="input"
-            defaultValue={params.search ?? ''}
-            placeholder="Name, email or reference"
-          />
-        </div>
-        <div className="w-56">
-          <label className="label" htmlFor="stage">
-            Stage
-          </label>
-          <select id="stage" name="stage" className="select" defaultValue={stage ?? ''}>
-            <option value="">All stages</option>
-            {STAGES.map((value) => (
-              <option key={value} value={value}>
-                {value.replace(/_/g, ' ').toLowerCase()} ({counts[value]})
-              </option>
-            ))}
-          </select>
-        </div>
-        <label className="flex items-center gap-2 pb-2 text-sm text-ink-700">
-          <input type="checkbox" name="due" value="true" defaultChecked={params.due === 'true'} />
-          Next action due
-        </label>
-        <button className="btn btn-secondary" type="submit">
-          Apply
-        </button>
-      </form>
+          <div className="flex items-center gap-2">
+            <button className="btn btn-primary" type="submit">
+              Apply
+            </button>
+            {filtered && (
+              <Link className="btn btn-secondary" href="/candidates">
+                Clear
+              </Link>
+            )}
+          </div>
+        </form>
 
-      <Card title={`${candidates.length} candidate${candidates.length === 1 ? '' : 's'}`}>
+        <header className="card-header items-center">
+          <h2 className="section-title">
+            {candidates.length} candidate{candidates.length === 1 ? '' : 's'}
+          </h2>
+          {candidates.length >= 100 && (
+            <p className="text-xs text-ink-500">The first 100. Search or filter to narrow it.</p>
+          )}
+        </header>
+
         {candidates.length === 0 ? (
           <EmptyState
+            glyph="⌕"
             title="No candidates match that filter"
             hint="Candidates arrive through applications or a sourcing campaign."
+            action={
+              filtered ? (
+                <Link className="btn btn-secondary btn-sm" href="/candidates">
+                  Clear filters
+                </Link>
+              ) : undefined
+            }
           />
         ) : (
           <div className="scroll-x">
@@ -211,11 +242,9 @@ export default async function CandidatesPage({
               <caption className="sr-only">Candidates in the intake pipeline</caption>
               <thead>
                 <tr>
-                  <th scope="col">Reference</th>
-                  <th scope="col">Name</th>
+                  <th scope="col">Candidate</th>
                   <th scope="col">Stage</th>
-                  <th scope="col">Source</th>
-                  <th scope="col">Owner</th>
+                  <th scope="col">Source and owner</th>
                   <th scope="col">Next action</th>
                   <th scope="col">Screening</th>
                 </tr>
@@ -223,22 +252,18 @@ export default async function CandidatesPage({
               <tbody>
                 {candidates.map((candidate) => (
                   <tr key={candidate.id}>
-                    <td>
-                      <Link
-                        className="font-mono text-xs text-accent-600 hover:underline"
+                    <td className="min-w-52 max-w-80">
+                      <CellPrimary
                         href={`/candidates/${candidate.id}`}
-                      >
-                        {candidate.reference}
-                      </Link>
-                    </td>
-                    <td>
-                      <Link
-                        className="font-medium text-ink-900 hover:underline"
-                        href={`/candidates/${candidate.id}`}
+                        meta={
+                          <>
+                            <span className="font-mono">{candidate.reference}</span> ·{' '}
+                            {candidate.email}
+                          </>
+                        }
                       >
                         {candidate.fullName}
-                      </Link>
-                      <div className="text-xs text-ink-500">{candidate.email}</div>
+                      </CellPrimary>
                       {candidate.contactOptOutAt && (
                         <Badge tone="muted" title="Will not be contacted again">
                           opted out
@@ -255,8 +280,12 @@ export default async function CandidatesPage({
                         </div>
                       )}
                     </td>
-                    <td className="text-ink-600">{candidate.sourceChannel?.name ?? '—'}</td>
-                    <td className="text-ink-600">{candidate.relationshipOwner?.name ?? '—'}</td>
+                    <td className="text-ink-600">
+                      {candidate.sourceChannel?.name ?? 'Source not recorded'}
+                      <span className="cell-meta">
+                        {candidate.relationshipOwner?.name ?? 'No owner'}
+                      </span>
+                    </td>
                     <td className="text-ink-600">
                       {candidate.nextActionAt ? (
                         <>
@@ -285,9 +314,28 @@ export default async function CandidatesPage({
             </table>
           </div>
         )}
-      </Card>
+      </section>
+
+      {canWrite && (
+        <div id="add-candidate" className="scroll-mt-20">
+          <Card
+            title="Add a candidate"
+            description="Duplicate detection runs on save. A possible duplicate goes on hold for a human decision; nothing is merged."
+          >
+            <CandidateForm
+              channels={channels.map((channel) => ({ id: channel.id, name: channel.name }))}
+              campaigns={openCampaigns.map((campaign) => ({
+                id: campaign.id,
+                label: `${campaign.code} · ${campaign.name}`,
+              }))}
+              owners={operators}
+            />
+          </Card>
+        </div>
+      )}
 
       <Card
+        flush
         title="Where qualified experts actually come from"
         description="Counted on qualified outcomes rather than raw volume, so effort goes where it works."
       >

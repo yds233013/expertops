@@ -11,6 +11,8 @@ node_modules/
 .next-prod/
 .next-e2e/
 .next-exercise/
+.next-showcase/
+.scratch-tmp/
 out/
 next-env.d.ts
 

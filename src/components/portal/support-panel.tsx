@@ -176,12 +176,12 @@ export function SupportPanel({
           <h3 className="text-sm font-semibold text-ink-900">Raise a new request</h3>
 
           <div>
-            <label htmlFor="support-subject" className="text-xs font-semibold text-ink-700">
+            <label htmlFor="support-subject" className="label">
               Subject
             </label>
             <input
               id="support-subject"
-              className="input mt-1 w-full"
+              className="input"
               required
               value={subject}
               onChange={(event) => setSubject(event.target.value)}
@@ -190,12 +190,12 @@ export function SupportPanel({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label htmlFor="support-category" className="text-xs font-semibold text-ink-700">
+              <label htmlFor="support-category" className="label">
                 Category
               </label>
               <select
                 id="support-category"
-                className="input mt-1 w-full"
+                className="select"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
               >
@@ -207,12 +207,12 @@ export function SupportPanel({
               </select>
             </div>
             <div>
-              <label htmlFor="support-project" className="text-xs font-semibold text-ink-700">
+              <label htmlFor="support-project" className="label">
                 Project (optional)
               </label>
               <select
                 id="support-project"
-                className="input mt-1 w-full"
+                className="select"
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
               >
@@ -227,13 +227,13 @@ export function SupportPanel({
           </div>
 
           <div>
-            <label htmlFor="support-message" className="text-xs font-semibold text-ink-700">
+            <label htmlFor="support-message" className="label">
               What do you need?
             </label>
             <textarea
               id="support-message"
               rows={4}
-              className="input mt-1 w-full"
+              className="input"
               required
               value={message}
               onChange={(event) => setMessage(event.target.value)}
@@ -241,7 +241,7 @@ export function SupportPanel({
           </div>
 
           {error && (
-            <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+            <p role="alert" className="alert alert-error">
               {error}
             </p>
           )}

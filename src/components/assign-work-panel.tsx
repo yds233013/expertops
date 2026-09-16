@@ -70,12 +70,12 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <label htmlFor="work-assignment" className="text-xs font-semibold text-ink-700">
+          <label htmlFor="work-assignment" className="label">
             Staffed seat
           </label>
           <select
             id="work-assignment"
-            className="input mt-1 w-full"
+            className="select"
             value={assignmentId}
             onChange={(event) => setAssignmentId(event.target.value)}
           >
@@ -87,24 +87,24 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
           </select>
         </div>
         <div>
-          <label htmlFor="work-title" className="text-xs font-semibold text-ink-700">
+          <label htmlFor="work-title" className="label">
             Title
           </label>
           <input
             id="work-title"
-            className="input mt-1 w-full"
+            className="input"
             required
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
         </div>
         <div>
-          <label htmlFor="work-basis" className="text-xs font-semibold text-ink-700">
+          <label htmlFor="work-basis" className="label">
             Basis
           </label>
           <select
             id="work-basis"
-            className="input mt-1 w-full"
+            className="select"
             value={basis}
             onChange={(event) => setBasis(event.target.value as 'DELIVERABLE' | 'HOURLY')}
           >
@@ -113,13 +113,13 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
           </select>
         </div>
         <div>
-          <label htmlFor="work-due" className="text-xs font-semibold text-ink-700">
+          <label htmlFor="work-due" className="label">
             Due date
           </label>
           <input
             id="work-due"
             type="date"
-            className="input mt-1 w-full"
+            className="input"
             value={dueAt}
             onChange={(event) => setDueAt(event.target.value)}
           />
@@ -130,25 +130,25 @@ export function AssignWorkPanel({ assignments }: { assignments: { id: string; la
       </div>
 
       <div>
-        <label htmlFor="work-instructions" className="text-xs font-semibold text-ink-700">
+        <label htmlFor="work-instructions" className="label">
           Instructions
         </label>
         <textarea
           id="work-instructions"
           rows={3}
-          className="input mt-1 w-full"
+          className="input"
           value={instructions}
           onChange={(event) => setInstructions(event.target.value)}
         />
       </div>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p role="status" className="alert alert-success">
           {notice}
         </p>
       )}

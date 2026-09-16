@@ -149,12 +149,12 @@ export function ExpertProfileEditor({
       </div>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p role="status" className="alert alert-success">
           {notice}
         </p>
       )}

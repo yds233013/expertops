@@ -42,13 +42,13 @@ export function AttentionActions({
   }
 
   return (
-    <div className="flex w-56 shrink-0 flex-col gap-2">
+    <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
       <label className="sr-only" htmlFor={`owner-${itemId}`}>
         Assign owner
       </label>
       <select
         id={`owner-${itemId}`}
-        className="select"
+        className="select select-sm w-full sm:w-auto sm:min-w-36"
         aria-label="Assign owner"
         disabled={pending}
         value={currentOwnerId ?? ''}
@@ -75,7 +75,7 @@ export function AttentionActions({
       )}
 
       {dismissing ? (
-        <div className="space-y-1.5">
+        <div className="w-full space-y-1.5">
           <label className="sr-only" htmlFor={`reason-${itemId}`}>
             Reason for dismissing
           </label>

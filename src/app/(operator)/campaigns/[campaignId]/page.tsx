@@ -7,7 +7,15 @@ import { campaignProgress, getCampaign } from '@/server/services/sourcing';
 import { computeProjectGap } from '@/server/services/staffing-gaps';
 import { listActivity } from '@/server/services/activity';
 import { CampaignStatusControl } from '@/components/campaign-actions';
-import { Badge, Card, EmptyState, FieldRow, StatTile, StatusBadge } from '@/components/ui';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  FieldRow,
+  StatTile,
+  StatusBadge,
+  PageHeader,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,27 +59,23 @@ export default async function CampaignDetailPage({
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="page-title">{campaign.name}</h1>
-            <StatusBadge status={campaign.status} />
-          </div>
-          <p className="mt-1 text-sm text-ink-600">
-            <span className="font-mono text-xs">{campaign.code}</span> · {campaign.domain.name}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        back={{ href: '/campaigns', label: 'Campaigns' }}
+        eyebrow={
+          <>
+            <span className="font-mono">{campaign.code}</span> · {campaign.domain.name}
+          </>
+        }
+        title={campaign.name}
+        meta={<StatusBadge status={campaign.status} />}
+        actions={
           <CampaignStatusControl
             campaignId={campaign.id}
             status={campaign.status}
             canWrite={canWrite}
           />
-          <Link className="btn btn-secondary" href="/campaigns">
-            All campaigns
-          </Link>
-        </div>
-      </header>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
@@ -141,7 +145,7 @@ export default async function CampaignDetailPage({
               </dl>
 
               {gap.needsSourcing && (
-                <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <p className="alert alert-warning">
                   Nothing is left in the funnel for this project. Sourcing is the work, not chasing
                   responses.
                 </p>

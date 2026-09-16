@@ -5,7 +5,7 @@ import { requireOperator } from '@/server/http/context';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { listSupportRequests, supportCounts } from '@/server/services/support';
 import { SupportThread } from '@/components/support-thread';
-import { Badge, Card, EmptyState, StatTile, StatusBadge } from '@/components/ui';
+import { Badge, Card, EmptyState, StatTile, StatusBadge, PageHeader } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,13 +56,11 @@ export default async function SupportPage({
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="page-title">Support</h1>
-        <p className="mt-1 text-sm text-ink-600">
-          Conversations with experts. Internal notes stay on this side; everything else appears in
-          the expert&rsquo;s portal.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Delivery"
+        title="Support"
+        description="Conversations with experts. Internal notes stay on this side; everything else appears in the expert’s portal."
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Open" value={counts.OPEN} />
@@ -71,17 +69,13 @@ export default async function SupportPage({
         <StatTile label="Resolved" value={counts.RESOLVED} tone="success" />
       </div>
 
-      <nav className="flex flex-wrap gap-2" aria-label="Support filters">
+      <nav className="segmented self-start" aria-label="Support filters">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
             aria-current={tab.active ? 'page' : undefined}
-            className={
-              tab.active
-                ? 'rounded-md bg-ink-900 px-3 py-1.5 text-sm font-medium text-white'
-                : 'rounded-md border border-ink-200 px-3 py-1.5 text-sm text-ink-700 hover:bg-ink-100'
-            }
+            className="segmented-item"
           >
             {tab.label}
           </Link>

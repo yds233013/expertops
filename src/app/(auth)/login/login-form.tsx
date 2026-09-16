@@ -29,7 +29,7 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="card space-y-3 px-4 py-4">
+    <form onSubmit={onSubmit} className="space-y-4">
       <div>
         <label className="label" htmlFor="email">
           Work email
@@ -59,7 +59,7 @@ export function LoginForm() {
         />
       </div>
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}

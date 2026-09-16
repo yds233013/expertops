@@ -144,18 +144,18 @@ export function ScreeningForm({
       </div>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}
 
       {missing !== null &&
         (missing.length === 0 ? (
-          <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <p role="status" className="alert alert-success">
             Submitted. Nothing further is needed from you right now.
           </p>
         ) : (
-          <div role="status" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <div role="status" className="alert alert-warning">
             <p>Submitted, but some required evidence is missing:</p>
             <ul className="mt-1 list-disc pl-5">
               {missing.map((item) => (

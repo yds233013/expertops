@@ -17,7 +17,7 @@ import { clickUntilVisible, operatorContext, portalLinkFor, visitorContext } fro
 test.describe.configure({ mode: 'serial' });
 
 const STAMP = Date.now();
-const TITLE = `NET browser scoping note ${STAMP}`;
+const TITLE = `Browser scoping note ${STAMP}`;
 const CLAIMED = 8;
 const APPROVED = 6;
 
@@ -47,12 +47,18 @@ test('1. the operator assigns work to a confirmed seat', async () => {
 
   const seat = page.getByLabel('Staffed seat');
   await expect(seat).toBeVisible();
-  const option = seat.locator('option').filter({ hasText: /NET / }).first();
-  // The option reads "PRJ-0002 · NET Somebody · 10 h/week"; the person is the
-  // part that starts with the seeded prefix.
+  // A seat held by a seeded network member, not by an applicant an earlier
+  // browser run walked through to a seat. Seeded people no longer carry a name
+  // prefix, so the applicant is what gets excluded.
+  const option = seat
+    .locator('option')
+    .filter({ hasText: /^PRJ-\d+ · / })
+    .filter({ hasNotText: /APPLICANT/ })
+    .first();
+  // The option reads "PRJ-0002 · Somebody · 10 h/week"; the person is the middle part.
   const label = await option.innerText();
-  expertName = (/NET [^·]+/.exec(label) ?? [''])[0]!.trim();
-  expect(expertName).toMatch(/^NET /);
+  expertName = (label.split(' · ')[1] ?? '').trim();
+  expect(expertName).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
   await seat.selectOption((await option.getAttribute('value'))!);
 
   await page.getByLabel('Title').fill(TITLE);
@@ -174,10 +180,27 @@ test('4. the difference is flagged, and a person explains it', async () => {
   const explain = item.getByPlaceholder('Why is the difference correct?').first();
   await expect(explain).toBeVisible();
   await explain.fill('One hour was out of scope and was agreed with the expert beforehand.');
-  await clickUntilVisible(
-    () => item.getByRole('button', { name: 'Clear the flag' }).first().click(),
-    page.locator('label').filter({ hasText: paymentReference }).first(),
-  );
+  await item.getByRole('button', { name: 'Clear the flag' }).first().click();
+
+  // Wait for the item to leave the flagged card. The previous condition — a
+  // label naming the reference — was already true before the click, because
+  // the explanation box carries a hidden "Reason for PAY-…" label. So this step
+  // finished while the request was still in flight, and the next step loaded a
+  // page from before the flag was cleared and waited on it for forty seconds.
+  await expect
+    .poll(
+      async () => {
+        await page.goto('/payments');
+        return page
+          .locator('section')
+          .filter({ has: page.getByRole('heading', { name: /Items needing an explanation/ }) })
+          .locator('li')
+          .filter({ hasText: paymentReference })
+          .count();
+      },
+      { timeout: 30_000, intervals: [500, 1000, 2000] },
+    )
+    .toBe(0);
 });
 
 test('5. the lead creates the batch and cannot approve their own', async () => {

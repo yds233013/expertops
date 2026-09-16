@@ -27,12 +27,16 @@ import { type Db } from '@/lib/db';
  * and tokens.
  */
 
-/** Records the demo may describe. Anything else is invisible to it. */
-const SYNTHETIC_PREFIXES = ['PRACTICE ', 'NET ', 'SYNTHETIC '] as const;
-
-function syntheticNameFilter(field: 'title' | 'fullName' | 'name') {
-  return { OR: SYNTHETIC_PREFIXES.map((prefix) => ({ [field]: { startsWith: prefix } })) };
-}
+/**
+ * The only thing that makes a record visible here.
+ *
+ * This used to match a name prefix. A name is public input: somebody applying
+ * through the open form could call themselves "NET Someone" and put their own
+ * address and answers into a page with no login. `demoEligible` is set by
+ * seeding scripts and by nothing that is reachable over HTTP, so the boundary
+ * no longer depends on what anyone types.
+ */
+const DEMO_ELIGIBLE = { demoEligible: true } as const;
 
 export interface DemoNetwork {
   expertsByStatus: { status: string; count: number }[];
@@ -76,7 +80,7 @@ export interface DemoOverview {
 async function demoNetwork(db: Db): Promise<DemoNetwork> {
   const rows = await db.expert.groupBy({
     by: ['status'],
-    where: syntheticNameFilter('fullName'),
+    where: DEMO_ELIGIBLE,
     _count: true,
   });
   return {
@@ -89,7 +93,7 @@ async function demoNetwork(db: Db): Promise<DemoNetwork> {
 
 async function demoProjects(db: Db): Promise<DemoProject[]> {
   const rows = await db.project.findMany({
-    where: syntheticNameFilter('title'),
+    where: DEMO_ELIGIBLE,
     select: {
       code: true,
       title: true,
@@ -124,7 +128,7 @@ async function demoProjects(db: Db): Promise<DemoProject[]> {
  */
 async function demoRanking(db: Db): Promise<DemoRanking | null> {
   const project = await db.project.findFirst({
-    where: syntheticNameFilter('title'),
+    where: DEMO_ELIGIBLE,
     select: { id: true, code: true, title: true },
     orderBy: { code: 'asc' },
   });
@@ -150,16 +154,15 @@ async function demoRanking(db: Db): Promise<DemoRanking | null> {
       score: true,
       excluded: true,
       exclusionReason: true,
-      expert: { select: { reference: true, fullName: true } },
+      expert: { select: { reference: true, demoEligible: true } },
     },
     orderBy: { score: 'desc' },
     take: 200,
   });
 
-  // Belt and braces: even inside a match run, only synthetic people are shown.
-  const synthetic = candidates.filter((candidate) =>
-    SYNTHETIC_PREFIXES.some((prefix) => candidate.expert.fullName.startsWith(prefix)),
-  );
+  // Belt and braces: a match run can rank anybody, so each row is re-checked
+  // rather than trusted because the project was eligible.
+  const synthetic = candidates.filter((candidate) => candidate.expert.demoEligible);
 
   const reasons = new Map<string, number>();
   for (const candidate of synthetic) {
@@ -195,7 +198,7 @@ export async function demoOverview(db: Db): Promise<DemoOverview> {
       demoNetwork(db),
       demoProjects(db),
       demoRanking(db),
-      db.opportunity.count({ where: { status: 'PUBLISHED' } }),
+      db.opportunity.count({ where: { status: 'PUBLISHED', project: { demoEligible: true } } }),
       db.job.count({ where: { status: 'SUCCEEDED' } }),
       db.job.count({ where: { status: { in: ['FAILED', 'DEAD'] } } }),
     ]);

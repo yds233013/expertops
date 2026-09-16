@@ -84,25 +84,25 @@ export function CreateBatchPanel({ items }: { items: ReadyItem[] }) {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label htmlFor="period-start" className="text-xs font-semibold text-ink-700">
+          <label htmlFor="period-start" className="label">
             Period start
           </label>
           <input
             id="period-start"
             type="date"
-            className="input mt-1 w-full"
+            className="input"
             value={periodStart}
             onChange={(event) => setPeriodStart(event.target.value)}
           />
         </div>
         <div>
-          <label htmlFor="period-end" className="text-xs font-semibold text-ink-700">
+          <label htmlFor="period-end" className="label">
             Period end
           </label>
           <input
             id="period-end"
             type="date"
-            className="input mt-1 w-full"
+            className="input"
             value={periodEnd}
             onChange={(event) => setPeriodEnd(event.target.value)}
           />
@@ -110,7 +110,7 @@ export function CreateBatchPanel({ items }: { items: ReadyItem[] }) {
       </div>
 
       {error && (
-        <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p role="alert" className="alert alert-error">
           {error}
         </p>
       )}

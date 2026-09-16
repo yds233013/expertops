@@ -21,9 +21,10 @@ import { parseDatabaseUrl } from '@/lib/database-safety';
 import { type Actor } from '@/server/services/activity';
 import { createProject, setProjectStatus } from '@/server/services/projects';
 import { createOpportunity, publishOpportunity } from '@/server/services/opportunities';
+import { OPPORTUNITY_RENAMES, PROJECT_RENAMES, SAMPLE_CLIENT, eitherName } from './fixture-names';
 
-const PROJECT_TITLE = 'PRACTICE hands-on review pilot';
-const OPPORTUNITY_TITLE = 'PRACTICE hands-on code reviewer';
+const PROJECT = PROJECT_RENAMES.handsOn;
+const OPPORTUNITY = OPPORTUNITY_RENAMES.handsOn;
 const DOMAIN_SLUG = 'practice-coding';
 const SKILL = 'Code Review';
 const DAY = 24 * 60 * 60 * 1000;
@@ -56,12 +57,12 @@ async function main() {
   if (!domain) fail(`Domain ${DOMAIN_SLUG} is missing. Run scripts/network-exercise.ts first.`);
 
   // --- the project, with one seat -----------------------------------------
-  let project = await prisma.project.findFirst({ where: { title: PROJECT_TITLE } });
+  let project = await prisma.project.findFirst({ where: { title: eitherName(PROJECT) } });
   let createdProject = false;
   if (!project) {
     project = await createProject(prisma, actor, {
-      title: PROJECT_TITLE,
-      clientName: 'PRACTICE Client (hands-on only)',
+      title: PROJECT.current,
+      clientName: SAMPLE_CLIENT,
       description:
         'A practice project kept deliberately empty so somebody can take a candidate all the ' +
         'way from an application to a confirmed seat without disturbing the network exercise.',
@@ -76,6 +77,10 @@ async function main() {
     createdProject = true;
   }
 
+  // A seeded fixture, so it may appear in the anonymous demo. Set here because
+  // only the thing that created the record can vouch for where it came from.
+  await prisma.project.update({ where: { id: project.id }, data: { demoEligible: true } });
+
   // Open for matching, which is where invitations become possible.
   if (project.status === 'DRAFT') {
     project = await setProjectStatus(prisma, actor, project.id, 'MATCHING', {
@@ -84,11 +89,13 @@ async function main() {
   }
 
   // --- the listing ---------------------------------------------------------
-  let opportunity = await prisma.opportunity.findFirst({ where: { title: OPPORTUNITY_TITLE } });
+  let opportunity = await prisma.opportunity.findFirst({
+    where: { title: eitherName(OPPORTUNITY) },
+  });
   let createdOpportunity = false;
   if (!opportunity) {
     opportunity = await createOpportunity(prisma, actor, {
-      title: OPPORTUNITY_TITLE,
+      title: OPPORTUNITY.current,
       kind: 'PROJECT_ENGAGEMENT',
       domainId: domain.id,
       projectId: project.id,
@@ -106,7 +113,7 @@ async function main() {
       applicationDeadline: new Date(Date.now() + 60 * DAY),
       compensationNote: 'Practice listing — no compensation is offered or implied.',
       internalNotes:
-        'HANDS-ON practice record. Client identity and rate ceiling would live here on a real ' +
+        'Hands-on practice record. Client identity and rate ceiling would live here on a real ' +
         'listing and must never reach the candidate-facing page. Used to check that separation.',
       questions: [
         {
