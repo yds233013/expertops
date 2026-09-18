@@ -8,7 +8,10 @@ import { createOpportunity, listOpportunities } from '@/server/services/opportun
 export const dynamic = 'force-dynamic';
 
 const questionSchema = z.object({
-  key: z.string().max(64).optional().default(''),
+  // Bounded like the label, not like the stored key: the service slugifies
+  // whatever arrives down to 64 characters, so refusing a long key here only
+  // ever rejected a listing over a field the operator cannot see.
+  key: z.string().max(300).optional().default(''),
   label: z.string().min(1).max(300),
   helpText: z.string().max(500).optional(),
   required: z.boolean().optional().default(false),

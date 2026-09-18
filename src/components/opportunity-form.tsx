@@ -26,6 +26,22 @@ interface QuestionDraft {
  * same glance, which box is published and which is not. The label says so, and
  * the candidate-facing projection cannot return it either way.
  */
+/**
+ * A validation failure that says which field, when the server names one.
+ *
+ * "Request body failed validation." on its own leaves an operator clicking the
+ * same button again: nothing on the page says what to change.
+ */
+function describeError(error: { message?: string; details?: unknown } | null | undefined) {
+  if (!error?.message) return undefined;
+  const details = Array.isArray(error.details)
+    ? (error.details as { path?: string; message?: string }[])
+        .map((detail) => [detail.path, detail.message].filter(Boolean).join(': '))
+        .filter(Boolean)
+    : [];
+  return details.length > 0 ? `${error.message} (${details.join('; ')})` : error.message;
+}
+
 export function OpportunityForm({
   domains,
   projects,
@@ -90,7 +106,9 @@ export function OpportunityForm({
     questions: questions
       .filter((question) => question.label.trim())
       .map((question) => ({
-        key: question.label,
+        // No key: the server slugifies one from the label. Sending the raw
+        // label here made any question longer than 64 characters fail
+        // validation on a field the operator never typed.
         label: question.label,
         helpText: question.helpText || undefined,
         required: question.required,
@@ -118,7 +136,7 @@ export function OpportunityForm({
               })
             : await apiPost('/api/opportunities', payload());
           if (!result.ok) {
-            setError(result.error?.message ?? 'The opportunity could not be saved.');
+            setError(describeError(result.error) ?? 'The opportunity could not be saved.');
             return;
           }
           if (existing) {
