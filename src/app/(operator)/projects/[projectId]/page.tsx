@@ -10,6 +10,7 @@ import { listStaffingCandidates } from '@/server/services/staffing';
 import { SimulatedDeliveryBadge } from '@/components/delivery-note';
 import { ActionButton } from '@/components/action-button';
 import { InviteButton } from '@/components/invite-button';
+import { ExpertSearchInvite } from '@/components/expert-search-invite';
 import { ProposeForm } from '@/components/propose-form';
 import { WithdrawButton } from '@/components/withdraw-button';
 import { ActivityList } from '@/components/activity-list';
@@ -380,6 +381,10 @@ export default async function ProjectDetailPage({
               </ul>
             </details>
           )}
+
+          {/* The ranking keeps a fixed number of people. This is how an operator
+            reaches an eligible expert who scored below that cut. */}
+          <ExpertSearchInvite projectId={project.id} seatsLeft={seatsLeft} canInvite={canInvite} />
         </Card>
       </div>
 

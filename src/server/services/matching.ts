@@ -145,6 +145,131 @@ export async function runMatching(
 }
 
 /**
+ * Look up any expert against a project's brief, ranked or not.
+ *
+ * A match run persists only the top slice of the ranking, and the project page
+ * can only invite from what it persisted. An operator who has just qualified
+ * somebody for this exact project therefore had no way to invite them until
+ * they out-ranked everyone already on the list — which, in a network of a
+ * hundred, they usually do not.
+ *
+ * This scores the same pool with the same engine and the same project
+ * criteria, then filters by name, address or reference. Nothing here decides
+ * whether an invitation is allowed: `createInvitation` re-checks project
+ * status, seats, archived experts and duplicate invitations on the server.
+ */
+export interface EligibleExpertMatch {
+  expertId: string;
+  fullName: string;
+  email: string;
+  reference: string;
+  status: string;
+  headline: string;
+  hourlyRateCents: number;
+  currency: string;
+  score: number;
+  /** Position in the full ranking, including the people a run would not keep. */
+  rank: number;
+  excluded: boolean;
+  exclusionReason: string | null;
+  /** True when this expert is already on the persisted ranking for the project. */
+  inLatestRun: boolean;
+}
+
+export async function searchExpertsForProject(
+  db: Db,
+  projectId: string,
+  options: { search?: string; limit?: number; now?: Date } = {},
+): Promise<EligibleExpertMatch[]> {
+  const term = (options.search ?? '').trim();
+  if (term.length < 2) return [];
+  const limit = Math.min(Math.max(options.limit ?? 10, 1), 25);
+  const now = options.now ?? clockNow();
+
+  const project = await db.project.findUnique({
+    where: { id: projectId },
+    include: { requirements: { include: { skill: true } } },
+  });
+  if (!project) throw notFound('Project not found.');
+  if (project.requirements.length === 0) {
+    throw invalidState(`Project ${project.code} has no skill requirements to match against.`);
+  }
+
+  const criteria: ProjectCriteria = {
+    minYearsExperience: project.minYearsExperience,
+    maxHourlyRateCents: project.maxHourlyRateCents,
+    preferredTimezone: project.preferredTimezone,
+    hoursPerWeekNeeded: 20,
+    requirements: project.requirements.map((requirement) => ({
+      slug: requirement.skill.slug,
+      required: requirement.required,
+      minProficiency: requirement.minProficiency,
+      weight: requirement.weight,
+    })),
+  };
+
+  const pool = await loadCandidatePool(db, projectId);
+  const ranked = rankCandidates(pool, criteria, DEFAULT_WEIGHTS, now);
+  const rankByExpert = new Map(ranked.map((candidate, index) => [candidate.expertId, index + 1]));
+
+  // Matched in SQL so the search itself never depends on loading every expert
+  // record into memory a second time.
+  const matches = await db.expert.findMany({
+    where: {
+      status: { notIn: ['ARCHIVED'] },
+      OR: [
+        { fullName: { contains: term, mode: 'insensitive' } },
+        { email: { contains: term, mode: 'insensitive' } },
+        { reference: { contains: term, mode: 'insensitive' } },
+      ],
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      reference: true,
+      status: true,
+      headline: true,
+      hourlyRateCents: true,
+      currency: true,
+    },
+    take: 200,
+  });
+
+  const scored = new Map(ranked.map((candidate) => [candidate.expertId, candidate]));
+  const latestRun = await db.matchRun.findFirst({
+    where: { projectId },
+    orderBy: { createdAt: 'desc' },
+    select: { candidates: { select: { expertId: true, excluded: true } } },
+  });
+  const onRun = new Set(
+    (latestRun?.candidates ?? []).filter((row) => !row.excluded).map((row) => row.expertId),
+  );
+
+  return matches
+    .map((expert) => {
+      const candidate = scored.get(expert.id);
+      return {
+        expertId: expert.id,
+        fullName: expert.fullName,
+        email: expert.email,
+        reference: expert.reference,
+        status: expert.status,
+        headline: expert.headline,
+        hourlyRateCents: expert.hourlyRateCents,
+        currency: expert.currency,
+        score: candidate?.score ?? 0,
+        rank: rankByExpert.get(expert.id) ?? 0,
+        excluded: candidate?.excluded ?? true,
+        exclusionReason: candidate?.exclusionReason ?? 'Not scored against this project.',
+        inLatestRun: onRun.has(expert.id),
+      } satisfies EligibleExpertMatch;
+    })
+    .sort((a, b) => Number(a.excluded) - Number(b.excluded) || b.score - a.score)
+    .slice(0, limit);
+}
+
+/**
  * Assemble the scoring inputs for every expert who could plausibly be matched.
  *
  * Archived experts are filtered in SQL; every other exclusion is decided by the

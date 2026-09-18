@@ -45,17 +45,39 @@ export function ScreeningDecisionPanel({
     <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
       <p className="text-xs font-semibold text-amber-900">Decision required on {reference}</p>
 
-      <label className="sr-only" htmlFor={`note-${screeningId}`}>
+      <label className="label text-amber-900" htmlFor={`note-${screeningId}`}>
         Note explaining the decision
       </label>
       <textarea
         id={`note-${screeningId}`}
         className="textarea"
         rows={2}
-        placeholder="Note (required to reject, to request a revision, or to resolve a conflict)"
+        placeholder="Required to reject, to request a revision, or to resolve a conflict"
         value={note}
         onChange={(event) => setNote(event.target.value)}
       />
+
+      {/* One box, two audiences — which is exactly the sort of thing an
+          operator should not have to remember. A revision request is sent to
+          the candidate verbatim; the other notes stay on the record. Checked
+          against the candidate projection in `getScreeningForCandidate`, which
+          returns `revisionFeedback` but never `decisionNote`. */}
+      <dl className="rounded-md border border-amber-200 bg-white/70 px-2.5 py-2 text-[0.72rem] leading-snug">
+        <div className="flex gap-1.5">
+          <dt className="font-semibold text-amber-900">Request a revision:</dt>
+          <dd className="text-ink-700">
+            Requested changes — visible to the candidate, word for word, in their portal.
+          </dd>
+        </div>
+        <div className="mt-1 flex gap-1.5">
+          <dt className="font-semibold text-amber-900">
+            Qualify, Do not qualify, Resolve conflict:
+          </dt>
+          <dd className="text-ink-700">
+            Kept on the record for operators. The candidate never sees it.
+          </dd>
+        </div>
+      </dl>
 
       {hasOpenConflict && (
         <p className="rounded bg-rose-50 px-2 py-1 text-xs text-rose-800">

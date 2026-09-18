@@ -411,6 +411,8 @@ export async function releaseAssignmentWithin(
     await advanceProjectStatus(tx, actor, assignment.projectId, 'STAFFING');
   }
 
+  const selfInitiated = actor.type === 'EXPERT' && actor.expertId === assignment.expertId;
+
   await recordActivity(tx, {
     actor,
     entityType: 'assignment',
@@ -418,8 +420,14 @@ export async function releaseAssignmentWithin(
     projectId: assignment.projectId,
     expertId: assignment.expertId,
     action: 'assignment.released',
-    summary: `${actor.label} released ${assignment.expert.fullName} from ${assignment.project.code}`,
-    metadata: { reason: reason.trim(), seatsFilled },
+    // An expert releasing their own seat is a withdrawal, and reading
+    // "Ada Lovelace released Ada Lovelace from PRJ-0008" in the history told
+    // nobody that. Operator-initiated releases keep saying who did it, so the
+    // two remain distinguishable at a glance.
+    summary: selfInitiated
+      ? `${assignment.expert.fullName} withdrew from ${assignment.project.code}, releasing their seat`
+      : `${actor.label} released ${assignment.expert.fullName} from ${assignment.project.code}`,
+    metadata: { reason: reason.trim(), seatsFilled, selfInitiated },
   });
 
   if (assignment.status === 'CONFIRMED') {
