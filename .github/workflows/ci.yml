@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: expertops
+          POSTGRES_PASSWORD: expertops
+          POSTGRES_DB: expertops_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U expertops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://expertops:expertops@localhost:5433/expertops_test?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: cp .env.example .env
+      - run: npx prisma generate
+
+      - name: Format check
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The backup/restore test shells out to pg_dump and pg_restore; the
+      # runner image ships PostgreSQL client tools, checked here so a missing
+      # binary fails with a clear message rather than inside a test.
+      - name: PostgreSQL client tools
+        run: pg_dump --version && pg_restore --version
+
+      # The suite's lock table is created before the first test file runs, so a
+      # brand-new test database needs its migrations applied up front.
+      - name: Migrate the test database
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+      - name: Tests
+        run: npm test
