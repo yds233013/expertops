@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/db';
 import { centsToRateDisplay } from '@/lib/money';
 import { formatDate, formatDateTime, formatRelative } from '@/lib/time';
-import { currentExpert } from '@/server/http/context';
+import Link from 'next/link';
+import { PORTAL_COOKIE, currentExpert, hasCookie } from '@/server/http/context';
 import { listAvailability } from '@/server/services/availability';
 import { listInvitationsForExpert } from '@/server/services/invitations';
 import { listExpertCommitments } from '@/server/services/staffing-gaps';
@@ -22,12 +23,31 @@ export default async function PortalHome() {
   const expert = await currentExpert();
 
   if (!expert) {
+    if (await hasCookie(PORTAL_COOKIE)) {
+      return (
+        <Card title="Your session has ended">
+          <p className="text-sm text-ink-600">
+            Open the most recent link sent to you to sign back in. Portal links are single-use, so
+            an older link will not work.
+          </p>
+        </Card>
+      );
+    }
     return (
-      <Card title="Your session has ended">
+      <Card title="Expert portal sign-in">
         <p className="text-sm text-ink-600">
-          Open the most recent link sent to you to sign back in. Portal links are single-use, so an
-          older link will not work.
+          Experts reach this portal through a single-use link sent with a project invitation. There
+          is no password to enter here. If you were expecting a link, open the most recent one you
+          were sent.
         </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link className="btn btn-primary" href="/demo">
+            See the read-only demo
+          </Link>
+          <Link className="btn btn-secondary" href="/apply/opportunities">
+            Browse open opportunities
+          </Link>
+        </div>
       </Card>
     );
   }

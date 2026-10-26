@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { formatDateTime, formatRelative } from '@/lib/time';
-import { currentCandidate } from '@/server/http/context';
+import Link from 'next/link';
+import { CANDIDATE_COOKIE, currentCandidate, hasCookie } from '@/server/http/context';
 import { listApplicationsForCandidate } from '@/server/services/applications';
 import { WithdrawApplicationButton } from '@/components/apply/withdraw-application-button';
 import { listScreeningsForCandidate } from '@/server/services/screening';
@@ -40,12 +41,30 @@ export default async function ApplyHome() {
   const candidate = await currentCandidate();
 
   if (!candidate) {
+    if (await hasCookie(CANDIDATE_COOKIE)) {
+      return (
+        <Card title="Your session has ended">
+          <p className="text-sm text-ink-600">
+            Open the most recent screening link sent to you to continue. Links are single-use, so an
+            older one will not work.
+          </p>
+        </Card>
+      );
+    }
     return (
-      <Card title="Your session has ended">
+      <Card title="Check on your application">
         <p className="text-sm text-ink-600">
-          Open the most recent screening link sent to you to continue. Links are single-use, so an
-          older one will not work.
+          This page shows the status of an application once you have one. You reach it through the
+          single-use link an operator sends after you apply; there is no account or password.
         </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link className="btn btn-primary" href="/apply/opportunities">
+            Browse open opportunities
+          </Link>
+          <Link className="btn btn-secondary" href="/demo">
+            See the read-only demo
+          </Link>
+        </div>
       </Card>
     );
   }

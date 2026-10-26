@@ -66,10 +66,11 @@ test('an expired screening link is refused, and says why', async ({ browser }) =
     ).toBeVisible();
     await expect(candidate.page.getByText(/expired/i)).toBeVisible();
 
-    // And it did not quietly create a session anyway.
+    // And it did not quietly create a session anyway: the browser holds no
+    // candidate cookie, so it gets the first-visit page, not an application.
     await candidate.page.goto('/apply');
     await expect(
-      candidate.page.getByRole('heading', { name: 'Your session has ended' }),
+      candidate.page.getByRole('heading', { name: 'Check on your application' }),
     ).toBeVisible();
   } finally {
     await prisma.$disconnect();

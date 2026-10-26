@@ -57,6 +57,18 @@ export async function requireCapability(
   return { operator, actor: operatorActor(operator) };
 }
 
+/**
+ * Whether the browser sent a cookie by this name at all, valid or not.
+ *
+ * Used only to word a signed-out page: somebody whose session lapsed is told
+ * it ended, somebody arriving for the first time is told how to get in. It
+ * never grants anything.
+ */
+export async function hasCookie(name: string): Promise<boolean> {
+  const store = await cookies();
+  return Boolean(store.get(name)?.value);
+}
+
 export async function currentCandidate(): Promise<Candidate | null> {
   const store = await cookies();
   return resolveCandidateSession(prisma, store.get(CANDIDATE_COOKIE)?.value);

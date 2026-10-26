@@ -99,6 +99,19 @@ test.describe('anonymous visitors', () => {
 
       await page.goto('/apply/opportunities');
       await expect(page.getByText(/practice listings, not real jobs/i)).toBeVisible();
+
+      // The front door sends a stranger to the demo, not to a login form.
+      await page.goto('/');
+      await expect(page).toHaveURL(/\/demo$/);
+
+      // A first visit to either portal explains how to get in, rather than
+      // claiming a session that never existed has ended.
+      await page.goto('/apply');
+      await expect(page.getByRole('heading', { name: 'Check on your application' })).toBeVisible();
+      await expect(page.getByText('Your session has ended')).toHaveCount(0);
+      await page.goto('/portal');
+      await expect(page.getByRole('heading', { name: 'Expert portal sign-in' })).toBeVisible();
+      await expect(page.getByText('Your session has ended')).toHaveCount(0);
     } finally {
       await context.close();
     }
