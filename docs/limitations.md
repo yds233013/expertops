@@ -1,6 +1,7 @@
 # Known limitations
 
-This is the first product slice of ExpertOps, built to run locally against
+ExpertOps runs locally and as a hosted demo
+(<https://web-production-09e7e.up.railway.app>), in both cases against
 synthetic data. **No claim is made that it is production-ready, and no time
 saving has been measured or is claimed anywhere in this repository.**
 
@@ -36,21 +37,29 @@ present:
   one-directional simulated email.
 - **Document handling.** No CV upload, no certificate storage, no file storage
   of any kind.
-- **Bulk import.** Experts are created one at a time through the form or the
-  API.
+- **Bulk import beyond CSV.** Experts can be created through the form, the
+  API, or a CSV import with a preview step (`/api/experts/import`); there is no
+  connector to an ATS or CRM.
 
 ---
 
 ## Security
 
-Sized for a local demo. Everything here would need work first.
+Sized for a demo on synthetic data. What exists, and what would need work
+before real participants:
 
-- **No CSRF protection.** Sessions are cookie-based and state-changing endpoints
-  accept a request with a valid cookie regardless of origin. `SameSite=Lax`
-  mitigates the simplest cases and nothing more.
-- **No rate limiting anywhere.** Login, the portal magic-link exchange, and
-  every mutation are unthrottled. Login is brute-forceable.
-- **No account lockout** after repeated failures.
+- **CSRF protection exists.** `src/middleware.ts` issues a signed token cookie
+  (`src/server/http/csrf-edge.ts`), and every state-changing request with a
+  session must echo it in a header and come from an allowed `Origin`/`Referer`
+  (`src/server/http/csrf.ts`). Covered by `tests/api/csrf.test.ts`.
+- **Sign-in is throttled.** `src/server/services/login-protection.ts` refuses
+  attempts after 8 failures per email or 30 per client address inside a
+  15-minute window. The lockout is a refusal to attempt, not a flag on the
+  account, so nobody can lock a colleague out permanently. Public applications
+  are rate-limited per email and per address the same way.
+- **No general rate limiting.** Beyond sign-in and public applications, other
+  endpoints (including the portal magic-link exchange, which is single-use) are
+  not throttled.
 - **bcrypt at cost 10** (cost 4 in tests, for speed). Defensible locally,
   low for anything else.
 - **`AUTH_SECRET` has an insecure default** in `.env.example` and is only
@@ -60,7 +69,9 @@ Sized for a local demo. Everything here would need work first.
   every unredeemed portal link at once.
 - **Reads are not audited.** The activity history records writes. Nobody can
   tell who *looked* at an expert record.
-- **No security headers** beyond Next.js defaults. No CSP, no HSTS.
+- **Few security headers.** `next.config.ts` sets a `Referrer-Policy` (and
+  `no-referrer` on the portal trees). There is no CSP and no HSTS from the app
+  itself.
 - **Portal links are shown in the operator UI** when
   `EXPOSE_PORTAL_LINKS_IN_UI=true`. That is a deliberate demo affordance and it
   is forced off when `NODE_ENV=production`, but the flag exists and could be set

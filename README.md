@@ -1,10 +1,44 @@
 # ExpertOps
 
-A local-only operator workspace for running an expert network end to end:
-finding people, qualifying them, onboarding them, staffing them onto client
-projects, supporting them through delivery, and preparing payment.
+[![CI](https://github.com/yds233013/expertops/actions/workflows/ci.yml/badge.svg)](https://github.com/yds233013/expertops/actions/workflows/ci.yml)
 
-The whole lifecycle, in one connected system:
+An operations workspace for running an expert network end to end: sourcing and
+screening people, staffing them onto client projects, reviewing their work and
+preparing payment, with a human sign-off at every consequential step.
+
+**Live demo: <https://web-production-09e7e.up.railway.app>** — opens on the
+public, read-only [`/demo`](https://web-production-09e7e.up.railway.app/demo)
+page (no login). The applicant side is at
+[`/apply/opportunities`](https://web-production-09e7e.up.railway.app/apply/opportunities).
+Demo runs on synthetic data; email is simulated and no money moves.
+
+- **Ingest:** public opportunity listings and an application form, operator
+  entry, and CSV import, with duplicate detection held for a human decision.
+- **Screen and match:** rubric-versioned screenings with reviewer assignment,
+  overdue chasing and conflict resolution; deterministic, explainable matching
+  (`rules-v1`) that shows why each expert was ranked or excluded.
+- **Staff and deliver:** approved outreach batches, single-use magic-link
+  portals for experts and candidates, onboarding verification, race-safe seat
+  confirmation, withdrawal and replacement, work review.
+- **Output:** payment batches with discrepancy explanations and two-person
+  approval, exported to CSV; every transition attributed in an activity log.
+- **Automation:** a PostgreSQL-backed job queue and scheduler (reminders,
+  deadlines, attention sweeps, simulated outbox) running as a separate worker.
+
+![Operator dashboard](docs/screenshots/operator-dashboard-desktop.png)
+
+**Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Prisma · PostgreSQL
+16 · Tailwind 4 · Vitest · Playwright · deployed on Railway (web + worker +
+Postgres).
+
+```bash
+npm install && cp .env.example .env
+npm run db:up && npm run db:migrate && npm run db:generate && npm run db:seed
+npm run dev        # web on http://localhost:3000
+npm run worker     # background worker, in a second terminal
+```
+
+The core lifecycle:
 
 ```
 application → screening → human qualification → onboarding → operator
@@ -14,15 +48,8 @@ work submission → human review → payment preparation → export → offboard
 
 Routine coordination is automated. Consequential decisions are not: ten named
 approval gates require a signed-in human, and every one is recorded against the
-operator who made it.
-
-Everything runs against local services with synthetic data. There are no paid
-APIs, no language models, no real email, no external accounts and no public
-deployment anywhere in this build.
-
-ExpertOps is an independent project inspired by the responsibilities of an
-operations role at a frontier AI data lab. It is not affiliated with any
-company, and it makes no comparison to any commercial product.
+operator who made it. There are no paid APIs and no language models; matching
+is deterministic rules.
 
 ---
 
@@ -37,6 +64,7 @@ company, and it makes no comparison to any commercial product.
 - [Demo credentials](#demo-credentials)
 - [Testing](#testing)
 - [What is automated, what a human decides, what is simulated](#what-is-automated-what-a-human-decides-what-is-simulated)
+- [Hosted deployment](#hosted-deployment)
 - [Documentation](#documentation)
 - [Known limitations](#known-limitations)
 
@@ -440,9 +468,12 @@ defaults to `demo-password-123`.
   operator outbox so the workflow is demoable without email; that flag is forced
   off when `NODE_ENV=production`.
 
-Before this were ever deployed anywhere, the seed accounts would need removing
-and `AUTH_SECRET` would need replacing. See
-[Known limitations](#known-limitations).
+A production deployment refuses to boot with the placeholder `AUTH_SECRET`, the
+shared `SEED_DEMO_PASSWORD`, or `EXPOSE_PORTAL_LINKS_IN_UI=true`
+(`configurationProblems` in `src/lib/env.ts`), and the seed refuses to truncate
+a production database. Anonymous visitors to the hosted site get the read-only
+`/demo` page rather than a shared login. See
+[Hosted deployment](#hosted-deployment).
 
 ---
 
@@ -450,25 +481,43 @@ and `AUTH_SECRET` would need replacing. See
 
 ```bash
 npm test                  # everything
-npm run test:unit         # pure logic, no database
+npm run test:unit         # pure logic
 npm run test:api          # route handlers, real database
 npm run test:integration  # services, worker, concurrency, seed
 ```
 
-Integration and API tests run against the real `expertops_test` PostgreSQL
-database. They apply migrations once per process and truncate between cases, so
-`npm run db:up` must be running.
+Every layer, including `test:unit`, needs PostgreSQL: the vitest global setup
+(`tests/global-setup.ts`) takes a cross-process lock in the `expertops_test`
+database before any file runs. The unit tests themselves do not query it, but
+`npm run db:up` (or your own PostgreSQL via `TEST_DATABASE_URL`) must be
+running. API and integration tests apply migrations once per process and
+truncate between cases.
+
+On a brand-new test database, apply migrations once before the first run;
+otherwise the lock table makes the schema non-empty and Prisma refuses with
+`P3005`:
+
+```bash
+DATABASE_URL="postgresql://expertops:expertops@localhost:5433/expertops_test?schema=public" \
+  npx prisma migrate deploy
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs format check,
+lint, typecheck and the full vitest suite against a PostgreSQL 16 service on
+every push and pull request.
 
 ### Results
 
 ```
-Test Files  27 passed (27)
-     Tests  464 passed (464)
-  Duration  ~265s
+Test Files  49 passed (49)
+     Tests  669 passed (669)
+  Duration  ~175s
 ```
 
 Plus 25 browser tests in `npm run e2e`, which takes about 80 seconds including
 the production build it starts from.
+
+A selection of the suites:
 
 | Suite | Tests | Covers |
 | --- | --- | --- |
@@ -658,10 +707,32 @@ Chromium only.
 
 ---
 
+## Hosted deployment
+
+<https://web-production-09e7e.up.railway.app> runs on Railway as three services:
+the Next.js app, the worker, and PostgreSQL. Migrations run as a pre-deploy
+step and `/api/health` is the health check.
+
+| Path | Who | What |
+| --- | --- | --- |
+| `/` | anyone | Redirects to `/demo`, or to `/dashboard` when signed in as an operator |
+| `/demo` | anyone | Read-only aggregate view: network, projects, a worked match run |
+| `/apply/opportunities` | anyone | Public listings and the application form |
+| `/apply`, `/portal` | candidates, experts | Reached through single-use links; explain how to get in otherwise |
+| `/login` and every operator page and API | operators | Require a signed-in operator with the right capability |
+
+Setup, cost and verification are in
+[`docs/staging-deployment.md`](docs/staging-deployment.md) and
+[`docs/staging-verification.md`](docs/staging-verification.md).
+
+---
+
 ## Documentation
 
 | Document | Contents |
 | --- | --- |
+| [`docs/case-study.md`](docs/case-study.md) | The problem, the design decisions, and what was built |
+| [`docs/five-minute-tour.md`](docs/five-minute-tour.md) | A five-minute scripted tour of the hosted environment |
 | [`docs/architecture.md`](docs/architecture.md) | Layering, the service boundary, the job queue, concurrency strategy |
 | [`docs/automation.md`](docs/automation.md) | Every event-driven workflow, approval gate and reminder rule |
 | [`docs/playbook.md`](docs/playbook.md) | A short operator playbook: how to actually run a day |
@@ -685,8 +756,11 @@ list with reasoning.
 about its readiness for one. No time saving has been measured and none is
 claimed. No comparison is made to any commercial product.**
 
-- **Security is sized for a local demo.** Cookie sessions with no CSRF tokens,
-  no rate limiting, no account lockout, no audit of reads. bcrypt cost 10.
+- **Security is sized for a demo on synthetic data.** Cookie sessions with
+  signed CSRF tokens and origin checks on every mutation, and sign-in throttling
+  (8 failures per email or 30 per address in 15 minutes). There is no general
+  rate limiting beyond sign-in and public applications, no audit of reads, no
+  CSP, and bcrypt runs at cost 10.
 - **Matching is deliberately simple.** Six weighted components over declared
   skills. It has no notion of past performance, client feedback, or relevance
   beyond a skill tag, because none of that data exists yet.

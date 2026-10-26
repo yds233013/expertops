@@ -112,7 +112,7 @@ async function nextCandidateReference(db: Db): Promise<string> {
 /**
  * Bounded abuse protection, reusing the same table the sign-in throttle uses.
  *
- * Deliberately generous: this is a staging exercise behind a gate, and the cost
+ * Deliberately generous: this is a public demo on synthetic data, and the cost
  * of a false positive — a real applicant told to come back later — is higher
  * than the cost of a few extra synthetic rows.
  */

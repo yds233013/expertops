@@ -1,8 +1,9 @@
 # Staging deployment
 
-A private staging environment for ExpertOps: the Next.js app, the persistent
-worker and PostgreSQL, reachable only by invited testers, carrying synthetic
-data and simulated email.
+The hosted environment for ExpertOps: the Next.js app, the persistent worker
+and PostgreSQL, carrying synthetic data and simulated email. It is publicly
+reachable: anonymous visitors get the read-only demo and the applicant pages,
+and everything else requires an operator sign-in.
 
 **This is deployed on Railway.** See
 [Deployed on Railway](#deployed-on-railway) for what is running, what it costs
@@ -13,10 +14,8 @@ arrangement is kept because the packaging, the guards, the backup and restore
 scripts, the operator tooling and the tester model are all shared with the
 Railway deployment, and because it remains the fallback.
 
-Railway rather than Render because Railway is where the account's other project
-already lives. Render was chosen on 12 September 2026 on the assumption that it
-hosted Ledger AI; inspecting the account showed Ledger AI runs on Railway and
-there is no Render account at all.
+Railway rather than Render because the account already had a Railway workspace
+and no Render account.
 
 Read [`pilot-readiness.md`](pilot-readiness.md) first. Staging closes the
 *hosting* blocker for a synthetic environment. It does not close real email,
@@ -78,14 +77,17 @@ rather than a bigger VPS.
 
 ## Deployed on Railway
 
-Live at **https://web-production-09e7e.up.railway.app**, behind the tester gate.
+Live at **https://web-production-09e7e.up.railway.app**. The shared tester
+gate was switched off on 15 September 2026 (see
+[`staging-verification.md`](staging-verification.md)); anonymous visitors now
+reach `/demo`, `/apply/opportunities` and `/login`, and every operator page and
+API still requires a session.
 Project `expertops-staging` in the workspace "Yash Shah's Projects", environment
 `production`, region `ams`. Deployed 13 September 2026.
 
-Ledger AI's project `jubilant-hope` is untouched and shares nothing with this
-one: separate project, separate PostgreSQL instance, separate credentials,
-separate private network. The only thing the two share is the workspace usage
-pool and the one plan fee.
+The project has its own PostgreSQL instance, credentials and private network;
+it shares only the workspace usage pool and plan fee with anything else in the
+account.
 
 | Service | What it runs | Memory in use |
 | --- | --- | --- |
@@ -101,16 +103,13 @@ at this size.
 
 | | Monthly |
 | --- | --- |
-| Ledger AI, projected from the current period | $3.36 |
 | ExpertOps, 455 MB steady state | ~$4.50 |
-| Usage total | ~$7.90 |
 | Less the $5.00 included | −$5.00 |
-| **Paid on top of the $5.00 plan fee** | **~$2.90** |
+| **Paid on top of the $5.00 plan fee** | **$0, within the included usage** |
 
 A **soft** usage limit of $10.00 is set on the workspace. Soft means an email
 alert. There is deliberately no hard limit: a hard limit suspends resources
-across the whole workspace, which would take Ledger AI down along with
-ExpertOps.
+across the whole workspace, not just this project.
 
 ### How the services are configured
 
