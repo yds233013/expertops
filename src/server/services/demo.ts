@@ -1,3 +1,4 @@
+import { now as clockNow } from '@/lib/clock';
 import { type Db } from '@/lib/db';
 
 /**
@@ -69,10 +70,20 @@ export interface DemoOverview {
   network: DemoNetwork;
   projects: DemoProject[];
   ranking: DemoRanking | null;
+  /**
+   * Listings accepting applications right now: published and not past their
+   * deadline. The same rule `/apply/opportunities` uses for "open", so the two
+   * pages cannot disagree.
+   */
   openOpportunities: number;
+  /** Background jobs that finished successfully in the last 24 hours. */
   jobsSucceeded: number;
+  /** Jobs that exhausted their retries in the last 24 hours. */
   jobsFailed: number;
 }
+
+/** The window the job counts cover. Lifetime totals of a scheduler mean nothing. */
+export const DEMO_JOB_WINDOW_HOURS = 24;
 
 /**
  * Aggregate shape of the network. Counts only — no person appears here.
@@ -192,15 +203,23 @@ async function demoRanking(db: Db): Promise<DemoRanking | null> {
   };
 }
 
-export async function demoOverview(db: Db): Promise<DemoOverview> {
+export async function demoOverview(db: Db, now: Date = clockNow()): Promise<DemoOverview> {
+  const since = new Date(now.getTime() - DEMO_JOB_WINDOW_HOURS * 60 * 60 * 1000);
   const [network, projects, ranking, openOpportunities, jobsSucceeded, jobsFailed] =
     await Promise.all([
       demoNetwork(db),
       demoProjects(db),
       demoRanking(db),
-      db.opportunity.count({ where: { status: 'PUBLISHED', project: { demoEligible: true } } }),
-      db.job.count({ where: { status: 'SUCCEEDED' } }),
-      db.job.count({ where: { status: { in: ['FAILED', 'DEAD'] } } }),
+      // Listings are public already, so this counts exactly what the public
+      // listing marks open rather than a narrower demo-only subset.
+      db.opportunity.count({
+        where: {
+          status: 'PUBLISHED',
+          OR: [{ applicationDeadline: null }, { applicationDeadline: { gt: now } }],
+        },
+      }),
+      db.job.count({ where: { status: 'SUCCEEDED', finishedAt: { gte: since } } }),
+      db.job.count({ where: { status: 'DEAD', updatedAt: { gte: since } } }),
     ]);
 
   return { network, projects, ranking, openOpportunities, jobsSucceeded, jobsFailed };

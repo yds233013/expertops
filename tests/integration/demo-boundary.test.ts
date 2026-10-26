@@ -3,7 +3,11 @@ import { prisma } from '@/lib/db';
 import { applyMigrations, truncateAll } from '../helpers/db';
 import { actorFor, makeExpert, makeOperator, makeProject } from '../helpers/factories';
 import { demoOverview } from '@/server/services/demo';
-import { createOpportunity, publishOpportunity } from '@/server/services/opportunities';
+import {
+  createOpportunity,
+  listPublishedOpportunities,
+  publishOpportunity,
+} from '@/server/services/opportunities';
 import { applyToOpportunity } from '@/server/services/applications';
 
 /**
@@ -162,5 +166,57 @@ describe('the public demo boundary', () => {
     expect(operator.id).toBeTruthy();
     // And the eligible one is the only thing that can appear.
     if (references.length > 0) expect(references).toContain(seededRecord.reference);
+  });
+  it('counts open listings by the same rule as the public listing page', async () => {
+    const { actor, project } = await seededNetwork();
+    const domain = await prisma.domain.create({
+      data: { slug: 'demo-count-area', name: 'Coding', description: 'Test area.' },
+    });
+
+    async function published(title: string) {
+      const opportunity = await createOpportunity(prisma, actor, {
+        title,
+        kind: 'PROJECT_ENGAGEMENT',
+        domainId: domain.id,
+        projectId: project.id,
+        summary: 'A listing.',
+        description: 'A listing.',
+        requiredSkills: [],
+        questions: [],
+      });
+      await publishOpportunity(prisma, actor, opportunity.id);
+      return opportunity;
+    }
+
+    await published('Still open');
+    const lapsed = await published('Deadline passed');
+    // A published listing whose deadline has gone by is shown as closed on
+    // /apply/opportunities, so the demo must not count it as open either.
+    await prisma.opportunity.update({
+      where: { id: lapsed.id },
+      data: { applicationDeadline: new Date(Date.now() - 60_000) },
+    });
+
+    const overview = await demoOverview(prisma);
+    const listing = await listPublishedOpportunities(prisma);
+    expect(listing).toHaveLength(2);
+    expect(overview.openOpportunities).toBe(listing.filter((row) => row.open).length);
+    expect(overview.openOpportunities).toBe(1);
+  });
+
+  it('reports worker jobs over a recent window, not a lifetime total', async () => {
+    await seededNetwork();
+    const now = new Date();
+    const hour = 60 * 60 * 1000;
+    await prisma.job.createMany({
+      data: [
+        { type: 'demo.recent', status: 'SUCCEEDED', finishedAt: new Date(now.getTime() - hour) },
+        { type: 'demo.old', status: 'SUCCEEDED', finishedAt: new Date(now.getTime() - 48 * hour) },
+      ],
+    });
+
+    const overview = await demoOverview(prisma, now);
+    expect(overview.jobsSucceeded).toBe(1);
+    expect(overview.jobsFailed).toBe(0);
   });
 });
