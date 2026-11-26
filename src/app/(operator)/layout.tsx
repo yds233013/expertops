@@ -22,6 +22,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/attention', label: 'Needs attention' },
       { href: '/dashboard', label: 'Dashboard' },
+      { href: '/metrics', label: 'Metrics' },
     ],
   },
   {
@@ -47,6 +48,7 @@ const NAV_GROUPS: NavGroup[] = [
     heading: 'Delivery',
     items: [
       { href: '/work', label: 'Work' },
+      { href: '/quality', label: 'Task quality' },
       { href: '/support', label: 'Support' },
       { href: '/payments', label: 'Payments' },
     ],
@@ -85,7 +87,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
   const waitingTotal = Object.values(badges).reduce((sum, value) => sum + value, 0);
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[16rem_1fr]">
+    <div className="min-h-screen lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
       {/* The first stop for a keyboard, so the rail can be skipped. */}
       <a className="skip-link" href="#main">
         Skip to content
@@ -112,7 +114,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
         </div>
       </div>
 
-      <div className="flex min-h-screen flex-col">
+      <div className="flex min-h-screen min-w-0 flex-col">
         <header className="topbar">
           <span className="hidden text-xs text-ink-500 sm:inline">{environmentLabel()}</span>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">

@@ -8,6 +8,7 @@ import { listInvitationsForExpert } from '@/server/services/invitations';
 import { listExpertCommitments } from '@/server/services/staffing-gaps';
 import { listSupportForExpert } from '@/server/services/support';
 import { listWorkItemsForExpert } from '@/server/services/work';
+import { taskSpecSchema, type TaskSpec } from '@/server/domain/task-checks';
 import { AvailabilityPanel } from '@/components/portal/availability-panel';
 import { ContactPreferencePanel } from '@/components/portal/contact-preference-panel';
 import { InvitationPanel } from '@/components/portal/invitation-panel';
@@ -18,6 +19,13 @@ import { WorkPanel } from '@/components/portal/work-panel';
 import { Badge, Card, FieldRow, NextAction, StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
+
+/** The expert's own task, echoed back. A malformed row is simply not shown. */
+function readTaskSpec(value: unknown): TaskSpec | null {
+  if (value === null || value === undefined) return null;
+  const parsed = taskSpecSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
 export default async function PortalHome() {
   const expert = await currentExpert();
@@ -233,8 +241,16 @@ export default async function PortalHome() {
                     summary: item.submissions[0].summary,
                     content: item.submissions[0].content,
                     hoursClaimed: item.submissions[0].hoursClaimed,
+                    submittedAt: item.submissions[0].submittedAt.toISOString(),
+                    taskSpec: readTaskSpec(item.submissions[0].taskSpec),
                   }
                 : null,
+              history: item.submissions.map((submission) => ({
+                revision: submission.revision,
+                summary: submission.summary,
+                submittedAt: submission.submittedAt.toISOString(),
+                taskSpec: readTaskSpec(submission.taskSpec),
+              })),
               revisionRequest:
                 item.status === 'REVISION_REQUESTED'
                   ? (latestReview?.revisionRequest ?? null)

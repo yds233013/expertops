@@ -10,6 +10,10 @@ import { AssignWorkPanel } from '@/components/assign-work-panel';
 import { ReviewWorkPanel } from '@/components/review-work-panel';
 import { AssignOffboardingTask } from '@/components/assign-offboarding-task';
 import { ConfirmOffboardingTask } from '@/components/confirm-offboarding-task';
+import { ActionButton } from '@/components/action-button';
+import { TaskCheckDetail, VerdictBadge, SolvedCount, SolverTag } from '@/components/task-quality';
+import { taskSpecSchema } from '@/server/domain/task-checks';
+import { needsAttention, VERDICT_GUIDANCE } from '@/lib/task-quality-format';
 import {
   Badge,
   Card,
@@ -62,6 +66,19 @@ export default async function DeliveryPage({
     orderBy: { confirmedAt: 'desc' },
     take: 100,
   });
+
+  // The list carries a summary of each check; the detail (findings, attempts,
+  // tokens) is read here only for submissions that are evaluation tasks.
+  const taskSubmissionIds = items.flatMap((item) => {
+    const latest = item.submissions[0];
+    return latest && latest.taskSpec !== null ? [latest.id] : [];
+  });
+  const taskChecks =
+    taskSubmissionIds.length === 0
+      ? []
+      : await prisma.taskCheck.findMany({ where: { submissionId: { in: taskSubmissionIds } } });
+  const checkBySubmission = new Map(taskChecks.map((check) => [check.submissionId, check]));
+  const canRecheck = roleHasCapability(operator.role, 'quality:write');
 
   const canWrite = roleHasCapability(operator.role, 'work:write');
   const canReview = roleHasCapability(operator.role, 'work:review');
@@ -144,67 +161,160 @@ export default async function DeliveryPage({
           />
         ) : (
           <div className="space-y-3">
-            {items.map((item) => (
-              <div key={item.id} className="rounded-lg border border-ink-200 px-4 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-ink-500">{item.reference}</span>
-                      <h3 className="text-sm font-semibold text-ink-900">{item.title}</h3>
-                      <StatusBadge status={item.status} />
-                      <Badge tone="muted">{item.basis.toLowerCase()}</Badge>
+            {items.map((item) => {
+              const latest = item.submissions[0];
+              const parsedSpec = latest?.taskSpec
+                ? taskSpecSchema.safeParse(latest.taskSpec)
+                : null;
+              const spec = parsedSpec?.success ? parsedSpec.data : null;
+              const check = latest ? (checkBySubmission.get(latest.id) ?? null) : null;
+              const flagged = needsAttention(check?.verdict);
+              return (
+                <div
+                  key={item.id}
+                  id={item.reference}
+                  className="scroll-mt-20 rounded-lg border border-ink-200 px-4 py-3 target:border-accent-300 target:ring-2 target:ring-accent-100"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs text-ink-500">{item.reference}</span>
+                        <h3 className="text-sm font-semibold text-ink-900">{item.title}</h3>
+                        <StatusBadge status={item.status} />
+                        <Badge tone="muted">{item.basis.toLowerCase()}</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-ink-500">
+                        <Link
+                          className="text-accent-600 hover:underline"
+                          href={`/experts/${item.expert.id}`}
+                        >
+                          {item.expert.fullName}
+                        </Link>
+                        {' · '}
+                        <Link
+                          className="text-accent-600 hover:underline"
+                          href={`/projects/${item.project.id}`}
+                        >
+                          {item.project.code}
+                        </Link>
+                        {item.dueAt ? ` · due ${formatDate(item.dueAt)}` : ''}
+                        {` · revision ${item.currentRevision}`}
+                      </p>
+                      {item.submissions[0] && (
+                        <p className="mt-1 text-xs text-ink-600">
+                          Last submitted {formatRelative(item.submissions[0].submittedAt)}
+                          {item.submissions[0].hoursClaimed
+                            ? `, claiming ${item.submissions[0].hoursClaimed.toString()} hours`
+                            : ''}
+                        </p>
+                      )}
+                      {item.paymentItem && (
+                        <p className="mt-1 text-xs text-ink-600">
+                          Payment {item.paymentItem.reference} (
+                          {item.paymentItem.status.toLowerCase()})
+                        </p>
+                      )}
                     </div>
-                    <p className="mt-1 text-xs text-ink-500">
+
+                    {canReview && (item.status === 'SUBMITTED' || item.status === 'IN_REVIEW') ? (
+                      <ReviewWorkPanel
+                        workItemId={item.id}
+                        reference={item.reference}
+                        basis={item.basis}
+                        claimedQuantity={item.submissions[0]?.hoursClaimed?.toString() ?? null}
+                        context={
+                          spec ? (
+                            check ? (
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-xs font-semibold text-ink-700">
+                                    Task check
+                                  </span>
+                                  <VerdictBadge verdict={check.verdict} status={check.status} />
+                                  {check.provider === 'simulated' && (
+                                    <SolverTag provider={check.provider} />
+                                  )}
+                                </div>
+                                {check.verdict && check.status !== 'INCONCLUSIVE' && (
+                                  <p className="text-[0.7rem] leading-snug text-ink-600">
+                                    {VERDICT_GUIDANCE[check.verdict]} Advice only; the decision is
+                                    yours.
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-[0.7rem] text-ink-600">
+                                Task check queued. You can review now or wait for it.
+                              </p>
+                            )
+                          ) : undefined
+                        }
+                      />
+                    ) : (
                       <Link
-                        className="text-accent-600 hover:underline"
-                        href={`/experts/${item.expert.id}`}
-                      >
-                        {item.expert.fullName}
-                      </Link>
-                      {' · '}
-                      <Link
-                        className="text-accent-600 hover:underline"
+                        className="btn btn-secondary btn-sm"
                         href={`/projects/${item.project.id}`}
                       >
-                        {item.project.code}
+                        Open project
                       </Link>
-                      {item.dueAt ? ` · due ${formatDate(item.dueAt)}` : ''}
-                      {` · revision ${item.currentRevision}`}
-                    </p>
-                    {item.submissions[0] && (
-                      <p className="mt-1 text-xs text-ink-600">
-                        Last submitted {formatRelative(item.submissions[0].submittedAt)}
-                        {item.submissions[0].hoursClaimed
-                          ? `, claiming ${item.submissions[0].hoursClaimed.toString()} hours`
-                          : ''}
-                      </p>
-                    )}
-                    {item.paymentItem && (
-                      <p className="mt-1 text-xs text-ink-600">
-                        Payment {item.paymentItem.reference} (
-                        {item.paymentItem.status.toLowerCase()})
-                      </p>
                     )}
                   </div>
 
-                  {canReview && (item.status === 'SUBMITTED' || item.status === 'IN_REVIEW') ? (
-                    <ReviewWorkPanel
-                      workItemId={item.id}
-                      reference={item.reference}
-                      basis={item.basis}
-                      claimedQuantity={item.submissions[0]?.hoursClaimed?.toString() ?? null}
-                    />
-                  ) : (
-                    <Link
-                      className="btn btn-secondary btn-sm"
-                      href={`/projects/${item.project.id}`}
+                  {latest && latest.taskSpec !== null && (
+                    <details
+                      className="group mt-3 border-t border-ink-100 pt-2.5"
+                      open={flagged || !check}
                     >
-                      Open project
-                    </Link>
+                      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 rounded text-xs">
+                        <span
+                          aria-hidden="true"
+                          className="text-ink-400 transition-transform group-open:rotate-90"
+                        >
+                          &rsaquo;
+                        </span>
+                        <span className="font-semibold text-ink-700">
+                          Evaluation task · revision {latest.revision}
+                        </span>
+                        {check ? (
+                          <>
+                            <VerdictBadge verdict={check.verdict} status={check.status} />
+                            <SolvedCount
+                              passes={check.passes}
+                              valid={check.validAttempts}
+                              verdict={check.verdict}
+                            />
+                            <SolverTag provider={check.provider} model={check.model} />
+                          </>
+                        ) : (
+                          <Badge tone="muted">check queued</Badge>
+                        )}
+                      </summary>
+                      <div className="mt-3">
+                        {spec ? (
+                          <TaskCheckDetail
+                            spec={spec}
+                            check={check}
+                            actions={
+                              canRecheck ? (
+                                <ActionButton
+                                  url={`/api/work-items/${item.id}/task-check`}
+                                  label="Re-run check"
+                                  pendingLabel="Queueing…"
+                                />
+                              ) : undefined
+                            }
+                          />
+                        ) : (
+                          <p className="text-sm text-rose-800">
+                            The stored task does not match the task format, so it cannot be shown.
+                          </p>
+                        )}
+                      </div>
+                    </details>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

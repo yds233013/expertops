@@ -3,7 +3,16 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiPost } from '@/lib/api-client';
+import { formatDate } from '@/lib/time';
+import type { TaskSpec } from '@/server/domain/task-checks';
 import { Badge, Card, EmptyState, StatusBadge } from '@/components/ui';
+import { TaskSpecView } from '@/components/task-quality';
+import {
+  CheckerFields,
+  checkerFromDraft,
+  draftFromChecker,
+  type CheckerDraft,
+} from '@/components/checker-fields';
 
 export interface PortalWorkItem {
   id: string;
@@ -19,7 +28,16 @@ export interface PortalWorkItem {
     summary: string;
     content: string;
     hoursClaimed: string | null;
+    submittedAt: string;
+    taskSpec: TaskSpec | null;
   } | null;
+  /** Every revision the expert has handed in, newest first. */
+  history: {
+    revision: number;
+    summary: string;
+    submittedAt: string;
+    taskSpec: TaskSpec | null;
+  }[];
   revisionRequest: string | null;
   reviewSummary: string | null;
 }
@@ -30,41 +48,73 @@ export interface PortalWorkItem {
  * A revision request is shown as the first thing on the item, because it is the
  * only reason the expert is looking at an item they already submitted.
  */
+interface Draft {
+  content: string;
+  summary: string;
+  hours: string;
+  /** Whether this submission is an evaluation task with a checkable answer. */
+  isTask: boolean;
+  prompt: string;
+  referenceAnswer: string;
+  checker: CheckerDraft;
+}
+
+function initialDraft(item: PortalWorkItem): Draft {
+  const spec = item.lastSubmission?.taskSpec ?? null;
+  return {
+    content: item.lastSubmission?.content ?? '',
+    summary: item.lastSubmission?.summary ?? '',
+    hours: item.lastSubmission?.hoursClaimed ?? '',
+    isTask: spec !== null,
+    prompt: spec?.prompt ?? '',
+    referenceAnswer: spec?.referenceAnswer ?? '',
+    checker: draftFromChecker(spec?.checker),
+  };
+}
+
 export function WorkPanel({ items }: { items: PortalWorkItem[] }) {
   const router = useRouter();
-  const [drafts, setDrafts] = useState<
-    Record<string, { content: string; summary: string; hours: string }>
-  >(() =>
-    Object.fromEntries(
-      items.map((item) => [
-        item.id,
-        {
-          content: item.lastSubmission?.content ?? '',
-          summary: item.lastSubmission?.summary ?? '',
-          hours: item.lastSubmission?.hoursClaimed ?? '',
-        },
-      ]),
-    ),
+  const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
+    Object.fromEntries(items.map((item) => [item.id, initialDraft(item)])),
   );
   const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ id: string; message: string } | null>(null);
 
-  function patch(id: string, change: Partial<{ content: string; summary: string; hours: string }>) {
+  function patch(id: string, change: Partial<Draft>) {
     setDrafts((previous) => ({ ...previous, [id]: { ...previous[id]!, ...change } }));
   }
 
   async function submit(item: PortalWorkItem) {
     const draft = drafts[item.id]!;
-    setPending(item.id);
     setError(null);
+
+    let taskSpec: TaskSpec | undefined;
+    if (draft.isTask) {
+      const built = checkerFromDraft(draft.checker);
+      if ('error' in built) {
+        setError({ id: item.id, message: built.error });
+        return;
+      }
+      taskSpec = {
+        prompt: draft.prompt.trim(),
+        referenceAnswer: draft.referenceAnswer.trim(),
+        checker: built.checker,
+      };
+    }
+
+    setPending(item.id);
     try {
       const result = await apiPost(`/api/portal/work/${item.id}`, {
         content: draft.content,
         summary: draft.summary || undefined,
         hoursClaimed: item.basis === 'HOURLY' ? draft.hours : undefined,
+        ...(taskSpec ? { taskSpec } : {}),
       });
       if (!result.ok) {
-        setError(result.error?.message ?? 'Your work could not be submitted.');
+        setError({
+          id: item.id,
+          message: result.error?.message ?? 'Your work could not be submitted.',
+        });
         return;
       }
       router.refresh();
@@ -156,10 +206,92 @@ export function WorkPanel({ items }: { items: PortalWorkItem[] }) {
                         />
                       </div>
                     )}
+
+                    <div className="rounded-md border border-ink-200 bg-ink-50/60 px-3 py-2.5">
+                      <label className="flex cursor-pointer items-start gap-2.5">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-ink-300 accent-accent-500"
+                          checked={draft.isTask}
+                          aria-controls={`work-task-${item.id}`}
+                          onChange={(event) => patch(item.id, { isTask: event.target.checked })}
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-ink-900">
+                            This is an evaluation task
+                          </span>
+                          <span className="block text-xs text-ink-500">
+                            Tick this if you wrote a question with one right answer. We try it
+                            against an AI model to check it can be graded, does not give its answer
+                            away, and is not too easy.
+                          </span>
+                        </span>
+                      </label>
+
+                      {draft.isTask && (
+                        <fieldset
+                          id={`work-task-${item.id}`}
+                          className="mt-3 space-y-3 border-t border-ink-200 pt-3"
+                        >
+                          <legend className="sr-only">Evaluation task</legend>
+                          <div>
+                            <label htmlFor={`work-prompt-${item.id}`} className="label">
+                              The task, as the model will see it
+                            </label>
+                            <textarea
+                              id={`work-prompt-${item.id}`}
+                              rows={5}
+                              className="textarea"
+                              value={draft.prompt}
+                              aria-describedby={`work-prompt-hint-${item.id}`}
+                              onChange={(event) => patch(item.id, { prompt: event.target.value })}
+                            />
+                            <p
+                              id={`work-prompt-hint-${item.id}`}
+                              className="mt-1 text-xs text-ink-500"
+                            >
+                              Include everything needed to solve it. Do not include the answer.
+                            </p>
+                          </div>
+                          <div>
+                            <label htmlFor={`work-reference-${item.id}`} className="label">
+                              The right answer
+                            </label>
+                            <input
+                              id={`work-reference-${item.id}`}
+                              className="input font-mono"
+                              value={draft.referenceAnswer}
+                              onChange={(event) =>
+                                patch(item.id, { referenceAnswer: event.target.value })
+                              }
+                            />
+                          </div>
+                          <CheckerFields
+                            idPrefix={`work-${item.id}`}
+                            value={draft.checker}
+                            onChange={(checker) => patch(item.id, { checker })}
+                          />
+                        </fieldset>
+                      )}
+                    </div>
+
+                    {error?.id === item.id && (
+                      <p
+                        role="alert"
+                        className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800"
+                      >
+                        {error.message}
+                      </p>
+                    )}
+
                     <button
                       type="button"
                       className="btn btn-primary btn-sm"
-                      disabled={pending !== null || !draft.content.trim()}
+                      disabled={
+                        pending !== null ||
+                        !draft.content.trim() ||
+                        (draft.isTask && (!draft.prompt.trim() || !draft.referenceAnswer.trim()))
+                      }
                       onClick={() => submit(item)}
                     >
                       {pending === item.id
@@ -177,16 +309,48 @@ export function WorkPanel({ items }: { items: PortalWorkItem[] }) {
                     </p>
                   )
                 )}
+
+                {item.history.length > 0 && (
+                  <details className="group mt-3 border-t border-ink-100 pt-2">
+                    <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded text-xs font-semibold text-ink-700">
+                      <span
+                        aria-hidden="true"
+                        className="text-ink-400 transition-transform group-open:rotate-90"
+                      >
+                        &rsaquo;
+                      </span>
+                      Your submissions ({item.history.length})
+                    </summary>
+                    <ol className="mt-2 space-y-2">
+                      {item.history.map((entry) => (
+                        <li
+                          key={entry.revision}
+                          className="rounded-md border border-ink-200 px-3 py-2"
+                        >
+                          <p className="flex flex-wrap items-center gap-2 text-xs text-ink-600">
+                            <span className="font-semibold text-ink-800">
+                              Revision {entry.revision}
+                            </span>
+                            <span>{formatDate(entry.submittedAt)}</span>
+                            {entry.taskSpec && <Badge tone="info">evaluation task</Badge>}
+                          </p>
+                          {entry.summary && (
+                            <p className="mt-1 text-sm text-ink-700">{entry.summary}</p>
+                          )}
+                          {entry.taskSpec && (
+                            <div className="mt-2">
+                              <TaskSpecView spec={entry.taskSpec} />
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
               </li>
             );
           })}
         </ul>
-      )}
-
-      {error && (
-        <p role="alert" className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
-          {error}
-        </p>
       )}
     </Card>
   );

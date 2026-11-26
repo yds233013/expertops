@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { apiPost } from '@/lib/api-client';
 
 const DIMENSIONS = ['accuracy', 'completeness', 'clarity', 'methodology'] as const;
@@ -17,11 +17,14 @@ export function ReviewWorkPanel({
   reference,
   basis,
   claimedQuantity,
+  context,
 }: {
   workItemId: string;
   reference: string;
   basis: string;
   claimedQuantity: string | null;
+  /** Evidence to keep in view while deciding, such as the automated task check. */
+  context?: ReactNode;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -66,8 +69,11 @@ export function ReviewWorkPanel({
   }
 
   return (
-    <div className="w-80 space-y-2 rounded-lg border border-ink-200 bg-white p-3">
+    <div className="w-full space-y-2 sm:w-80 rounded-lg border border-ink-200 bg-white p-3">
       <p className="text-xs font-semibold text-ink-800">Review {reference}</p>
+      {context && (
+        <div className="rounded-md border border-ink-200 bg-ink-50 px-2.5 py-2">{context}</div>
+      )}
 
       <div>
         <label className="label" htmlFor={`summary-${workItemId}`}>
