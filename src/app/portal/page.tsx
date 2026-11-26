@@ -16,6 +16,8 @@ import { OnboardingPanel } from '@/components/portal/onboarding-panel';
 import { SupportPanel } from '@/components/portal/support-panel';
 import { WithdrawalPanel } from '@/components/portal/withdrawal-panel';
 import { WorkPanel } from '@/components/portal/work-panel';
+import { PayoutsPanel } from '@/components/portal/payouts-panel';
+import { payoutRequirements, payoutState } from '@/lib/payout-requirements';
 import { Badge, Card, FieldRow, NextAction, StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +29,11 @@ function readTaskSpec(value: unknown): TaskSpec | null {
   return parsed.success ? parsed.data : null;
 }
 
-export default async function PortalHome() {
+export default async function PortalHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ payouts?: string }>;
+}) {
   const expert = await currentExpert();
 
   if (!expert) {
@@ -72,6 +78,19 @@ export default async function PortalHome() {
       listWorkItemsForExpert(prisma, expert.id),
       listExpertCommitments(prisma, expert.id),
     ]);
+
+  const payoutsParam = (await searchParams).payouts;
+  const notice = payoutsParam === 'returned' || payoutsParam === 'expired' ? payoutsParam : null;
+  // Back from Stripe, the card that explains what happened comes first.
+  const payouts = (
+    <div id="payouts" className="scroll-mt-16">
+      <PayoutsPanel
+        state={payoutState(expert)}
+        missing={payoutRequirements(expert.payoutRequirementsDue)}
+        notice={notice}
+      />
+    </div>
+  );
 
   const openInvitations = invitations.filter((invitation) => invitation.status === 'SENT');
   const acceptedInvitations = invitations.filter((invitation) => invitation.status === 'ACCEPTED');
@@ -136,10 +155,13 @@ export default async function PortalHome() {
             <span className="section-nav-count">{workNeedingSubmission}</span>
           )}
         </a>
+        <a href="#payouts">Get paid</a>
         <a href="#availability">Availability</a>
         <a href="#support">Support</a>
         <a href="#settings">Profile and contact</a>
       </nav>
+
+      {notice && payouts}
 
       <div id="invitations" className="scroll-mt-16">
         <Card
@@ -260,6 +282,8 @@ export default async function PortalHome() {
           })}
         />
       </div>
+
+      {!notice && payouts}
 
       <div id="availability" className="scroll-mt-16">
         <AvailabilityPanel

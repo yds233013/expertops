@@ -28,7 +28,7 @@ export function Badge({
     <span
       title={title}
       className={clsx(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold',
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold',
         TONE_CLASS[tone],
       )}
     >
@@ -75,6 +75,9 @@ const STATUS_TONES: Record<string, Tone> = {
   FAILED: 'warning',
   DEAD: 'danger',
   QUEUED: 'warning',
+  // Outbox delivery. Suppressed was never sent, on purpose; bounced was sent and refused.
+  SUPPRESSED: 'neutral',
+  BOUNCED: 'danger',
   // Candidates and screenings. Warm tones mean a person has something to do.
   DUPLICATE_HOLD: 'danger',
   SCREENING_INVITED: 'info',
@@ -104,6 +107,10 @@ const STATUS_TONES: Record<string, Tone> = {
   // Exported to a CSV for someone else to pay. Deliberately not "success":
   // nothing in this build means the money moved.
   EXPORTED: 'neutral',
+  // Stripe transfers (test mode). PAID is the one status where green means
+  // money moved; a batch that is PAYING is part-way through.
+  PAYING: 'info',
+  PAID: 'success',
   VOID: 'muted',
   DISPATCHED: 'success',
   PARTIALLY_DISPATCHED: 'warning',

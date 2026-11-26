@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db';
 import { environmentLabel } from '@/lib/env';
 import { capabilitiesFor } from '@/server/auth/permissions';
 import { workloadQueues } from '@/server/services/workload';
+import { emailConfig } from '@/server/email/provider';
+import { stripeConfig } from '@/server/integrations/stripe';
 import { currentOperator } from '@/server/http/context';
 import { OperatorNav, type NavGroup } from '@/components/operator-nav';
 import { SignOutButton } from '@/components/sign-out-button';
@@ -86,6 +88,23 @@ export default async function OperatorLayout({ children }: { children: React.Rea
   // by staying plain.
   const waitingTotal = Object.values(badges).reduce((sum, value) => sum + value, 0);
 
+  // The standing caveat follows the configuration, so it never claims less, or
+  // more, than is actually connected.
+  const sendsEmail = emailConfig().provider === 'resend';
+  let usesStripe = false;
+  try {
+    usesStripe = stripeConfig().secretKey !== null;
+  } catch {
+    usesStripe = false;
+  }
+  const footerNote = `${[
+    sendsEmail ? 'Email is sent through Resend' : 'Email delivery is simulated',
+    usesStripe
+      ? 'Payouts use Stripe test mode: no real money moves'
+      : 'No payment service is connected',
+    'All data is synthetic',
+  ].join('. ')}.`;
+
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
       {/* The first stop for a keyboard, so the rail can be skipped. */}
@@ -141,8 +160,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
           {children}
         </main>
         <footer className="mx-auto w-full max-w-6xl px-4 pb-8 pt-2 text-xs text-ink-500 sm:px-6">
-          Email delivery is simulated, all data is synthetic, and nothing here is connected to an
-          external service.
+          {footerNote}
         </footer>
       </div>
     </div>

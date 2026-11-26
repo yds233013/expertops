@@ -13,6 +13,7 @@ import { PortalLinkPanel } from '@/components/portal-link-panel';
 import { VerifyPanel } from '@/components/verify-panel';
 import { SimulatedDeliveryBadge } from '@/components/delivery-note';
 import { ActivityList } from '@/components/activity-list';
+import { ExpertPayoutPanel } from '@/components/payout-status';
 import {
   Badge,
   Card,
@@ -350,6 +351,8 @@ export default async function ExpertDetailPage({
             </dl>
             {expert.bio && <p className="mt-3 text-sm text-ink-600">{expert.bio}</p>}
           </Card>
+
+          <ExpertPayoutPanel expert={expert} />
 
           {canIssuePortalLink && (
             <Card
