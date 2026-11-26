@@ -25,6 +25,7 @@ business change, so a step and its follow-up either both land or neither does.
 | `assignment.confirmed` | `staffing.project_start_tasks` | **An operator confirms the seat** | Skips if the seat was released first |
 | `assignment.expert_withdrew` | `staffing.propose_replacements` | **An operator approves the replacement batch** | Recomputes the gap; skips if the seat was refilled |
 | `work.submitted` | `work.review_task` | none | Skips if already reviewed or cancelled |
+| `work.submitted` with a task | `work.check_task` | none: the verdict is advice to the reviewer ([task-quality.md](task-quality.md)) | Skips a superseded revision or a cancelled item; one check per submission |
 | `work.approved` | `payment.draft_from_approved_work` | **An operator approves the work and sets the quantity** | Returns the existing payment item if one exists |
 | Project closed | `project.offboarding_tasks` | **Each checklist item is confirmed by hand** | Idempotent per (project, expert, task) |
 

@@ -106,8 +106,10 @@ before real participants:
 - **`loadCandidatePool` loads every non-archived expert into memory** and scores
   them in the application. Fine for thousands. Not fine for hundreds of
   thousands.
-- **No feedback loop.** Nothing records whether a highly-ranked candidate
-  actually worked out, so the weights cannot improve.
+- **No feedback loop into ranking.** Expert scorecards
+  ([`task-quality.md`](task-quality.md)) now show each expert's first-time
+  approval, on-time and flagged-check rates to operators. They are deliberately
+  kept out of the scorer, so the weights still do not learn from outcomes.
 
 ---
 

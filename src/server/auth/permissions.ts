@@ -59,6 +59,11 @@ export const CAPABILITIES = [
   'offboarding:assign',
   'offboarding:confirm',
   'import:run',
+  // --- task quality ------------------------------------------------------
+  'quality:read',
+  'quality:write',
+  'quality:calibrate',
+  'metrics:read',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -81,6 +86,8 @@ const VIEWER: Capability[] = [
   'support:read',
   'payment:read',
   'offboarding:read',
+  'quality:read',
+  'metrics:read',
 ];
 
 const OPERATOR: Capability[] = [
@@ -111,6 +118,8 @@ const OPERATOR: Capability[] = [
   'offboarding:assign',
   'offboarding:confirm',
   'import:run',
+  'quality:write',
+  'quality:calibrate',
 ];
 
 /**

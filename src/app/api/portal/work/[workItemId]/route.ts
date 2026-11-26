@@ -14,6 +14,8 @@ const bodySchema = z.object({
   content: z.string().min(1).max(20000),
   attachments: z.array(z.string().max(500)).max(10).optional(),
   hoursClaimed: z.union([z.string(), z.number()]).optional(),
+  /** Validated in full by `submitWork`; only its size is bounded here. */
+  taskSpec: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 /**

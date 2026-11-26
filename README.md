@@ -48,8 +48,9 @@ work submission → human review → payment preparation → export → offboard
 
 Routine coordination is automated. Consequential decisions are not: ten named
 approval gates require a signed-in human, and every one is recorded against the
-operator who made it. There are no paid APIs and no language models; matching
-is deterministic rules.
+operator who made it. Matching is deterministic rules. The one optional model
+call is the [task check](docs/task-quality.md), which is simulated unless you
+set `TASK_CHECK_PROVIDER=anthropic`, so by default nothing is billed.
 
 ---
 
@@ -649,6 +650,14 @@ Also automated, but triggered by an operator: candidate scoring. It is
 deterministic rules, versioned `rules-v1`, and every score is broken down into
 its components in the UI.
 
+Also automated: **checking submitted evaluation tasks**. When an expert submits
+a task (prompt, reference answer, checker), the worker checks the structure,
+then tries the task against a model several times. It labels the task broken,
+leaking, too easy, discriminating or unsolved, and flags the first three for a
+reviewer. The verdict is advice; approving is still a person's decision. See
+[`docs/task-quality.md`](docs/task-quality.md), which also covers gold-task
+reviewer calibration, expert scorecards and the `/metrics` page.
+
 ### Human operator confirmations
 
 These never happen on their own. Each requires a signed-in operator with the
@@ -736,6 +745,7 @@ Setup, cost and verification are in
 | [`docs/architecture.md`](docs/architecture.md) | Layering, the service boundary, the job queue, concurrency strategy |
 | [`docs/automation.md`](docs/automation.md) | Every event-driven workflow, approval gate and reminder rule |
 | [`docs/playbook.md`](docs/playbook.md) | A short operator playbook: how to actually run a day |
+| [`docs/task-quality.md`](docs/task-quality.md) | Automated checks on submitted evaluation tasks, gold-task reviewer calibration, expert scorecards, and the metrics page |
 | [`docs/workflow-states.md`](docs/workflow-states.md) | Every state machine, transition, and guard |
 | [`docs/requirement-coverage.md`](docs/requirement-coverage.md) | What was asked for, where it lives, and what is unfinished |
 | [`docs/operations.md`](docs/operations.md) | Startup, shutdown, backup, restore, migration, rollback, and what to do when something breaks |

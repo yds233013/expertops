@@ -28,6 +28,7 @@ import { dispatchQueuedMessages, queueMessage } from '@/server/services/outbox';
 import { queueExpertMessage } from '@/server/services/contact-preferences';
 import { buildReplacementBatch } from '@/server/services/outreach';
 import { draftPaymentFromApprovedWork } from '@/server/services/payments';
+import { runTaskCheck } from '@/server/services/task-quality';
 import { issuePortalToken } from '@/server/services/portal-access';
 import { expireOverdueScreenings } from '@/server/services/screening';
 import {
@@ -952,6 +953,20 @@ export const HANDLERS: Record<JobType, JobHandler> = {
     );
 
     return { raised: result.created, attentionItemId: result.item.id };
+  },
+
+  /**
+   * An evaluation task was submitted: check it before a reviewer reads it.
+   *
+   * Model attempts run in parallel inside this job's transaction. They only
+   * read, so a rollback after a lease takeover costs the attempts and nothing
+   * else, and the unique check row keeps a duplicate delivery from recording
+   * twice. `TASK_CHECK_TIMEOUT_MS` is clamped well under the lease.
+   */
+  'work.check_task': async (payload, ctx) => {
+    const schema = z.object({ submissionId: z.string().min(1) });
+    const { submissionId } = parse(schema, payload, 'work.check_task');
+    return runTaskCheck(ctx.db, submissionId, { now: ctx.now });
   },
 
   /** Flag work that is past its due date and still not submitted. */

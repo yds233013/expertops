@@ -114,6 +114,17 @@ export const AUTOMATION_RULES: readonly AutomationRule[] = [
     producesOutreach: false,
   },
   {
+    id: 'task-submitted',
+    trigger: 'work.submitted (with a task)',
+    description:
+      'An expert submits an evaluation task. The system checks its structure, tries it against a model, records a verdict, and flags broken, leaking or too-easy tasks for the reviewer.',
+    enqueues: 'work.check_task',
+    humanApproval: null,
+    staleCheck:
+      'Skips if a newer revision was submitted or the item was cancelled; one check row per submission, replaced on a re-run.',
+    producesOutreach: false,
+  },
+  {
     id: 'work-approved',
     trigger: 'work.approved',
     description:

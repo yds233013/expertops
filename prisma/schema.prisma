@@ -65,6 +65,8 @@ model User {
   approvedBatches        OutreachBatch[]          @relation("BatchApprovedBy")
   createdWorkItems       WorkItem[]               @relation("WorkItemCreatedBy")
   workReviews            WorkReview[]             @relation("WorkReviewer")
+  goldTasksCreated       GoldTask[]               @relation("GoldTaskCreatedBy")
+  goldAnswers            GoldAnswer[]             @relation("GoldAnswerReviewer")
   ownedSupportRequests   SupportRequest[]         @relation("SupportOwner")
   supportReplies         SupportReply[]
   createdPaymentBatches  PaymentBatch[]           @relation("BatchCreatedByUser")
@@ -172,6 +174,7 @@ model Expert {
   supportRequests    SupportRequest[]
   paymentItems       PaymentItem[]
   offboardingTasks   OffboardingTask[]
+  taskChecks         TaskCheck[]
 
   @@index([status])
   @@index([status, hourlyRateCents])
@@ -305,6 +308,7 @@ model Project {
   supportRequests           SupportRequest[]
   paymentItems              PaymentItem[]
   offboardingTasks          OffboardingTask[]
+  taskChecks                TaskCheck[]
 
   @@index([status])
   @@index([createdById])
@@ -768,6 +772,7 @@ model Domain {
   opportunities  Opportunity[]
   qualifications Qualification[]
   requirements   ProjectQualificationRequirement[]
+  goldTasks      GoldTask[]
 
   @@index([isActive])
 }
@@ -1594,6 +1599,7 @@ model WorkItem {
   submissions WorkSubmission[]
   reviews     WorkReview[]
   paymentItem PaymentItem?
+  taskChecks  TaskCheck[]
 
   @@index([projectId, status])
   @@index([expertId, status])
@@ -1610,10 +1616,14 @@ model WorkSubmission {
   attachments  Json     @default("[]")
   /// Hours claimed on an hourly item. Verified by the reviewer, not trusted.
   hoursClaimed Decimal? @db.Decimal(10, 2)
+  /// For evaluation-task work: prompt, reference answer and checker, validated
+  /// by `taskSpecSchema`. Null for ordinary deliverables.
+  taskSpec     Json?
   submittedAt  DateTime @default(now())
 
-  workItem WorkItem     @relation(fields: [workItemId], references: [id], onDelete: Cascade)
-  reviews  WorkReview[]
+  workItem  WorkItem     @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  reviews   WorkReview[]
+  taskCheck TaskCheck?
 
   @@unique([workItemId, revision])
 }
@@ -1862,4 +1872,116 @@ model OffboardingTask {
 
   @@unique([projectId, expertId, key])
   @@index([status, dueAt])
+}
+
+// ---------------------------------------------------------------------------
+// Task quality
+// ---------------------------------------------------------------------------
+
+enum TaskCheckStatus {
+  /// Enough attempts returned a reply to reach a verdict.
+  COMPLETED
+  /// Too many attempts failed to say anything. Re-run it.
+  INCONCLUSIVE
+}
+
+enum TaskVerdict {
+  BROKEN_SPEC
+  ANSWER_LEAK
+  TOO_EASY
+  DISCRIMINATING
+  UNSOLVED
+}
+
+/// Automated check of one evaluation-task submission against a model.
+///
+/// Advice to the reviewer, never a decision: nothing reads a verdict to approve,
+/// reject or pay. One per submission, which is what makes the worker's check
+/// idempotent under duplicate delivery. A re-run replaces it in place.
+model TaskCheck {
+  id                  String          @id @default(cuid())
+  submissionId        String          @unique
+  workItemId          String
+  expertId            String
+  projectId           String
+  /// `simulated` or `anthropic`. The UI labels simulated results everywhere.
+  provider            String
+  model               String
+  status              TaskCheckStatus
+  verdict             TaskVerdict?
+  requestedAttempts   Int
+  validAttempts       Int
+  passes              Int
+  /// Structural findings from `structuralFindings`.
+  findings            Json            @default("[]")
+  /// One entry per attempt: answer, passed, error, a trimmed reply, tokens.
+  attempts            Json            @default("[]")
+  inconclusiveReason  String?
+  inputTokens         Int             @default(0)
+  outputTokens        Int             @default(0)
+  /// An estimate from published prices. Null when the model's price is unknown.
+  estimatedCostMicros Int?
+  checkedAt           DateTime
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  submission WorkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  workItem   WorkItem       @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  expert     Expert         @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  project    Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([verdict])
+  @@index([expertId, checkedAt])
+  @@index([projectId, checkedAt])
+}
+
+enum GoldDecision {
+  APPROVE
+  REVISE
+}
+
+/// A task whose correct review decision is already known.
+///
+/// Used to calibrate reviewers: each reviewer answers a gold task once, and the
+/// share they get right is their calibration score. Gold tasks never reach an
+/// expert and never produce a payment.
+model GoldTask {
+  id               String       @id @default(cuid())
+  reference        String       @unique
+  title            String
+  domainId         String?
+  prompt           String
+  referenceAnswer  String
+  /// Same shape as `TaskSpec.checker`.
+  checker          Json
+  expectedDecision GoldDecision
+  /// Why that is the right decision. Shown to a reviewer only after they answer.
+  rationale        String
+  createdById      String?
+  retiredAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  domain    Domain?      @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  createdBy User?        @relation("GoldTaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  answers   GoldAnswer[]
+
+  @@index([retiredAt])
+}
+
+/// One reviewer's answer to one gold task. Write-once.
+model GoldAnswer {
+  id         String       @id @default(cuid())
+  goldTaskId String
+  reviewerId String
+  decision   GoldDecision
+  note       String       @default("")
+  correct    Boolean
+  answeredAt DateTime     @default(now())
+
+  goldTask GoldTask @relation(fields: [goldTaskId], references: [id], onDelete: Cascade)
+  reviewer User     @relation("GoldAnswerReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([goldTaskId, reviewerId])
+  @@index([reviewerId])
 }

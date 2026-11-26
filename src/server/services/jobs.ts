@@ -57,6 +57,7 @@ export const JOB_TYPES = [
   'matching.run',
   // Delivery, support and payment
   'work.review_task',
+  'work.check_task',
   'work.remind_overdue',
   'support.check_response_sla',
   'payment.draft_from_approved_work',
