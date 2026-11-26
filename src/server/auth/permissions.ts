@@ -64,6 +64,7 @@ export const CAPABILITIES = [
   'quality:write',
   'quality:calibrate',
   'metrics:read',
+  'payment:payout',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -137,6 +138,7 @@ const ADMIN: Capability[] = [
   'screening:resolve_conflict',
   'outreach:approve',
   'payment:approve',
+  'payment:payout',
 ];
 
 export const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {

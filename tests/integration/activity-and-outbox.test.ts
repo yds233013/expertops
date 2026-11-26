@@ -176,7 +176,13 @@ describe('simulated outbox', () => {
 
     expect(message.status).toBe('QUEUED');
     expect(message.sentAt).toBeNull();
-    expect(await outboxCounts(prisma)).toEqual({ QUEUED: 1, SENT: 0, FAILED: 0 });
+    expect(await outboxCounts(prisma)).toEqual({
+      QUEUED: 1,
+      SENT: 0,
+      FAILED: 0,
+      SUPPRESSED: 0,
+      BOUNCED: 0,
+    });
   });
 
   it('delivers in creation order and stops at the limit', async () => {

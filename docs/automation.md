@@ -36,7 +36,8 @@ idempotent and safe to run as often as you like.
 
 | Schedule | Every | Does |
 | --- | --- | --- |
-| `outbox-dispatch` | 15s | Marks queued simulated emails delivered |
+| `outbox-dispatch` | 15s | Sends queued emails through the configured provider (simulated by default; see [integrations.md](integrations.md)) |
+| `slack-notify` | 60s | Posts new attention items to Slack when `SLACK_WEBHOOK_URL` is set |
 | `invitation-expire` | 60s | Closes invitations past their deadline |
 | `attention-sweep` | 120s | Recomputes the whole attention queue |
 | `invitation-remind` | 300s | One reminder per open invitation |

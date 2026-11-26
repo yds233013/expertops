@@ -29,6 +29,7 @@ import { queueExpertMessage } from '@/server/services/contact-preferences';
 import { buildReplacementBatch } from '@/server/services/outreach';
 import { draftPaymentFromApprovedWork } from '@/server/services/payments';
 import { runTaskCheck } from '@/server/services/task-quality';
+import { postAttentionToSlack } from '@/server/integrations/slack';
 import { issuePortalToken } from '@/server/services/portal-access';
 import { expireOverdueScreenings } from '@/server/services/screening';
 import {
@@ -1299,8 +1300,41 @@ export const HANDLERS: Record<JobType, JobHandler> = {
 
   'outbox.dispatch': async (_payload, ctx) => {
     const result = await dispatchQueuedMessages(ctx.db, { now: ctx.now });
-    return { attempted: result.attempted, delivered: result.delivered, simulated: true };
+    // A message that will never be delivered is a problem a person must see.
+    for (const messageId of result.failedIds) {
+      const message = await ctx.db.outboxMessage.findUnique({ where: { id: messageId } });
+      if (!message) continue;
+      await raiseAttention(
+        ctx.db,
+        {
+          dedupeKey: `outbox:failed:${messageId}`,
+          kind: 'AUTOMATION_FAILURE',
+          category: 'outbox.delivery_failed',
+          severity: 'MEDIUM',
+          title: `Email to ${message.toEmail} could not be delivered`,
+          blocker: message.lastError ?? 'The provider refused the message.',
+          impact: `"${message.subject}" never reached the recipient.`,
+          nextAction:
+            'Check the address and the provider settings, then contact the person another way.',
+          expertId: message.expertId,
+          projectId: message.projectId,
+        },
+        { now: ctx.now },
+      );
+    }
+    return {
+      provider: result.provider,
+      simulated: result.provider === 'simulated',
+      attempted: result.attempted,
+      delivered: result.delivered,
+      retrying: result.retrying,
+      suppressed: result.suppressed,
+      failed: result.failed,
+    };
   },
+
+  /** New attention items to Slack. A no-op until SLACK_WEBHOOK_URL is set. */
+  'notify.slack': async (_payload, ctx) => postAttentionToSlack(ctx.db, { now: ctx.now }),
 
   'maintenance.sweep': async (payload, ctx) => {
     const { pruneJobsOlderThanDays = 7 } = parse(sweepPayload, payload, 'maintenance.sweep');

@@ -25,7 +25,7 @@ export const DEFAULT_SCHEDULES: readonly ScheduleDefinition[] = [
     name: 'outbox-dispatch',
     jobType: 'outbox.dispatch',
     intervalSeconds: 15,
-    description: 'Marks queued simulated emails as delivered.',
+    description: 'Sends queued emails through the configured provider (simulated by default).',
   },
   {
     name: 'invitation-expire',
@@ -53,6 +53,12 @@ export const DEFAULT_SCHEDULES: readonly ScheduleDefinition[] = [
     intervalSeconds: 3600,
     payload: { pruneJobsOlderThanDays: 7 },
     description: 'Purges expired sessions and old finished jobs.',
+  },
+  {
+    name: 'slack-notify',
+    jobType: 'notify.slack',
+    intervalSeconds: 60,
+    description: 'Posts new attention items to Slack when SLACK_WEBHOOK_URL is set.',
   },
   {
     name: 'attention-sweep',

@@ -3,15 +3,23 @@ import { type Db } from '@/lib/db';
 import { now as clockNow } from '@/lib/clock';
 import { notFound } from '@/lib/errors';
 import { isPrismaErrorCode, PG_UNIQUE_VIOLATION } from '@/lib/db';
-import { type TemplateName } from '@/server/email/templates';
+import { DELIVERED_FOOTER, SIMULATED_FOOTER, type TemplateName } from '@/server/email/templates';
+import {
+  emailConfig,
+  emailProviderFor,
+  recipientBlockReason,
+  type EmailConfig,
+  type EmailProvider,
+} from '@/server/email/provider';
 
 /**
- * SIMULATED email outbox.
+ * Email outbox.
  *
- * `queueMessage` writes a row. The worker's `outbox.dispatch` job flips it to
- * SENT. There is no SMTP client, no third-party email API and no network call
- * anywhere in this path - "delivery" means the row is marked SENT and becomes
- * visible in the operator Outbox screen.
+ * `queueMessage` writes a row; the worker's `outbox.dispatch` job delivers it.
+ * By default delivery is SIMULATED: the row is marked SENT and the operator
+ * Outbox screen is the only place the message exists. With
+ * `EMAIL_PROVIDER=resend` it is sent through Resend (see
+ * `src/server/email/provider.ts` and `docs/integrations.md`).
  */
 export interface QueueMessageInput {
   toEmail: string;
@@ -89,45 +97,135 @@ async function createMessage(db: Db, input: QueueMessageInput) {
 export interface DispatchResult {
   attempted: number;
   delivered: number;
+  /** Permanently failed this run: rejected, or out of retries. */
   failed: number;
+  /** Will be tried again on a later tick. */
+  retrying: number;
+  suppressed: number;
   messageIds: string[];
+  failedIds: string[];
+  provider: EmailProvider['name'];
 }
 
+/** Attempts before a message that keeps hitting retryable errors is given up on. */
+export const MAX_SEND_ATTEMPTS = 5;
+
 /**
- * Mark queued messages as delivered.
+ * Deliver queued messages through the configured provider.
  *
- * Claiming uses a conditional updateMany on (id, status=QUEUED) so two workers
- * running at once cannot both "deliver" the same message.
+ * Per message: suppressed or blocked recipients are marked SUPPRESSED and never
+ * sent; otherwise the provider is called and the row moves to SENT, back to
+ * QUEUED with a recorded error, or to FAILED. Every status change is a
+ * conditional update on `status = QUEUED`, so two workers cannot both record
+ * the same message, and the provider's idempotency key stops them both
+ * sending it.
+ *
+ * With the simulated provider nothing leaves the process and reserved test
+ * domains are delivered as before, because the outbox screen is the delivery.
  */
 export async function dispatchQueuedMessages(
   db: Db,
-  options: { limit?: number; now?: Date } = {},
+  options: { limit?: number; now?: Date; provider?: EmailProvider; config?: EmailConfig } = {},
 ): Promise<DispatchResult> {
   const limit = Math.min(Math.max(options.limit ?? 25, 1), 200);
   const now = options.now ?? clockNow();
+  const config = options.config ?? emailConfig();
+  const provider = options.provider ?? emailProviderFor(config);
+  const real = provider.name !== 'simulated';
 
   const queued = await db.outboxMessage.findMany({
     where: { status: 'QUEUED' },
     orderBy: { createdAt: 'asc' },
     take: limit,
-    select: { id: true },
   });
 
-  const delivered: string[] = [];
+  const result: DispatchResult = {
+    attempted: queued.length,
+    delivered: 0,
+    failed: 0,
+    retrying: 0,
+    suppressed: 0,
+    messageIds: [],
+    failedIds: [],
+    provider: provider.name,
+  };
+
+  const suppressedAddresses = real
+    ? new Set(
+        (
+          await db.emailSuppression.findMany({
+            where: { email: { in: queued.map((message) => message.toEmail.toLowerCase()) } },
+            select: { email: true, reason: true },
+          })
+        ).map((row) => row.email),
+      )
+    : new Set<string>();
+
   for (const message of queued) {
-    const claimed = await db.outboxMessage.updateMany({
-      where: { id: message.id, status: 'QUEUED' },
-      data: { status: 'SENT', sentAt: now, attempts: { increment: 1 }, lastError: null },
+    const blocked = real
+      ? suppressedAddresses.has(message.toEmail.toLowerCase())
+        ? 'The address is on the suppression list after a bounce or complaint.'
+        : recipientBlockReason(message.toEmail, config)
+      : null;
+
+    if (blocked) {
+      const marked = await db.outboxMessage.updateMany({
+        where: { id: message.id, status: 'QUEUED' },
+        data: { status: 'SUPPRESSED', suppressedReason: blocked, provider: provider.name },
+      });
+      result.suppressed += marked.count;
+      continue;
+    }
+
+    const outcome = await provider.send({
+      id: message.id,
+      to: message.toEmail,
+      toName: message.toName,
+      subject: message.subject,
+      // The stored body keeps the simulated footer as the audit record of what
+      // was rendered; the recipient gets a footer that is true for them.
+      text: message.bodyText.replace(SIMULATED_FOOTER, DELIVERED_FOOTER),
     });
-    if (claimed.count === 1) delivered.push(message.id);
+
+    if (outcome.kind === 'sent') {
+      const marked = await db.outboxMessage.updateMany({
+        where: { id: message.id, status: 'QUEUED' },
+        data: {
+          status: 'SENT',
+          sentAt: now,
+          attempts: { increment: 1 },
+          lastError: null,
+          provider: provider.name,
+          providerMessageId: outcome.providerMessageId,
+        },
+      });
+      if (marked.count === 1) {
+        result.delivered += 1;
+        result.messageIds.push(message.id);
+      }
+      continue;
+    }
+
+    const exhausted = outcome.kind === 'failed' || message.attempts + 1 >= MAX_SEND_ATTEMPTS;
+    const marked = await db.outboxMessage.updateMany({
+      where: { id: message.id, status: 'QUEUED' },
+      data: {
+        status: exhausted ? 'FAILED' : 'QUEUED',
+        attempts: { increment: 1 },
+        lastError: outcome.error.slice(0, 1000),
+        provider: provider.name,
+      },
+    });
+    if (marked.count === 0) continue;
+    if (exhausted) {
+      result.failed += 1;
+      result.failedIds.push(message.id);
+    } else {
+      result.retrying += 1;
+    }
   }
 
-  return {
-    attempted: queued.length,
-    delivered: delivered.length,
-    failed: 0,
-    messageIds: delivered,
-  };
+  return result;
 }
 
 export interface OutboxQuery {
@@ -176,7 +274,13 @@ export async function getMessage(db: Db, id: string) {
 
 export async function outboxCounts(db: Db) {
   const grouped = await db.outboxMessage.groupBy({ by: ['status'], _count: { _all: true } });
-  const counts: Record<OutboxStatus, number> = { QUEUED: 0, SENT: 0, FAILED: 0 };
+  const counts: Record<OutboxStatus, number> = {
+    QUEUED: 0,
+    SENT: 0,
+    FAILED: 0,
+    SUPPRESSED: 0,
+    BOUNCED: 0,
+  };
   for (const row of grouped) counts[row.status] = row._count._all;
   return counts;
 }

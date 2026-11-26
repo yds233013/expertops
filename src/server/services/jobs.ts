@@ -65,6 +65,7 @@ export const JOB_TYPES = [
   'attention.sweep',
   'project.offboarding_tasks',
   'outbox.dispatch',
+  'notify.slack',
   'maintenance.sweep',
 ] as const;
 

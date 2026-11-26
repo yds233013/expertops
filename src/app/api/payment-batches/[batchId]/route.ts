@@ -10,6 +10,8 @@ import {
   getBatch,
   submitBatchForApproval,
 } from '@/server/services/payments';
+import { payBatch } from '@/server/services/payouts';
+import { payoutGateway } from '@/server/integrations/stripe';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +21,7 @@ const bodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('submit') }),
   z.object({ action: z.literal('approve'), note: z.string().max(2000).optional() }),
   z.object({ action: z.literal('export') }),
+  z.object({ action: z.literal('pay') }),
 ]);
 
 export const GET = route(async (request: NextRequest, { params }: Params) => {
@@ -34,6 +37,13 @@ export const POST = route(async (request: NextRequest, { params }: Params) => {
   if (body.action === 'submit') {
     const { actor } = await requireCapabilityFromRequest(request, 'payment:write');
     return ok({ batch: await submitBatchForApproval(prisma, actor, batchId) });
+  }
+
+  // Paying moves (test-mode) money: admin-only, and refused unless every
+  // expert in the batch has finished payout onboarding.
+  if (body.action === 'pay') {
+    const { actor } = await requireCapabilityFromRequest(request, 'payment:payout');
+    return ok(await payBatch(prisma, payoutGateway(), actor, batchId));
   }
 
   // Approval and export are the money-adjacent steps and need the stronger

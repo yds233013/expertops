@@ -540,7 +540,13 @@ describe('operator API: outbox, activity and jobs', () => {
     );
     expect(result.status).toBe(200);
     expect(result.body.simulated).toBe(true);
-    expect(result.body.counts).toEqual({ QUEUED: 0, SENT: 0, FAILED: 0 });
+    expect(result.body.counts).toEqual({
+      QUEUED: 0,
+      SENT: 0,
+      FAILED: 0,
+      SUPPRESSED: 0,
+      BOUNCED: 0,
+    });
   });
 
   it('returns activity newest first and filters by actor type', async () => {

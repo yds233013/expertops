@@ -230,7 +230,7 @@ async function reset() {
     TRUNCATE TABLE
       "LoginAttempt", "WorkerHeartbeat",
       "ActivityEvent", "OutboxMessage", "Job", "Schedule", "AttentionItem",
-      "GoldAnswer", "GoldTask", "TaskCheck",
+      "EmailSuppression", "WebhookEvent", "GoldAnswer", "GoldTask", "TaskCheck",
       "OffboardingTask", "PaymentItem", "PaymentBatch",
       "SupportReply", "SupportRequest",
       "WorkReview", "WorkSubmission", "WorkItem",

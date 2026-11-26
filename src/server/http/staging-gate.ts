@@ -17,7 +17,11 @@
  */
 
 /** The one path that must answer without credentials. */
-export const GATE_EXEMPT_PATHS = ['/api/health'];
+/**
+ * Paths reachable without the gate. Webhooks are here because a provider
+ * cannot send the gate's credentials; each one authenticates by signature.
+ */
+export const GATE_EXEMPT_PATHS = ['/api/health', '/api/webhooks/resend', '/api/webhooks/stripe'];
 
 export interface GateCredentials {
   user: string;

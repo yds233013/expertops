@@ -28,9 +28,9 @@ present:
   reporting.
 - **Contracts.** The onboarding checklist records attestations. It does not
   produce, store, or version a signed document.
-- **Money.** Rates are recorded and displayed. Nothing is invoiced, approved, or
-  paid. The billing reference on the checklist is a simulated string with no
-  system behind it.
+- **Money.** Approved batches can be exported as a file, or paid by Stripe
+  Connect transfer **in test mode only** ([`integrations.md`](integrations.md)).
+  Nothing is invoiced to clients, and no live payment is possible.
 - **Time tracking.** An assignment records hours per week. Nothing records hours
   actually worked.
 - **Expert-to-expert or expert-to-client messaging.** The only communication is
@@ -154,21 +154,21 @@ before real participants:
 
 ## Email
 
-**Every email in this system is simulated.** There is no SMTP client, no email
-API, and no network call in the mail path. `queueMessage` writes a row and the
-worker flips it to `SENT`. That is the entire delivery mechanism.
+**Email is simulated unless `EMAIL_PROVIDER=resend` is set** (see
+[`integrations.md`](integrations.md)). Simulated, the worker marks the row
+`SENT` and nothing leaves the process. With Resend, messages are sent with an
+idempotency key, retried on 429 and 5xx, failed after 5 attempts with an
+attention item, and kept away from reserved test domains and suppressed
+addresses. Bounces and complaints arrive by signed webhook and suppress the
+address.
 
-Consequences:
+Still missing:
 
-- **No delivery guarantees, bounces, or complaints.** `OutboxStatus.FAILED`
-  exists in the schema and is never set.
 - **Plain text only.** No HTML, no templating engine, no localisation.
-- **No unsubscribe, no preference centre, no send-rate control.**
-- **Nothing is idempotent against a real provider**, because there is no
-  provider.
-
-Making delivery real would mean an adapter behind `dispatchQueuedMessages`, a
-provider with retries and a webhook for bounces, and a genuine suppression list.
+- **No unsubscribe link, no preference centre, no per-domain send-rate
+  control.**
+- **No screen for the suppression list.** It is shown, but removing an address
+  is a database change.
 
 ---
 
