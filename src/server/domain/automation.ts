@@ -114,6 +114,41 @@ export const AUTOMATION_RULES: readonly AutomationRule[] = [
     producesOutreach: false,
   },
   {
+    id: 'task-submitted',
+    trigger: 'work.submitted (with a task)',
+    description:
+      'An expert submits an evaluation task. The system checks its structure, tries it against a model, records a verdict, and flags broken, leaking or too-easy tasks for the reviewer.',
+    enqueues: 'work.check_task',
+    humanApproval: null,
+    staleCheck:
+      'Skips if a newer revision was submitted or the item was cancelled; one check row per submission, replaced on a re-run.',
+    producesOutreach: false,
+  },
+  {
+    id: 'screening-checked',
+    trigger: 'screening.submitted',
+    description:
+      'A candidate submits a screening. The system suggests rubric scores, looks up the GitHub accounts and CVEs it cites, and flags copied answers, shared or brand-new accounts, citations that do not exist and text aimed at an automated grader.',
+    enqueues: 'screening.check_submission',
+    humanApproval:
+      'Advisory only. A reviewer still scores and decides; suggested scores stay hidden from them until they have submitted their own.',
+    staleCheck:
+      'One check row per submission, replaced on a re-run; skips if the submission no longer exists.',
+    producesOutreach: false,
+  },
+  {
+    id: 'access-follows-seat',
+    trigger: 'assignment.confirmed / released / completed, and every minute',
+    description:
+      'GitHub repositories and Slack channels listed on a project are granted to each expert with a confirmed seat and revoked when the seat, the project or the expert’s verification ends.',
+    enqueues: 'access.reconcile',
+    humanApproval:
+      'Confirming the seat is the approval. A revoke the system cannot complete becomes a high-severity attention item for a person to finish.',
+    staleCheck:
+      'Level-triggered: compares who should have access with what was granted on every run, so a late or duplicate trigger changes nothing.',
+    producesOutreach: false,
+  },
+  {
     id: 'work-approved',
     trigger: 'work.approved',
     description:

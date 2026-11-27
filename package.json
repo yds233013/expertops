@@ -40,12 +40,14 @@
     "e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "next": "^15.5.25",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "stripe": "^23.2.0",
     "zod": "^4.6.2"
   },
   "devDependencies": {

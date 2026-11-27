@@ -38,6 +38,14 @@ export function applyMigrations(): void {
 }
 
 const TABLES = [
+  'EmailSuppression',
+  'WebhookEvent',
+  'GoldAnswer',
+  'GoldTask',
+  'TaskCheck',
+  'ScreeningCheck',
+  'AccessGrant',
+  'ProjectAccessResource',
   'LoginAttempt',
   'WorkerHeartbeat',
   'AttentionItem',

@@ -27,7 +27,7 @@ export function PortalLinkPanel({
     <div className="space-y-2">
       <p className="text-sm text-ink-600">
         Portal links work once. If {expertName} has lost theirs, issue another — it arrives in the
-        simulated outbox, where you can read it back to them.
+        in-app outbox, where you can read it back to them.
       </p>
       {error && (
         <p role="alert" className="alert alert-error">

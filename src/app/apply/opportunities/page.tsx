@@ -116,7 +116,7 @@ export default async function OpportunitiesPage() {
       <p className="text-sm text-ink-600">
         Looking at this as a reviewer rather than an applicant?{' '}
         <Link className="font-medium text-accent-700 hover:underline" href="/demo">
-          Explore the read-only demo
+          Take the product tour
         </Link>{' '}
         of the operator side.
       </p>

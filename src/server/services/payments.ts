@@ -264,8 +264,10 @@ export async function resolveDiscrepancy(
     include: { expert: true },
   });
   if (!item) throw notFound('Payment item not found.');
-  if (item.status === 'EXPORTED') {
-    throw invalidState('This item was already exported. Raise a correction instead.');
+  if (item.status === 'EXPORTED' || item.status === 'PAID') {
+    throw invalidState(
+      `This item was already ${item.status === 'PAID' ? 'paid' : 'exported'}. Raise a correction instead.`,
+    );
   }
   const flags = (item.discrepancies as unknown as Discrepancy[]) ?? [];
   if (flags.length === 0) throw invalidState('This payment item has no open discrepancies.');
@@ -322,6 +324,13 @@ export async function correctPaymentItem(
     if (!original) throw notFound('Payment item not found.');
     if (original.status === 'VOID') throw invalidState('This item was already voided.');
     if (original.supersededById) throw invalidState('This item has already been corrected.');
+    // A replacement for a paid item would be a second payment for the same
+    // work. Money that has moved is adjusted outside this flow.
+    if (original.status === 'PAID' || original.batch?.status === 'PAYING') {
+      throw invalidState(
+        `${original.reference} has been paid, or is being paid, by Stripe transfer. It cannot be corrected here; record an adjustment with finance instead.`,
+      );
+    }
 
     const quantityScaled = toQuantityScaled(input.quantity);
     if (quantityScaled <= 0) throw badRequest('Corrected quantity must be greater than zero.');
@@ -411,8 +420,12 @@ export async function correctPaymentItem(
 const BATCH_TRANSITIONS: Record<PaymentBatchStatus, PaymentBatchStatus[]> = {
   DRAFT: ['PENDING_APPROVAL', 'CANCELLED'],
   PENDING_APPROVAL: ['APPROVED', 'DRAFT', 'CANCELLED'],
-  APPROVED: ['EXPORTED', 'DRAFT', 'CANCELLED'],
+  APPROVED: ['EXPORTED', 'PAYING', 'DRAFT', 'CANCELLED'],
   EXPORTED: [],
+  // A batch that has started paying cannot be cancelled or edited: some money
+  // may already have moved. It can only finish.
+  PAYING: ['PAID'],
+  PAID: [],
   CANCELLED: [],
 };
 
@@ -432,6 +445,10 @@ const ACTIVE_BATCH_STATUSES: PaymentBatchStatus[] = [
   'PENDING_APPROVAL',
   'APPROVED',
   'EXPORTED',
+  // A paying or paid batch holds its items for good: re-batching one would
+  // pay it twice.
+  'PAYING',
+  'PAID',
 ];
 
 export async function createBatch(

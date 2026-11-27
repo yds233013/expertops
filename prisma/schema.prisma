@@ -65,6 +65,8 @@ model User {
   approvedBatches        OutreachBatch[]          @relation("BatchApprovedBy")
   createdWorkItems       WorkItem[]               @relation("WorkItemCreatedBy")
   workReviews            WorkReview[]             @relation("WorkReviewer")
+  goldTasksCreated       GoldTask[]               @relation("GoldTaskCreatedBy")
+  goldAnswers            GoldAnswer[]             @relation("GoldAnswerReviewer")
   ownedSupportRequests   SupportRequest[]         @relation("SupportOwner")
   supportReplies         SupportReply[]
   createdPaymentBatches  PaymentBatch[]           @relation("BatchCreatedByUser")
@@ -148,6 +150,18 @@ model Expert {
   contactPreference      ContactPreference @default(UNKNOWN)
   // When the person themselves last set it, as opposed to it never being asked.
   contactPreferenceSetAt DateTime?
+  /// Stripe Connect (Express) account, test mode only in this build.
+  stripeAccountId        String?           @unique
+  /// Mirrors the account's `payouts_enabled`, updated from webhooks.
+  payoutsEnabled         Boolean           @default(false)
+  /// Stripe's `requirements.currently_due`, so an operator sees what is missing.
+  payoutRequirementsDue  Json              @default("[]")
+  payoutStatusUpdatedAt  DateTime?
+  /// GitHub login used for repository access. Set by the expert or an operator.
+  githubUsername         String?
+  /// Slack member id, resolved from the email address the first time access is
+  /// granted, so a later email change cannot point a revoke at someone else.
+  slackUserId            String?
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
@@ -172,6 +186,8 @@ model Expert {
   supportRequests    SupportRequest[]
   paymentItems       PaymentItem[]
   offboardingTasks   OffboardingTask[]
+  taskChecks         TaskCheck[]
+  accessGrants       AccessGrant[]
 
   @@index([status])
   @@index([status, hourlyRateCents])
@@ -305,6 +321,9 @@ model Project {
   supportRequests           SupportRequest[]
   paymentItems              PaymentItem[]
   offboardingTasks          OffboardingTask[]
+  taskChecks                TaskCheck[]
+  accessResources           ProjectAccessResource[]
+  accessGrants              AccessGrant[]
 
   @@index([status])
   @@index([createdById])
@@ -525,6 +544,7 @@ model Assignment {
   // Extension back-relations
   workItems        WorkItem[]
   offboardingTasks OffboardingTask[]
+  accessGrants     AccessGrant[]
 
   @@unique([projectId, expertId])
   @@index([projectId, status])
@@ -582,34 +602,46 @@ enum OutboxStatus {
   QUEUED
   SENT
   FAILED
+  /// Never sent: the address is suppressed, reserved for tests, or not on
+  /// the allow-list. `suppressedReason` says which.
+  SUPPRESSED
+  /// Sent, then reported undeliverable by the provider.
+  BOUNCED
 }
 
 model OutboxMessage {
-  id           String       @id @default(cuid())
-  toEmail      String
-  toName       String       @default("")
-  subject      String
-  template     String
-  bodyText     String
-  status       OutboxStatus @default(QUEUED)
-  attempts     Int          @default(0)
-  lastError    String?
-  sentAt       DateTime?
+  id                String       @id @default(cuid())
+  toEmail           String
+  toName            String       @default("")
+  subject           String
+  template          String
+  bodyText          String
+  status            OutboxStatus @default(QUEUED)
+  attempts          Int          @default(0)
+  lastError         String?
+  sentAt            DateTime?
   // What this message is about, for filtering in the operator UI.
-  relatedType  String?
-  relatedId    String?
-  projectId    String?
-  expertId     String?
+  relatedType       String?
+  relatedId         String?
+  projectId         String?
+  expertId          String?
   // Development-only portal URL embedded in the message body.
-  devPortalUrl String?
+  devPortalUrl      String?
+  /// `simulated` until a real provider sends it, then that provider's name.
+  provider          String       @default("simulated")
+  providerMessageId String?
+  deliveredAt       DateTime?
+  bouncedAt         DateTime?
+  suppressedReason  String?
   /// Set when a message must exist at most once. Two requests racing to queue
   /// the same notification collide here rather than both succeeding.
-  dedupeKey    String?      @unique
-  createdAt    DateTime     @default(now())
+  dedupeKey         String?      @unique
+  createdAt         DateTime     @default(now())
 
   @@index([status, createdAt])
   @@index([expertId, createdAt])
   @@index([projectId, createdAt])
+  @@index([providerMessageId])
 }
 
 // ---------------------------------------------------------------------------
@@ -768,6 +800,7 @@ model Domain {
   opportunities  Opportunity[]
   qualifications Qualification[]
   requirements   ProjectQualificationRequirement[]
+  goldTasks      GoldTask[]
 
   @@index([isActive])
 }
@@ -1225,6 +1258,7 @@ model Screening {
   conflict       ReviewConflict?
   qualification  Qualification?
   attentionItems AttentionItem[]
+  checks         ScreeningCheck[]
 
   @@index([status, reviewDueAt])
   @@index([candidateId])
@@ -1236,7 +1270,9 @@ model ScreeningSubmission {
   revision        Int
   /// Answers keyed by criterion key.
   answers         Json     @default("{}")
-  /// Synthetic links, stored as text. Never fetched by the application.
+  /// Stored as text and never fetched. Evidence checks parse a GitHub login or
+  /// repository out of a link and query the GitHub API for it; the link itself
+  /// is never requested, so a submitted URL cannot make the server call it.
   workSampleLinks Json     @default("[]")
   note            String   @default("")
   /// False when required evidence is missing, which is how an incomplete
@@ -1247,6 +1283,7 @@ model ScreeningSubmission {
 
   screening Screening         @relation(fields: [screeningId], references: [id], onDelete: Cascade)
   reviews   ScreeningReview[]
+  check     ScreeningCheck?
 
   @@unique([screeningId, revision])
 }
@@ -1401,26 +1438,28 @@ enum AttentionStatus {
 /// every minute cannot produce a minute's worth of identical alerts. Items
 /// resolve themselves when the underlying condition goes away.
 model AttentionItem {
-  id             String            @id @default(cuid())
-  dedupeKey      String            @unique
-  kind           AttentionKind     @default(BUSINESS_BLOCKER)
-  category       String
-  severity       AttentionSeverity @default(MEDIUM)
-  title          String
+  id              String            @id @default(cuid())
+  dedupeKey       String            @unique
+  kind            AttentionKind     @default(BUSINESS_BLOCKER)
+  category        String
+  severity        AttentionSeverity @default(MEDIUM)
+  title           String
   /// The concrete thing that is stuck.
-  blocker        String
+  blocker         String
   /// What it costs if nobody acts.
-  impact         String
+  impact          String
   /// What to do next.
-  nextAction     String
-  ownerId        String?
-  dueAt          DateTime?
-  status         AttentionStatus   @default(OPEN)
-  resolvedAt     DateTime?
-  resolvedReason String?
+  nextAction      String
+  ownerId         String?
+  dueAt           DateTime?
+  status          AttentionStatus   @default(OPEN)
+  resolvedAt      DateTime?
+  /// Set once a Slack notification for this item has been posted.
+  slackNotifiedAt DateTime?
+  resolvedReason  String?
   /// Bumped every sweep so a stale item is visible without duplicating it.
-  lastSeenAt     DateTime          @default(now())
-  metadata       Json              @default("{}")
+  lastSeenAt      DateTime          @default(now())
+  metadata        Json              @default("{}")
 
   projectId        String?
   expertId         String?
@@ -1594,6 +1633,7 @@ model WorkItem {
   submissions WorkSubmission[]
   reviews     WorkReview[]
   paymentItem PaymentItem?
+  taskChecks  TaskCheck[]
 
   @@index([projectId, status])
   @@index([expertId, status])
@@ -1610,10 +1650,14 @@ model WorkSubmission {
   attachments  Json     @default("[]")
   /// Hours claimed on an hourly item. Verified by the reviewer, not trusted.
   hoursClaimed Decimal? @db.Decimal(10, 2)
+  /// For evaluation-task work: prompt, reference answer and checker, validated
+  /// by `taskSpecSchema`. Null for ordinary deliverables.
+  taskSpec     Json?
   submittedAt  DateTime @default(now())
 
-  workItem WorkItem     @relation(fields: [workItemId], references: [id], onDelete: Cascade)
-  reviews  WorkReview[]
+  workItem  WorkItem     @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  reviews   WorkReview[]
+  taskCheck TaskCheck?
 
   @@unique([workItemId, revision])
 }
@@ -1740,6 +1784,8 @@ enum PaymentItemStatus {
   READY
   IN_BATCH
   EXPORTED
+  /// A Stripe transfer to the expert's connected account succeeded.
+  PAID
   VOID
 }
 
@@ -1773,6 +1819,11 @@ model PaymentItem {
   supersededById          String?           @unique
   voidedAt                DateTime?
   voidReason              String?
+  /// Set by a Stripe transfer. Unique, so one transfer can never pay two items.
+  stripeTransferId        String?           @unique
+  paidAt                  DateTime?
+  /// Why the last transfer attempt failed. Cleared when it succeeds.
+  payoutError             String?
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
 
@@ -1794,6 +1845,10 @@ enum PaymentBatchStatus {
   PENDING_APPROVAL
   APPROVED
   EXPORTED
+  /// Transfers are being sent. Some items may be paid and some not yet.
+  PAYING
+  /// Every item was transferred.
+  PAID
   CANCELLED
 }
 
@@ -1813,6 +1868,8 @@ model PaymentBatch {
   exportedAt   DateTime?
   exportedById String?
   cancelledAt  DateTime?
+  paidAt       DateTime?
+  paidById     String?
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
@@ -1862,4 +1919,290 @@ model OffboardingTask {
 
   @@unique([projectId, expertId, key])
   @@index([status, dueAt])
+}
+
+// ---------------------------------------------------------------------------
+// Task quality
+// ---------------------------------------------------------------------------
+
+enum TaskCheckStatus {
+  /// Enough attempts returned a reply to reach a verdict.
+  COMPLETED
+  /// Too many attempts failed to say anything. Re-run it.
+  INCONCLUSIVE
+}
+
+enum TaskVerdict {
+  BROKEN_SPEC
+  ANSWER_LEAK
+  TOO_EASY
+  DISCRIMINATING
+  UNSOLVED
+}
+
+/// Automated check of one evaluation-task submission against a model.
+///
+/// Advice to the reviewer, never a decision: nothing reads a verdict to approve,
+/// reject or pay. One per submission, which is what makes the worker's check
+/// idempotent under duplicate delivery. A re-run replaces it in place.
+model TaskCheck {
+  id                  String          @id @default(cuid())
+  submissionId        String          @unique
+  workItemId          String
+  expertId            String
+  projectId           String
+  /// `simulated` or `anthropic`. The UI labels simulated results everywhere.
+  provider            String
+  model               String
+  status              TaskCheckStatus
+  verdict             TaskVerdict?
+  requestedAttempts   Int
+  validAttempts       Int
+  passes              Int
+  /// Structural findings from `structuralFindings`.
+  findings            Json            @default("[]")
+  /// One entry per attempt: answer, passed, error, a trimmed reply, tokens.
+  attempts            Json            @default("[]")
+  inconclusiveReason  String?
+  inputTokens         Int             @default(0)
+  outputTokens        Int             @default(0)
+  /// An estimate from published prices. Null when the model's price is unknown.
+  estimatedCostMicros Int?
+  checkedAt           DateTime
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  submission WorkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  workItem   WorkItem       @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  expert     Expert         @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  project    Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([verdict])
+  @@index([expertId, checkedAt])
+  @@index([projectId, checkedAt])
+}
+
+enum GoldDecision {
+  APPROVE
+  REVISE
+}
+
+/// A task whose correct review decision is already known.
+///
+/// Used to calibrate reviewers: each reviewer answers a gold task once, and the
+/// share they get right is their calibration score. Gold tasks never reach an
+/// expert and never produce a payment.
+model GoldTask {
+  id               String       @id @default(cuid())
+  reference        String       @unique
+  title            String
+  domainId         String?
+  prompt           String
+  referenceAnswer  String
+  /// Same shape as `TaskSpec.checker`.
+  checker          Json
+  expectedDecision GoldDecision
+  /// Why that is the right decision. Shown to a reviewer only after they answer.
+  rationale        String
+  createdById      String?
+  retiredAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  domain    Domain?      @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  createdBy User?        @relation("GoldTaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  answers   GoldAnswer[]
+
+  @@index([retiredAt])
+}
+
+/// One reviewer's answer to one gold task. Write-once.
+model GoldAnswer {
+  id         String       @id @default(cuid())
+  goldTaskId String
+  reviewerId String
+  decision   GoldDecision
+  note       String       @default("")
+  correct    Boolean
+  answeredAt DateTime     @default(now())
+
+  goldTask GoldTask @relation(fields: [goldTaskId], references: [id], onDelete: Cascade)
+  reviewer User     @relation("GoldAnswerReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([goldTaskId, reviewerId])
+  @@index([reviewerId])
+}
+
+// ---------------------------------------------------------------------------
+// Integrations: email suppression, webhook receipts
+// ---------------------------------------------------------------------------
+
+enum SuppressionReason {
+  BOUNCE
+  COMPLAINT
+  MANUAL
+}
+
+/// An address mail must never be sent to again. Stored lower-cased.
+model EmailSuppression {
+  id        String            @id @default(cuid())
+  email     String            @unique
+  reason    SuppressionReason
+  /// The provider event or operator that added it.
+  source    String            @default("")
+  createdAt DateTime          @default(now())
+}
+
+/// One row per provider event processed. The unique key is what makes a
+/// webhook redelivery a no-op instead of a second effect.
+model WebhookEvent {
+  id         String   @id @default(cuid())
+  provider   String
+  eventId    String
+  type       String
+  receivedAt DateTime @default(now())
+
+  @@unique([provider, eventId])
+  @@index([provider, receivedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Screening checks
+// ---------------------------------------------------------------------------
+
+enum ScreeningCheckStatus {
+  PENDING
+  COMPLETE
+  FAILED
+}
+
+/// Automated evidence about one screening submission.
+///
+/// Advisory, every field of it. Nothing here moves a screening, rejects a
+/// candidate or feeds a decision automatically: a reviewer reads it next to the
+/// submission. Suggested scores are withheld from a reviewer until that
+/// reviewer has submitted their own, so the model cannot anchor them.
+model ScreeningCheck {
+  id              String               @id @default(cuid())
+  screeningId     String
+  submissionId    String               @unique
+  status          ScreeningCheckStatus @default(PENDING)
+  scorerProvider  String               @default("simulated")
+  scorerModel     String               @default("")
+  /// [{ key, label, score, maxScore, weight, rationale, quote, quoteFound }]
+  suggestedScores Json                 @default("[]")
+  suggestedTotal  Int?
+  maxTotal        Int?
+  /// Total at or over the rubric threshold, and every gating criterion at
+  /// least half marks. A suggestion, labelled as one.
+  suggestedPass   Boolean?
+  summary         String               @default("")
+  /// "live" or "simulated": whether evidence lookups reached the real APIs.
+  evidenceMode    String               @default("simulated")
+  /// [{ kind, subject, status, detail, url }]
+  evidence        Json                 @default("[]")
+  /// [{ code, severity, detail, relatedReference }]
+  flags           Json                 @default("[]")
+  inputTokens     Int                  @default(0)
+  outputTokens    Int                  @default(0)
+  costMicros      Int?
+  error           String?
+  checkedAt       DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  screening  Screening           @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  submission ScreeningSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([screeningId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Access to client systems
+// ---------------------------------------------------------------------------
+
+enum AccessSystem {
+  GITHUB
+  SLACK
+}
+
+/// A client system an expert on this project should be able to reach: one
+/// GitHub repository or one Slack channel.
+model ProjectAccessResource {
+  id          String       @id @default(cuid())
+  projectId   String
+  system      AccessSystem
+  /// "owner/repo" for GitHub, a channel id (C0123...) for Slack.
+  resource    String
+  label       String       @default("")
+  /// GitHub permission: pull, triage, push, maintain. Ignored for Slack.
+  permission  String       @default("push")
+  createdById String?
+  createdAt   DateTime     @default(now())
+  /// Set when removed. Grants on a removed resource are revoked, then the row
+  /// stays so the history of who had access still resolves.
+  removedAt   DateTime?
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  grants  AccessGrant[]
+
+  @@unique([projectId, system, resource])
+  @@index([projectId, removedAt])
+}
+
+enum AccessGrantStatus {
+  /// Access is wanted and has not been granted yet.
+  PENDING
+  ACTIVE
+  /// Access must be removed and has not been yet.
+  REVOKING
+  REVOKED
+  /// Granting stopped and needs a person (missing username, not in workspace,
+  /// token lacks rights). Nothing was granted.
+  GRANT_FAILED
+  /// Removing failed. The expert may still have access: always urgent.
+  REVOKE_FAILED
+}
+
+/// One expert's access to one resource, and its full lifecycle.
+///
+/// Rows are driven by reconciliation, not by events: the worker compares who
+/// should have access (a CONFIRMED seat on an open project, held by a VERIFIED
+/// expert) with what was granted, and closes the gap in both directions. A
+/// missed event therefore delays a change by one sweep, never loses it.
+model AccessGrant {
+  id                String            @id @default(cuid())
+  resourceId        String
+  projectId         String
+  expertId          String
+  assignmentId      String?
+  system            AccessSystem
+  status            AccessGrantStatus @default(PENDING)
+  /// The GitHub login or Slack member id the grant was made to. A revoke always
+  /// uses this, never the expert's current value.
+  subject           String?
+  /// "live" or "simulated": which provider performed the last change.
+  provider          String            @default("simulated")
+  /// GitHub repository invitation id while the invitation is unaccepted.
+  invitationId      String?
+  invitationPending Boolean           @default(false)
+  attempts          Int               @default(0)
+  lastError         String?
+  revokeReason      String?
+  grantedAt         DateTime?
+  revokedAt         DateTime?
+  lastVerifiedAt    DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  resource   ProjectAccessResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  project    Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expert     Expert                @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  assignment Assignment?           @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+
+  @@unique([resourceId, expertId])
+  @@index([status])
+  @@index([projectId, expertId])
+  @@index([expertId, status])
 }

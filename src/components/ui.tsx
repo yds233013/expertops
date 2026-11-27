@@ -28,7 +28,7 @@ export function Badge({
     <span
       title={title}
       className={clsx(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold',
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold',
         TONE_CLASS[tone],
       )}
     >
@@ -75,6 +75,9 @@ const STATUS_TONES: Record<string, Tone> = {
   FAILED: 'warning',
   DEAD: 'danger',
   QUEUED: 'warning',
+  // Outbox delivery. Suppressed was never sent, on purpose; bounced was sent and refused.
+  SUPPRESSED: 'neutral',
+  BOUNCED: 'danger',
   // Candidates and screenings. Warm tones mean a person has something to do.
   DUPLICATE_HOLD: 'danger',
   SCREENING_INVITED: 'info',
@@ -104,9 +107,19 @@ const STATUS_TONES: Record<string, Tone> = {
   // Exported to a CSV for someone else to pay. Deliberately not "success":
   // nothing in this build means the money moved.
   EXPORTED: 'neutral',
+  // Stripe transfers (test mode). PAID is the one status where green means
+  // money moved; a batch that is PAYING is part-way through.
+  PAYING: 'info',
+  PAID: 'success',
   VOID: 'muted',
   DISPATCHED: 'success',
   PARTIALLY_DISPATCHED: 'warning',
+  // Access to client systems. A failed revoke means someone may still have
+  // access, so it is the one that is red.
+  REVOKING: 'info',
+  REVOKED: 'muted',
+  GRANT_FAILED: 'warning',
+  REVOKE_FAILED: 'danger',
   // Actors, on history rows
   OPERATOR: 'neutral',
   EXPERT: 'info',
@@ -248,7 +261,7 @@ const PROVENANCE: Record<ProvenanceKind, { label: string; tone: Tone; title: str
     title: 'Requires an explicit confirmation by a signed-in human operator.',
   },
   simulated: {
-    label: 'Simulated email',
+    label: 'Sandbox email',
     tone: 'muted',
     title: 'Written to the in-app outbox. Nothing is sent to a real mail server.',
   },
@@ -259,11 +272,20 @@ const PROVENANCE: Record<ProvenanceKind, { label: string; tone: Tone; title: str
   },
 };
 
-export function ProvenanceTag({ kind }: { kind: ProvenanceKind }) {
+export function ProvenanceTag({
+  kind,
+  label,
+  title,
+}: {
+  kind: ProvenanceKind;
+  /** Overrides the default wording when the kind applies to something other than email. */
+  label?: string;
+  title?: string;
+}) {
   const meta = PROVENANCE[kind];
   return (
-    <Badge tone={meta.tone} title={meta.title}>
-      {meta.label}
+    <Badge tone={meta.tone} title={title ?? meta.title}>
+      {label ?? meta.label}
     </Badge>
   );
 }
@@ -288,6 +310,91 @@ export function ScoreBar({ score }: { score: number }) {
       </div>
       <span className="text-xs font-semibold tabular-nums text-ink-700">{score}</span>
     </div>
+  );
+}
+
+const BAR_TONE: Record<'accent' | 'success' | 'warning' | 'danger' | 'neutral', string> = {
+  accent: 'bg-accent-500',
+  success: 'bg-emerald-600',
+  warning: 'bg-amber-500',
+  danger: 'bg-rose-600',
+  neutral: 'bg-ink-400',
+};
+
+export type BarTone = keyof typeof BAR_TONE;
+
+/**
+ * A share of a whole, as a thin horizontal bar.
+ *
+ * Decoration beside a number that is always printed too, so it is hidden from
+ * assistive tech. An empty denominator draws an empty track, never NaN.
+ */
+export function ProportionBar({
+  value,
+  max,
+  tone = 'accent',
+  className,
+}: {
+  value: number;
+  max: number;
+  tone?: BarTone;
+  className?: string;
+}) {
+  const share = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+  return (
+    <div
+      aria-hidden="true"
+      className={clsx('h-1.5 overflow-hidden rounded-full bg-ink-100', className ?? 'w-20')}
+    >
+      <div
+        className={clsx('h-full rounded-full', BAR_TONE[tone])}
+        style={{ width: `${share === 0 ? 0 : Math.max(3, share * 100)}%` }}
+      />
+    </div>
+  );
+}
+
+/** "72%" from 18 and 25. Rounded to a whole percent; a rate is not that precise. */
+export function formatPercent(numerator: number, denominator: number): string | null {
+  if (denominator <= 0) return null;
+  return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+/**
+ * A rate with what it was computed from: "72% · 18 of 25".
+ *
+ * A percentage on its own hides whether it came from four items or four
+ * hundred. `empty` is what to say when there is nothing to divide by.
+ */
+export function RateValue({
+  numerator,
+  denominator,
+  empty = 'None yet',
+  size = 'sm',
+}: {
+  numerator: number;
+  denominator: number;
+  empty?: string;
+  size?: 'sm' | 'lg';
+}) {
+  const percent = formatPercent(numerator, denominator);
+  if (percent === null) {
+    return <span className="text-xs text-ink-400">{empty}</span>;
+  }
+  return (
+    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap tabular-nums">
+      <span
+        className={clsx(
+          'font-semibold text-ink-900',
+          size === 'lg' ? 'text-[1.75rem] leading-none' : 'text-sm',
+        )}
+      >
+        {percent}
+      </span>
+      <span className="text-xs text-ink-500">
+        · {numerator} of {denominator}
+      </span>
+    </span>
   );
 }
 
@@ -643,6 +750,12 @@ export function Tabs({
  * able to tell at a glance that nobody on it exists.
  */
 export function SampleDataBadge({ title }: { title?: string }) {
+  // Read directly, not through getEnv, so the badge is safe in any bundle.
+  if (
+    !['1', 'true', 'yes', 'on'].includes((process.env.SHOW_SAMPLE_DATA_NOTICE ?? '').toLowerCase())
+  ) {
+    return null;
+  }
   return (
     <span
       className="sample-badge"

@@ -54,7 +54,7 @@ export function PublicShell({
                 Opportunities
               </Link>
               <Link className="public-nav-link" href="/demo">
-                Demo
+                Tour
               </Link>
               <Link className="public-nav-link" href="/login">
                 Operator sign-in

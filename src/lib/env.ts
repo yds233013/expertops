@@ -42,6 +42,12 @@ const schema = z.object({
   WORKER_NAME: z.string().default('local-worker'),
   EXPOSE_PORTAL_LINKS_IN_UI: booleanish.default(false),
   SEED_DEMO_PASSWORD: z.string().min(8).default('demo-password-123'),
+  /**
+   * Shows the "Demo workspace · Sample data" badge, the sample-data line in the
+   * footer and the notice on the read-only tour. Off by default; turn it on for
+   * a workspace you share with people who should be told nobody in it is real.
+   */
+  SHOW_SAMPLE_DATA_NOTICE: booleanish.default(false),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -66,6 +72,7 @@ export function getEnv(): Env {
     WORKER_NAME: process.env.WORKER_NAME,
     EXPOSE_PORTAL_LINKS_IN_UI: process.env.EXPOSE_PORTAL_LINKS_IN_UI,
     SEED_DEMO_PASSWORD: process.env.SEED_DEMO_PASSWORD,
+    SHOW_SAMPLE_DATA_NOTICE: process.env.SHOW_SAMPLE_DATA_NOTICE,
   });
 
   if (!parsed.success) {
@@ -193,7 +200,7 @@ export function resetEnvCache(): void {
 /**
  * What to call this deployment on screen.
  *
- * Three layouts and the simulated outbox signature used to state "local
+ * Three layouts and the in-app outbox signature used to state "local
  * development build" unconditionally. That is true on a laptop and false on a
  * hosted staging box, and it is the one sentence a tester reads to decide
  * whether what they are looking at is real. Wrong in the direction that makes
@@ -219,4 +226,9 @@ export function environmentLabel(): string {
 export function portalLinksVisible(): boolean {
   const env = getEnv();
   return env.NODE_ENV !== 'production' && env.EXPOSE_PORTAL_LINKS_IN_UI;
+}
+
+/** Whether to label the workspace as sample data (`SHOW_SAMPLE_DATA_NOTICE`). */
+export function sampleDataNoticeVisible(): boolean {
+  return getEnv().SHOW_SAMPLE_DATA_NOTICE;
 }

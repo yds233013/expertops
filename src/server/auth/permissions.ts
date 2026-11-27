@@ -59,6 +59,15 @@ export const CAPABILITIES = [
   'offboarding:assign',
   'offboarding:confirm',
   'import:run',
+  // --- task quality ------------------------------------------------------
+  'quality:read',
+  'quality:write',
+  'quality:calibrate',
+  'metrics:read',
+  'payment:payout',
+  // --- access to client systems ------------------------------------------
+  'access:read',
+  'access:manage',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -81,6 +90,9 @@ const VIEWER: Capability[] = [
   'support:read',
   'payment:read',
   'offboarding:read',
+  'quality:read',
+  'metrics:read',
+  'access:read',
 ];
 
 const OPERATOR: Capability[] = [
@@ -111,6 +123,9 @@ const OPERATOR: Capability[] = [
   'offboarding:assign',
   'offboarding:confirm',
   'import:run',
+  'quality:write',
+  'quality:calibrate',
+  'access:manage',
 ];
 
 /**
@@ -128,6 +143,7 @@ const ADMIN: Capability[] = [
   'screening:resolve_conflict',
   'outreach:approve',
   'payment:approve',
+  'payment:payout',
 ];
 
 export const ROLE_CAPABILITIES: Record<UserRole, readonly Capability[]> = {

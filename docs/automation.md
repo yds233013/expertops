@@ -25,6 +25,9 @@ business change, so a step and its follow-up either both land or neither does.
 | `assignment.confirmed` | `staffing.project_start_tasks` | **An operator confirms the seat** | Skips if the seat was released first |
 | `assignment.expert_withdrew` | `staffing.propose_replacements` | **An operator approves the replacement batch** | Recomputes the gap; skips if the seat was refilled |
 | `work.submitted` | `work.review_task` | none | Skips if already reviewed or cancelled |
+| `work.submitted` with a task | `work.check_task` | none: the verdict is advice to the reviewer ([task-quality.md](task-quality.md)) | Skips a superseded revision or a cancelled item; one check per submission |
+| `screening.submitted` | `screening.check_submission` | none: scores, evidence and flags are advice to the reviewer ([screening-checks.md](screening-checks.md)) | One check per submission; skips a deleted submission |
+| `assignment.confirmed`, `released`, `completed` | `access.reconcile` | **Confirming the seat is the approval**; a failed revoke goes to a person | Level-triggered: recomputes who should have access every run ([access.md](access.md)) |
 | `work.approved` | `payment.draft_from_approved_work` | **An operator approves the work and sets the quantity** | Returns the existing payment item if one exists |
 | Project closed | `project.offboarding_tasks` | **Each checklist item is confirmed by hand** | Idempotent per (project, expert, task) |
 
@@ -35,7 +38,9 @@ idempotent and safe to run as often as you like.
 
 | Schedule | Every | Does |
 | --- | --- | --- |
-| `outbox-dispatch` | 15s | Marks queued simulated emails delivered |
+| `outbox-dispatch` | 15s | Sends queued emails through the configured provider (simulated by default; see [integrations.md](integrations.md)) |
+| `slack-notify` | 60s | Posts new attention items to Slack when `SLACK_WEBHOOK_URL` is set |
+| `access-reconcile` | 60s | Grants and revokes GitHub and Slack access to match confirmed seats (simulated until a token is set; see [access.md](access.md)) |
 | `invitation-expire` | 60s | Closes invitations past their deadline |
 | `attention-sweep` | 120s | Recomputes the whole attention queue |
 | `invitation-remind` | 300s | One reminder per open invitation |

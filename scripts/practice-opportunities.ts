@@ -30,7 +30,7 @@ const AREAS = [
     project: PROJECT_RENAMES.coding,
     skill: 'Code Review',
     opportunity: OPPORTUNITY_RENAMES.coding,
-    summary: 'Review synthetic pull requests and write short, specific notes.',
+    summary: 'Review pull requests and write short, specific notes.',
     description:
       'A practice engagement. You would read small changesets and say what you would ' +
       'change and why, in a few paragraphs each. Nothing here is real client code.',
@@ -46,7 +46,7 @@ const AREAS = [
     project: PROJECT_RENAMES.enterprise,
     skill: 'Process Analysis',
     opportunity: OPPORTUNITY_RENAMES.enterprise,
-    summary: 'Map a synthetic back-office process and find where it stalls.',
+    summary: 'Map a back-office process and find where it stalls.',
     description:
       'A practice engagement. You would document how a fictional process actually runs, ' +
       'as opposed to how it is described, and point at the steps that cause delay.',
@@ -62,7 +62,7 @@ const AREAS = [
     project: PROJECT_RENAMES.cyber,
     skill: 'Threat Modelling',
     opportunity: OPPORTUNITY_RENAMES.cyber,
-    summary: 'Threat-model a synthetic system and rank what actually matters.',
+    summary: 'Threat-model a system and rank what actually matters.',
     description:
       'A practice engagement. You would work from an architecture description and say ' +
       'which threats are worth spending money on and which are not.',

@@ -166,6 +166,8 @@ persists the result. It is called identically from the UI and from the
 `matching.run` job.
 
 No language model, no external API, no protected personal attribute is involved.
+(The only model call in the build is the optional task check in
+[`task-quality.md`](task-quality.md), and it never touches matching.)
 
 ## The job queue
 

@@ -35,7 +35,7 @@ describe('the automation map matches the code', () => {
     }
   });
 
-  it('covers all ten required event-driven workflows', () => {
+  it('covers the ten required event-driven workflows, plus the later additions', () => {
     const required = [
       'application-submitted',
       'screening-submitted',
@@ -47,6 +47,11 @@ describe('the automation map matches the code', () => {
       'work-submitted',
       'work-approved',
       'project-completed',
+      // Added with task quality: an evaluation task is checked on submission.
+      'task-submitted',
+      // Added with screening checks and managed access.
+      'screening-checked',
+      'access-follows-seat',
     ];
     for (const id of required) {
       expect(ruleFor(id), `missing automation rule "${id}"`).toBeDefined();

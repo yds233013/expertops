@@ -4,10 +4,12 @@ import { formatDate, formatDateTime, formatRelative } from '@/lib/time';
 import Link from 'next/link';
 import { PORTAL_COOKIE, currentExpert, hasCookie } from '@/server/http/context';
 import { listAvailability } from '@/server/services/availability';
+import { listExpertAccess } from '@/server/services/access';
 import { listInvitationsForExpert } from '@/server/services/invitations';
 import { listExpertCommitments } from '@/server/services/staffing-gaps';
 import { listSupportForExpert } from '@/server/services/support';
 import { listWorkItemsForExpert } from '@/server/services/work';
+import { taskSpecSchema, type TaskSpec } from '@/server/domain/task-checks';
 import { AvailabilityPanel } from '@/components/portal/availability-panel';
 import { ContactPreferencePanel } from '@/components/portal/contact-preference-panel';
 import { InvitationPanel } from '@/components/portal/invitation-panel';
@@ -15,11 +17,25 @@ import { OnboardingPanel } from '@/components/portal/onboarding-panel';
 import { SupportPanel } from '@/components/portal/support-panel';
 import { WithdrawalPanel } from '@/components/portal/withdrawal-panel';
 import { WorkPanel } from '@/components/portal/work-panel';
+import { PayoutsPanel } from '@/components/portal/payouts-panel';
+import { AccessPanel } from '@/components/portal/access-panel';
+import { payoutRequirements, payoutState } from '@/lib/payout-requirements';
 import { Badge, Card, FieldRow, NextAction, StatusBadge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PortalHome() {
+/** The expert's own task, echoed back. A malformed row is simply not shown. */
+function readTaskSpec(value: unknown): TaskSpec | null {
+  if (value === null || value === undefined) return null;
+  const parsed = taskSpecSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+export default async function PortalHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ payouts?: string }>;
+}) {
   const expert = await currentExpert();
 
   if (!expert) {
@@ -42,7 +58,7 @@ export default async function PortalHome() {
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link className="btn btn-primary" href="/demo">
-            See the read-only demo
+            Take the product tour
           </Link>
           <Link className="btn btn-secondary" href="/apply/opportunities">
             Browse open opportunities
@@ -52,18 +68,39 @@ export default async function PortalHome() {
     );
   }
 
-  const [invitations, availability, onboardingCase, supportThreads, workItems, commitments] =
-    await Promise.all([
-      listInvitationsForExpert(prisma, expert.id),
-      listAvailability(prisma, expert.id),
-      prisma.onboardingCase.findUnique({
-        where: { expertId: expert.id },
-        include: { items: { orderBy: { position: 'asc' } } },
-      }),
-      listSupportForExpert(prisma, expert.id),
-      listWorkItemsForExpert(prisma, expert.id),
-      listExpertCommitments(prisma, expert.id),
-    ]);
+  const [
+    invitations,
+    availability,
+    onboardingCase,
+    supportThreads,
+    workItems,
+    commitments,
+    accessGrants,
+  ] = await Promise.all([
+    listInvitationsForExpert(prisma, expert.id),
+    listAvailability(prisma, expert.id),
+    prisma.onboardingCase.findUnique({
+      where: { expertId: expert.id },
+      include: { items: { orderBy: { position: 'asc' } } },
+    }),
+    listSupportForExpert(prisma, expert.id),
+    listWorkItemsForExpert(prisma, expert.id),
+    listExpertCommitments(prisma, expert.id),
+    listExpertAccess(prisma, expert.id),
+  ]);
+
+  const payoutsParam = (await searchParams).payouts;
+  const notice = payoutsParam === 'returned' || payoutsParam === 'expired' ? payoutsParam : null;
+  // Back from Stripe, the card that explains what happened comes first.
+  const payouts = (
+    <div id="payouts" className="scroll-mt-16">
+      <PayoutsPanel
+        state={payoutState(expert)}
+        missing={payoutRequirements(expert.payoutRequirementsDue)}
+        notice={notice}
+      />
+    </div>
+  );
 
   const openInvitations = invitations.filter((invitation) => invitation.status === 'SENT');
   const acceptedInvitations = invitations.filter((invitation) => invitation.status === 'ACCEPTED');
@@ -128,10 +165,14 @@ export default async function PortalHome() {
             <span className="section-nav-count">{workNeedingSubmission}</span>
           )}
         </a>
+        <a href="#payouts">Get paid</a>
+        <a href="#access">Access</a>
         <a href="#availability">Availability</a>
         <a href="#support">Support</a>
         <a href="#settings">Profile and contact</a>
       </nav>
+
+      {notice && payouts}
 
       <div id="invitations" className="scroll-mt-16">
         <Card
@@ -233,8 +274,16 @@ export default async function PortalHome() {
                     summary: item.submissions[0].summary,
                     content: item.submissions[0].content,
                     hoursClaimed: item.submissions[0].hoursClaimed,
+                    submittedAt: item.submissions[0].submittedAt.toISOString(),
+                    taskSpec: readTaskSpec(item.submissions[0].taskSpec),
                   }
                 : null,
+              history: item.submissions.map((submission) => ({
+                revision: submission.revision,
+                summary: submission.summary,
+                submittedAt: submission.submittedAt.toISOString(),
+                taskSpec: readTaskSpec(submission.taskSpec),
+              })),
               revisionRequest:
                 item.status === 'REVISION_REQUESTED'
                   ? (latestReview?.revisionRequest ?? null)
@@ -242,6 +291,26 @@ export default async function PortalHome() {
               reviewSummary: latestReview?.summary ?? null,
             };
           })}
+        />
+      </div>
+
+      {!notice && payouts}
+
+      <div id="access" className="scroll-mt-16">
+        <AccessPanel
+          githubUsername={expert.githubUsername}
+          items={accessGrants.map((grant) => ({
+            id: grant.id,
+            system: grant.system,
+            name:
+              grant.resource.system === 'GITHUB'
+                ? grant.resource.resource
+                : grant.resource.label || 'Slack channel',
+            projectCode: grant.project.code,
+            status: grant.status,
+            invitationPending: grant.invitationPending,
+            simulated: grant.provider === 'simulated',
+          }))}
         />
       </div>
 

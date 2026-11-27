@@ -25,7 +25,7 @@ export const DEFAULT_SCHEDULES: readonly ScheduleDefinition[] = [
     name: 'outbox-dispatch',
     jobType: 'outbox.dispatch',
     intervalSeconds: 15,
-    description: 'Marks queued simulated emails as delivered.',
+    description: 'Sends queued emails through the configured provider (simulated by default).',
   },
   {
     name: 'invitation-expire',
@@ -53,6 +53,19 @@ export const DEFAULT_SCHEDULES: readonly ScheduleDefinition[] = [
     intervalSeconds: 3600,
     payload: { pruneJobsOlderThanDays: 7 },
     description: 'Purges expired sessions and old finished jobs.',
+  },
+  {
+    name: 'slack-notify',
+    jobType: 'notify.slack',
+    intervalSeconds: 60,
+    description: 'Posts new attention items to Slack when SLACK_WEBHOOK_URL is set.',
+  },
+  {
+    name: 'access-reconcile',
+    jobType: 'access.reconcile',
+    intervalSeconds: 60,
+    description:
+      'Grants and revokes GitHub and Slack access so it matches who holds a confirmed seat. Simulated until GITHUB_ADMIN_TOKEN or SLACK_BOT_TOKEN is set.',
   },
   {
     name: 'attention-sweep',

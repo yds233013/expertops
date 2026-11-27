@@ -92,7 +92,7 @@ export async function workloadQueues(db: Db): Promise<{ queues: Queue[]; highSev
       },
       {
         href: '/outbox',
-        label: 'Simulated emails queued',
+        label: 'Sandbox emails queued',
         action: 'Written to the outbox, never sent',
         count: outbox.QUEUED,
       },

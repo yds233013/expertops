@@ -11,6 +11,7 @@ import { validateWorkSampleLink } from './candidates';
 import { queueExpertMessage } from './contact-preferences';
 import { issuePortalToken } from './portal-access';
 import { renderWorkAssignedEmail } from '@/server/email/templates';
+import { taskSpecSchema } from '@/server/domain/task-checks';
 
 /**
  * Project work items.
@@ -167,6 +168,8 @@ export interface SubmitWorkInput {
   content: string;
   attachments?: string[];
   hoursClaimed?: string | number;
+  /** For evaluation-task work: validated against `taskSpecSchema`, then checked. */
+  taskSpec?: unknown;
 }
 
 /** The expert submits, or resubmits after a revision request. */
@@ -184,6 +187,17 @@ export async function submitWork(db: Db, actor: Actor, input: SubmitWorkInput) {
   if (!input.content.trim()) throw badRequest('A submission needs some content.');
 
   const attachments = (input.attachments ?? []).slice(0, 10).map(validateWorkSampleLink);
+
+  let taskSpec: Prisma.InputJsonValue | undefined;
+  if (input.taskSpec !== undefined && input.taskSpec !== null) {
+    const parsed = taskSpecSchema.safeParse(input.taskSpec);
+    if (!parsed.success) {
+      throw badRequest(
+        parsed.error.issues[0]?.message ?? 'The task is not in the expected format.',
+      );
+    }
+    taskSpec = parsed.data as Prisma.InputJsonValue;
+  }
 
   let hoursScaled: number | null = null;
   if (workItem.basis === 'HOURLY') {
@@ -206,6 +220,7 @@ export async function submitWork(db: Db, actor: Actor, input: SubmitWorkInput) {
       content: input.content.trim(),
       attachments: attachments as Prisma.InputJsonValue,
       hoursClaimed: hoursScaled === null ? null : quantityToString(hoursScaled),
+      ...(taskSpec === undefined ? {} : { taskSpec }),
       submittedAt: at,
     },
   });
@@ -235,6 +250,15 @@ export async function submitWork(db: Db, actor: Actor, input: SubmitWorkInput) {
     priority: 30,
     dedupeKey: `work.review_task:${workItem.id}:${revision}`,
   });
+
+  if (taskSpec !== undefined) {
+    await enqueueJob(db, {
+      type: 'work.check_task',
+      payload: { submissionId: submission.id },
+      priority: 40,
+      dedupeKey: `work.check_task:${submission.id}`,
+    });
+  }
 
   return { workItem, submission, revision };
 }
@@ -375,7 +399,13 @@ export async function listWorkItems(
     include: {
       expert: { select: { id: true, reference: true, fullName: true } },
       project: { select: { id: true, code: true, title: true } },
-      submissions: { orderBy: { revision: 'desc' }, take: 1 },
+      submissions: {
+        orderBy: { revision: 'desc' },
+        take: 1,
+        include: {
+          taskCheck: true,
+        },
+      },
       reviews: { orderBy: { createdAt: 'desc' }, take: 1 },
       paymentItem: { select: { id: true, reference: true, status: true } },
     },
@@ -389,7 +419,7 @@ export async function getWorkItem(db: Db, workItemId: string) {
       expert: true,
       project: true,
       assignment: true,
-      submissions: { orderBy: { revision: 'desc' } },
+      submissions: { orderBy: { revision: 'desc' }, include: { taskCheck: true } },
       reviews: {
         orderBy: { createdAt: 'desc' },
         include: { reviewer: { select: { id: true, name: true } } },
@@ -428,6 +458,9 @@ export async function listWorkItemsForExpert(db: Db, expertId: string) {
       summary: submission.summary,
       content: submission.content,
       hoursClaimed: submission.hoursClaimed?.toString() ?? null,
+      // The expert's own task, echoed back. Check results stay on the operator
+      // side; the reviewer passes on what matters in a revision request.
+      taskSpec: submission.taskSpec,
       submittedAt: submission.submittedAt,
     })),
     // Reviewer identity is not exposed; the feedback itself is.

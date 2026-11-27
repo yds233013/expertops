@@ -88,8 +88,8 @@ export default async function DashboardPage() {
 
       {health.noLiveWorker && (
         <p className="alert alert-error" role="status">
-          <strong>No background worker is running.</strong> Reminders, sweeps and the simulated
-          outbox are paused until one starts.{' '}
+          <strong>No background worker is running.</strong> Reminders, sweeps and the in-app outbox
+          are paused until one starts.{' '}
           <Link className="font-semibold underline" href="/jobs">
             Worker screen
           </Link>

@@ -45,6 +45,7 @@ export const JOB_TYPES = [
   'screening.remind_candidate',
   'screening.expire',
   'screening.assign_reviewer',
+  'screening.check_submission',
   'review.remind',
   'review.escalate_overdue',
   // Qualification and readiness
@@ -57,13 +58,16 @@ export const JOB_TYPES = [
   'matching.run',
   // Delivery, support and payment
   'work.review_task',
+  'work.check_task',
   'work.remind_overdue',
   'support.check_response_sla',
   'payment.draft_from_approved_work',
   // Cross-cutting
   'attention.sweep',
   'project.offboarding_tasks',
+  'access.reconcile',
   'outbox.dispatch',
+  'notify.slack',
   'maintenance.sweep',
 ] as const;
 

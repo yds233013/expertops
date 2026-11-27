@@ -1,26 +1,24 @@
 /**
- * How messages leave this system. They do not.
+ * How messages leave this system.
  *
- * Every "email" is a row in `OutboxMessage` that the worker marks delivered.
- * There is no mail transport configured, no credentials for one, and no code
- * that opens a connection to one. `SENT` on an outbox row means "the worker
- * marked this row delivered", and `SENT` on an invitation means "a simulated
- * message was queued for it" — neither means a person received anything.
+ * By default they do not: every "email" is a row in `OutboxMessage` that the
+ * worker marks delivered, and `SENT` means only that. With
+ * `EMAIL_PROVIDER=resend` (docs/integrations.md) the worker sends them for
+ * real, and the "not emailed" labels across the app disappear.
  *
  * This is a single named fact rather than a sentence repeated on each screen,
- * so the day a real transport is added there is exactly one place that changes
- * and every screen changes with it.
+ * so every screen changes together. It reads the environment directly, not
+ * through the provider module, so it is safe to import anywhere; in a browser
+ * bundle the variable is absent and the answer is the cautious one.
  */
 export type DeliveryMode = 'simulated' | 'external';
 
 export function deliveryMode(): DeliveryMode {
-  // Deliberately not configurable. Returning 'external' would require a
-  // transport to exist, and none does; see docs/pilot-readiness.md.
-  return 'simulated';
+  return process.env.EMAIL_PROVIDER === 'resend' ? 'external' : 'simulated';
 }
 
 export const SIMULATED_DELIVERY_NOTE =
   'Written to the in-app outbox. No mail server is configured, so nothing was delivered to anyone.';
 
 /** The short form, for a badge or a tooltip. */
-export const SIMULATED_DELIVERY_SHORT = 'Simulated: nothing was emailed.';
+export const SIMULATED_DELIVERY_SHORT = 'Sandbox: nothing was emailed.';

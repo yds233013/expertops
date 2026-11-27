@@ -8,10 +8,11 @@ import { type Actor, recordActivity } from './activity';
 /**
  * Offboarding checklist.
  *
- * Every item is something a person does somewhere else and then confirms here.
- * ExpertOps does not revoke an account, terminate a contract or delete a
- * repository, and none of these tasks claim that it did: confirming a task
- * records that a named operator says they did it, and nothing more.
+ * Every item is something a person confirms here. ExpertOps revokes the
+ * GitHub and Slack access it granted itself (see `access.ts`), but it cannot
+ * see the rest of a client's systems, so the access item is still a person's
+ * confirmation that everything is gone: confirming a task records that a named
+ * operator says so, and nothing more.
  */
 export interface OffboardingTemplateItem {
   key: string;
@@ -25,7 +26,7 @@ export const OFFBOARDING_CHECKLIST: readonly OffboardingTemplateItem[] = [
     key: 'access_revoked',
     label: 'Confirm client system access has been removed',
     description:
-      'Whoever administers the client environment removes the expert, then confirms here. ExpertOps has no connection to any external system and cannot verify this.',
+      'GitHub repositories and Slack channels listed under the project’s Access section are revoked automatically; check they show Revoked. Anything else (VPN, cloud consoles, shared drives) is removed by whoever administers it. Confirm here once all of it is gone.',
     dueInDays: 2,
   },
   {

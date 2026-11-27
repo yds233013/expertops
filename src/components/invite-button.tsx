@@ -103,7 +103,7 @@ export function InviteButton({
         </button>
       </div>
       <p className="text-[0.7rem] text-ink-500">
-        The worker renders the email into the simulated outbox. Nothing is sent to a mail server.
+        The worker renders the email into the in-app outbox. Nothing is sent to a mail server.
       </p>
     </div>
   );

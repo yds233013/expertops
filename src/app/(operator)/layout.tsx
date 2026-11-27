@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { environmentLabel } from '@/lib/env';
-import { capabilitiesFor } from '@/server/auth/permissions';
+import { environmentLabel, sampleDataNoticeVisible } from '@/lib/env';
+import { capabilitiesFor, roleHasCapability, type Capability } from '@/server/auth/permissions';
 import { workloadQueues } from '@/server/services/workload';
+import { emailConfig } from '@/server/email/provider';
+import { stripeConfig } from '@/server/integrations/stripe';
 import { currentOperator } from '@/server/http/context';
-import { OperatorNav, type NavGroup } from '@/components/operator-nav';
+import { OperatorNav, type NavGroup, type NavItem } from '@/components/operator-nav';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Badge, SampleDataBadge } from '@/components/ui';
 
@@ -16,12 +18,13 @@ export const dynamic = 'force-dynamic';
  * people come from, how they get onto a project, what they deliver, and the
  * machinery underneath.
  */
-const NAV_GROUPS: NavGroup[] = [
+const NAV_GROUPS: { heading: string; items: (NavItem & { capability?: Capability })[] }[] = [
   {
     heading: 'Today',
     items: [
       { href: '/attention', label: 'Needs attention' },
       { href: '/dashboard', label: 'Dashboard' },
+      { href: '/metrics', label: 'Metrics' },
     ],
   },
   {
@@ -47,8 +50,10 @@ const NAV_GROUPS: NavGroup[] = [
     heading: 'Delivery',
     items: [
       { href: '/work', label: 'Work' },
+      { href: '/quality', label: 'Task quality' },
       { href: '/support', label: 'Support' },
       { href: '/payments', label: 'Payments' },
+      { href: '/access', label: 'Access', capability: 'access:read' },
     ],
   },
   {
@@ -75,6 +80,14 @@ export default async function OperatorLayout({ children }: { children: React.Rea
 
   // Badges show work waiting on a person, not raw record counts, and come from
   // the same service as the dashboard's queue so the two cannot disagree.
+  // A destination the role cannot open is left out rather than shown and refused.
+  const navGroups: NavGroup[] = NAV_GROUPS.map((group) => ({
+    heading: group.heading,
+    items: group.items
+      .filter((item) => !item.capability || roleHasCapability(operator.role, item.capability))
+      .map(({ href, label }) => ({ href, label })),
+  }));
+
   const { queues } = await workloadQueues(prisma);
   const badges: Record<string, number> = Object.fromEntries(
     queues.map((queue) => [queue.href, queue.count]),
@@ -84,8 +97,28 @@ export default async function OperatorLayout({ children }: { children: React.Rea
   // by staying plain.
   const waitingTotal = Object.values(badges).reduce((sum, value) => sum + value, 0);
 
+  // The standing caveat follows the configuration, so it never claims less, or
+  // more, than is actually connected.
+  const sendsEmail = emailConfig().provider === 'resend';
+  let usesStripe = false;
+  try {
+    usesStripe = stripeConfig().secretKey !== null;
+  } catch {
+    usesStripe = false;
+  }
+  const showNotice = sampleDataNoticeVisible();
+  const footerNote = `${[
+    sendsEmail ? 'Email is sent through Resend' : 'Email runs in sandbox (in-app outbox)',
+    usesStripe
+      ? 'Payouts use Stripe test mode: no real money moves'
+      : 'No payment service is connected',
+    showNotice && 'All data is synthetic',
+  ]
+    .filter(Boolean)
+    .join('. ')}.`;
+
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[16rem_1fr]">
+    <div className="min-h-screen lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
       {/* The first stop for a keyboard, so the rail can be skipped. */}
       <a className="skip-link" href="#main">
         Skip to content
@@ -102,7 +135,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
             </span>
           </Link>
           <div className="lg:mt-5">
-            <OperatorNav groups={NAV_GROUPS} badges={badges} total={waitingTotal} />
+            <OperatorNav groups={navGroups} badges={badges} total={waitingTotal} />
           </div>
           {/* Sits under the last section rather than above the first: the rail
               is for navigating, and this is a standing caveat, not a control. */}
@@ -112,9 +145,11 @@ export default async function OperatorLayout({ children }: { children: React.Rea
         </div>
       </div>
 
-      <div className="flex min-h-screen flex-col">
+      <div className="flex min-h-screen min-w-0 flex-col">
         <header className="topbar">
-          <span className="hidden text-xs text-ink-500 sm:inline">{environmentLabel()}</span>
+          {showNotice ? (
+            <span className="hidden text-xs text-ink-500 sm:inline">{environmentLabel()}</span>
+          ) : null}
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <div className="account">
               <span className="avatar" aria-hidden="true">
@@ -139,8 +174,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
           {children}
         </main>
         <footer className="mx-auto w-full max-w-6xl px-4 pb-8 pt-2 text-xs text-ink-500 sm:px-6">
-          Email delivery is simulated, all data is synthetic, and nothing here is connected to an
-          external service.
+          {footerNote}
         </footer>
       </div>
     </div>
