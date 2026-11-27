@@ -84,7 +84,7 @@ export function AccessPanel({
                         tone="muted"
                         title="This workspace is a demo. No real GitHub or Slack access was given."
                       >
-                        Simulated
+                        Sandbox
                       </Badge>
                     )}
                   </div>

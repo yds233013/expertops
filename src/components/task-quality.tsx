@@ -46,7 +46,7 @@ export function SolverTag({ provider, model }: { provider: string; model?: strin
     return (
       <ProvenanceTag
         kind="simulated"
-        label="Simulated solver"
+        label="Sandbox solver"
         title="Attempts came from a deterministic stand-in, not a real model. The verdict shows how the check works, not how hard the task is."
       />
     );

@@ -312,7 +312,7 @@ describe('evidence lookups', () => {
     expect(missing).toMatchObject({ status: 'NOT_FOUND' });
     const [fresh] = await lookup.github({ login: 'fresh-dev', repo: null });
     expect(fresh!.facts?.accountCreatedAt?.slice(0, 10)).toBe('2026-11-23');
-    expect(fresh!.detail).toMatch(/^Simulated/);
+    expect(fresh!.detail).toMatch(/^Sandbox/);
   });
 });
 

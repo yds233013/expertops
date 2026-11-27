@@ -94,7 +94,7 @@ export function ScreeningCheckPanel({
             tone="muted"
             title="Some or all of this check came from a stand-in, not a real model or lookup."
           >
-            Simulated
+            Sandbox
           </Badge>
         )}
         <span
@@ -124,7 +124,7 @@ export function ScreeningCheckPanel({
               {simulatedScorer ? (
                 <ProvenanceTag
                   kind="simulated"
-                  label="Simulated scorer"
+                  label="Sandbox scorer"
                   title="Suggested scores come from a stand-in that scores answer length, not quality."
                 />
               ) : (
@@ -137,7 +137,7 @@ export function ScreeningCheckPanel({
               {simulatedEvidence ? (
                 <ProvenanceTag
                   kind="simulated"
-                  label="Simulated lookups"
+                  label="Sandbox lookups"
                   title="GitHub and NVD were not contacted. Evidence rows are made up from the claims."
                 />
               ) : (

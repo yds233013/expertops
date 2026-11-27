@@ -94,8 +94,11 @@ test.describe('anonymous visitors', () => {
       }
 
       await page.goto('/demo');
-      await expect(page.getByRole('heading', { name: /demo workspace/i, level: 1 })).toBeVisible();
-      await expect(page.getByText(/Everything here is sample data/i)).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: /ExpertOps workspace/i, level: 1 }),
+      ).toBeVisible();
+      // The sample-data notice is opt-in (SHOW_SAMPLE_DATA_NOTICE).
+      await expect(page.getByText(/Everything here is sample data/i)).toHaveCount(0);
 
       await page.goto('/apply/opportunities');
       await expect(page.getByText(/practice listings, not real jobs/i)).toBeVisible();

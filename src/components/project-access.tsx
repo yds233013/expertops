@@ -115,7 +115,7 @@ function ModeRow({ system, mode }: { system: AccessSystem; mode: 'live' | 'simul
           <Badge tone="info">Live</Badge>
         ) : (
           <Badge tone="muted" title="Grants are recorded here. Nobody is given real access.">
-            Simulated
+            Sandbox
           </Badge>
         )}
       </div>
@@ -272,7 +272,7 @@ function GrantRow({
           <StatusBadge status={grant.status} title={STATUS_HELP[grant.status]} />
           {grant.provider === 'simulated' && (
             <Badge tone="muted" title="Recorded here only. No real access was given or removed.">
-              Simulated
+              Sandbox
             </Badge>
           )}
         </div>

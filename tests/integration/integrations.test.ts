@@ -582,7 +582,7 @@ describe('what a real recipient reads', () => {
     };
     await dispatchQueuedMessages(prisma, { provider, config: realConfig });
     expect(texts[0]).toContain(DELIVERED_FOOTER);
-    expect(texts[0]).not.toContain('simulated outbox');
+    expect(texts[0]).not.toContain('in-app outbox');
     const stored = await prisma.outboxMessage.findUniqueOrThrow({ where: { id: message.id } });
     expect(stored.bodyText).toContain(SIMULATED_FOOTER);
   });

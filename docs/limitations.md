@@ -272,7 +272,7 @@ Still missing:
   health-check wiring beyond the `/api/health` endpoint itself.
 - **No backup or restore procedure.** The Docker volume is the only copy.
 - **No structured log shipping.** The logger writes lines to stdout.
-- **No feature flags** beyond `EXPOSE_PORTAL_LINKS_IN_UI`.
+- **No feature flags** beyond `EXPOSE_PORTAL_LINKS_IN_UI` and `SHOW_SAMPLE_DATA_NOTICE`.
 - **No migration rollback strategy.** Prisma migrations are forward-only here.
 
 ---

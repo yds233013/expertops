@@ -28,7 +28,7 @@ const SUPPRESSION_LABEL: Record<SuppressionReason, string> = {
   MANUAL: 'added by hand',
 };
 
-/** Who sent a message: the simulated outbox, or a real provider. */
+/** Who sent a message: the in-app outbox, or a real provider. */
 function MessageProvider({ provider }: { provider: string }) {
   if (provider === 'resend') {
     return (
@@ -121,7 +121,7 @@ export default async function OutboxPage({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile label="Queued" value={counts.QUEUED} hint="worker picks up" tone="warning" />
         <StatTile
-          label={live ? 'Sent' : 'Marked delivered (simulated)'}
+          label={live ? 'Sent' : 'Marked delivered (sandbox)'}
           value={counts.SENT}
           tone="muted"
         />

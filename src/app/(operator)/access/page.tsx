@@ -83,7 +83,7 @@ export default async function AccessPage({
                   tone="muted"
                   title={`Nobody is given real access. Set ${SYSTEM_TOKEN[system]} to go live.`}
                 >
-                  {SYSTEM_LABEL[system]} simulated
+                  {SYSTEM_LABEL[system]} sandbox
                 </Badge>
               ),
             )}
@@ -197,7 +197,7 @@ export default async function AccessPage({
                           tone="muted"
                           title="Recorded here only. No real access was given or removed."
                         >
-                          Simulated
+                          Sandbox
                         </Badge>
                       )}
                     </div>

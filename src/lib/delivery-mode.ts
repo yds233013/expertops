@@ -21,4 +21,4 @@ export const SIMULATED_DELIVERY_NOTE =
   'Written to the in-app outbox. No mail server is configured, so nothing was delivered to anyone.';
 
 /** The short form, for a badge or a tooltip. */
-export const SIMULATED_DELIVERY_SHORT = 'Simulated: nothing was emailed.';
+export const SIMULATED_DELIVERY_SHORT = 'Sandbox: nothing was emailed.';

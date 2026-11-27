@@ -3,7 +3,7 @@ import { PublicShell } from '@/components/public-shell';
 export default function DemoLayout({ children }: { children: React.ReactNode }) {
   return (
     <PublicShell
-      audience="Read-only demo"
+      audience="Product tour"
       mainId="demo-main"
       width="wide"
       nav

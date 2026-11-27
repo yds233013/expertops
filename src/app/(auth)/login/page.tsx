@@ -46,7 +46,7 @@ export default async function LoginPage() {
           </ul>
         </div>
         <p className="text-xs text-navy-100">
-          Email is simulated and payments are exported, never executed.
+          Email and payouts run in sandbox until you connect them.
         </p>
       </aside>
 
@@ -94,12 +94,12 @@ export default async function LoginPage() {
           <section className="border-t border-ink-200 pt-5">
             <h2 className="text-sm font-semibold text-ink-900">No account?</h2>
             <p className="mt-1 text-sm text-ink-600">
-              Look around a read-only demo workspace running on sample data, or see the practice
-              listings applicants use. Neither needs a sign-in.
+              Take a read-only tour of the workspace, or see the open listings applicants use.
+              Neither needs a sign-in.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link className="btn btn-secondary btn-sm" href="/demo">
-                Explore the demo
+                Take the product tour
               </Link>
               <Link className="btn btn-secondary btn-sm" href="/apply/opportunities">
                 Practice opportunities

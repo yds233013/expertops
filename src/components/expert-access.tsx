@@ -77,7 +77,7 @@ export function ExpertAccessCard({
                         tone="muted"
                         title="Recorded here only. No real access was given or removed."
                       >
-                        Simulated
+                        Sandbox
                       </Badge>
                     )}
                   </div>

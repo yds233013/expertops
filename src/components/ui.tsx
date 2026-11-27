@@ -261,7 +261,7 @@ const PROVENANCE: Record<ProvenanceKind, { label: string; tone: Tone; title: str
     title: 'Requires an explicit confirmation by a signed-in human operator.',
   },
   simulated: {
-    label: 'Simulated email',
+    label: 'Sandbox email',
     tone: 'muted',
     title: 'Written to the in-app outbox. Nothing is sent to a real mail server.',
   },
@@ -750,6 +750,12 @@ export function Tabs({
  * able to tell at a glance that nobody on it exists.
  */
 export function SampleDataBadge({ title }: { title?: string }) {
+  // Read directly, not through getEnv, so the badge is safe in any bundle.
+  if (
+    !['1', 'true', 'yes', 'on'].includes((process.env.SHOW_SAMPLE_DATA_NOTICE ?? '').toLowerCase())
+  ) {
+    return null;
+  }
   return (
     <span
       className="sample-badge"

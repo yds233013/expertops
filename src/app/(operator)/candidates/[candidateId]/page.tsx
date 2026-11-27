@@ -288,7 +288,8 @@ function nextStepFor(stage: string, duplicates: number): { title: string; detail
     case 'NEW':
       return {
         title: 'Send a screening',
-        detail: 'Choose a published rubric version under Screenings. The invitation is simulated.',
+        detail:
+          'Choose a published rubric version under Screenings. Invitations go to the in-app outbox.',
       };
     case 'SCREENING_INVITED':
       return {

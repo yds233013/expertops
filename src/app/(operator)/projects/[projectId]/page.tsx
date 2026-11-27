@@ -417,7 +417,7 @@ export default async function ProjectDetailPage({
         <Card
           flush
           title="Invitations"
-          description="The worker renders each invitation into the simulated outbox and marks it sent."
+          description="The worker renders each invitation into the in-app outbox and marks it sent."
           actions={<ProvenanceTag kind="simulated" />}
         >
           {project.invitations.length === 0 ? (
@@ -532,7 +532,7 @@ export default async function ProjectDetailPage({
                             body={{ reason: 'Released by operator' }}
                             label="Release seat"
                             variant="danger"
-                            confirm="This frees the seat and queues a simulated email to the expert."
+                            confirm="This frees the seat and queues an email to the expert."
                           />
                         ) : candidate.blockedReason ? (
                           <span className="text-xs text-amber-800">{candidate.blockedReason}</span>

@@ -149,14 +149,15 @@ export class SimulatedScorer implements ScreeningScorer {
         score,
         rationale:
           count === 0
-            ? 'Simulated: no answer was given.'
-            : `Simulated: ${count} words. This placeholder scores length, not quality.`,
+            ? 'Sandbox: no answer was given.'
+            : `Sandbox: ${count} words. Connect a model to score quality.`,
         quote: answer.trim().split(/\s+/).slice(0, 12).join(' '),
       };
     });
     return {
       suggestions,
-      summary: 'Simulated suggestion. Set SCREENING_CHECK_PROVIDER=anthropic for a real one.',
+      summary:
+        'Sandbox suggestion. Connect a model (SCREENING_CHECK_PROVIDER=anthropic) for a real one.',
       inputTokens: 0,
       outputTokens: 0,
       error: null,

@@ -58,7 +58,7 @@ export default async function PortalHome({
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link className="btn btn-primary" href="/demo">
-            See the read-only demo
+            Take the product tour
           </Link>
           <Link className="btn btn-secondary" href="/apply/opportunities">
             Browse open opportunities

@@ -10,7 +10,7 @@
  *    bearer credential. An earlier version of this build put one in the request
  *    path, where the server wrote it to its own access log; that is fixed at
  *    the source, and this is the second line of defence.
- *  * **Message bodies.** The simulated outbox holds what was written *to* a
+ *  * **Message bodies.** The in-app outbox holds what was written *to* a
  *    person. Logging it turns an operational log into a copy of their
  *    correspondence.
  *

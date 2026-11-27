@@ -17,7 +17,7 @@ type Params = { params: Promise<{ expertId: string }> };
  * spent and whose session has lapsed with no way back in. `/portal/enter` tells
  * them to ask their ExpertOps contact; this is what lets the contact answer.
  *
- * The link is never returned to the caller. It goes into the simulated outbox
+ * The link is never returned to the caller. It goes into the in-app outbox
  * exactly like every other portal link, so the rule that an operator reads
  * links out of the outbox rather than off an expert's record still holds, and
  * the act of issuing one is on the activity log either way.

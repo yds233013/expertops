@@ -112,7 +112,7 @@ export function WorkerHealthPanel({ health }: { health: WorkerHealth }) {
         {critical.length > 0 && (
           <p className="text-xs text-ink-600">
             While no worker is running, nothing in the application sends itself. Invitations stay in
-            DRAFT, screening links are never delivered to the simulated outbox, and every scheduled
+            DRAFT, screening links are never delivered to the in-app outbox, and every scheduled
             sweep is simply not happening.
           </p>
         )}

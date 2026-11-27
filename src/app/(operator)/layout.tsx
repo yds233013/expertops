@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { environmentLabel } from '@/lib/env';
+import { environmentLabel, sampleDataNoticeVisible } from '@/lib/env';
 import { capabilitiesFor, roleHasCapability, type Capability } from '@/server/auth/permissions';
 import { workloadQueues } from '@/server/services/workload';
 import { emailConfig } from '@/server/email/provider';
@@ -106,13 +106,16 @@ export default async function OperatorLayout({ children }: { children: React.Rea
   } catch {
     usesStripe = false;
   }
+  const showNotice = sampleDataNoticeVisible();
   const footerNote = `${[
-    sendsEmail ? 'Email is sent through Resend' : 'Email delivery is simulated',
+    sendsEmail ? 'Email is sent through Resend' : 'Email runs in sandbox (in-app outbox)',
     usesStripe
       ? 'Payouts use Stripe test mode: no real money moves'
       : 'No payment service is connected',
-    'All data is synthetic',
-  ].join('. ')}.`;
+    showNotice && 'All data is synthetic',
+  ]
+    .filter(Boolean)
+    .join('. ')}.`;
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -144,7 +147,9 @@ export default async function OperatorLayout({ children }: { children: React.Rea
 
       <div className="flex min-h-screen min-w-0 flex-col">
         <header className="topbar">
-          <span className="hidden text-xs text-ink-500 sm:inline">{environmentLabel()}</span>
+          {showNotice ? (
+            <span className="hidden text-xs text-ink-500 sm:inline">{environmentLabel()}</span>
+          ) : null}
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <div className="account">
               <span className="avatar" aria-hidden="true">

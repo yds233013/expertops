@@ -43,7 +43,7 @@ export interface QueueMessageInput {
   dedupeKey?: string | null;
 }
 
-/** Write a message into the simulated outbox. */
+/** Write a message into the in-app outbox. */
 export async function queueMessage(db: Db, input: QueueMessageInput) {
   return createMessage(db, input);
 }

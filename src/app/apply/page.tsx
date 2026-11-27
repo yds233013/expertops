@@ -62,7 +62,7 @@ export default async function ApplyHome() {
             Browse open opportunities
           </Link>
           <Link className="btn btn-secondary" href="/demo">
-            See the read-only demo
+            Take the product tour
           </Link>
         </div>
       </Card>

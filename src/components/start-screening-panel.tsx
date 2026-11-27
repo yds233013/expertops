@@ -92,7 +92,7 @@ export function StartScreeningPanel({
         {pending ? 'Starting…' : 'Send screening'}
       </button>
       <p className="text-[0.7rem] text-ink-500">
-        The worker renders the invitation into the simulated outbox. Nothing is emailed.
+        The worker renders the invitation into the in-app outbox. Nothing is emailed.
       </p>
     </div>
   );

@@ -242,7 +242,7 @@ export class SimulatedEvidenceLookup implements EvidenceLookup {
           kind: 'GITHUB_PROFILE',
           subject,
           status: 'NOT_FOUND',
-          detail: 'Simulated: no GitHub account has this name.',
+          detail: 'Sandbox: no GitHub account has this name.',
           url: null,
         },
       ];
@@ -255,7 +255,7 @@ export class SimulatedEvidenceLookup implements EvidenceLookup {
         kind: 'GITHUB_PROFILE',
         subject,
         status: 'VERIFIED',
-        detail: `Simulated: account created ${created.slice(0, 10)}, ${repos} public repositories.`,
+        detail: `Sandbox: account created ${created.slice(0, 10)}, ${repos} public repositories.`,
         url: `https://github.com/${ref.login}`,
         facts: {
           accountCreatedAt: created,
@@ -272,8 +272,8 @@ export class SimulatedEvidenceLookup implements EvidenceLookup {
         subject: `${subject}/${ref.repo}`,
         status: missing ? 'NOT_FOUND' : 'VERIFIED',
         detail: missing
-          ? 'Simulated: no public repository has this name.'
-          : `Simulated: an original repository, ${Math.floor(unit(`stars:${ref.repo}`) * 400)} stars.`,
+          ? 'Sandbox: no public repository has this name.'
+          : `Sandbox: an original repository, ${Math.floor(unit(`stars:${ref.repo}`) * 400)} stars.`,
         url: missing ? null : `https://${subject}/${ref.repo}`,
         facts: missing ? undefined : { fork: false, stars: 0, pushedAt: created },
       });
@@ -287,7 +287,7 @@ export class SimulatedEvidenceLookup implements EvidenceLookup {
       kind: 'CVE',
       subject: id,
       status: missing ? 'NOT_FOUND' : 'VERIFIED',
-      detail: missing ? 'Simulated: not in the NVD.' : 'Simulated: present in the NVD.',
+      detail: missing ? 'Sandbox: not in the NVD.' : 'Sandbox: present in the NVD.',
       url: missing ? null : `https://nvd.nist.gov/vuln/detail/${id}`,
     };
   }
