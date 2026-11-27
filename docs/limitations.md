@@ -31,6 +31,15 @@ present:
 - **Money.** Approved batches can be exported as a file, or paid by Stripe
   Connect transfer **in test mode only** ([`integrations.md`](integrations.md)).
   Nothing is invoiced to clients, and no live payment is possible.
+- **Identity verification.** Screening checks look up cited GitHub accounts
+  and CVEs and flag shared or copied evidence
+  ([`screening-checks.md`](screening-checks.md)). Nothing verifies a government
+  ID, and bar admissions are listed for a manual check because no API covers
+  every state.
+- **Access beyond GitHub and Slack.** Repositories and channels are granted and
+  revoked with the seat ([`access.md`](access.md)). VPNs, cloud consoles and
+  shared drives are still removed by hand, and offboarding asks a person to
+  confirm it.
 - **Time tracking.** An assignment records hours per week. Nothing records hours
   actually worked.
 - **Expert-to-expert or expert-to-client messaging.** The only communication is

@@ -65,6 +65,9 @@ export const CAPABILITIES = [
   'quality:calibrate',
   'metrics:read',
   'payment:payout',
+  // --- access to client systems ------------------------------------------
+  'access:read',
+  'access:manage',
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -89,6 +92,7 @@ const VIEWER: Capability[] = [
   'offboarding:read',
   'quality:read',
   'metrics:read',
+  'access:read',
 ];
 
 const OPERATOR: Capability[] = [
@@ -121,6 +125,7 @@ const OPERATOR: Capability[] = [
   'import:run',
   'quality:write',
   'quality:calibrate',
+  'access:manage',
 ];
 
 /**

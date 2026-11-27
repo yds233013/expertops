@@ -61,6 +61,13 @@ export const DEFAULT_SCHEDULES: readonly ScheduleDefinition[] = [
     description: 'Posts new attention items to Slack when SLACK_WEBHOOK_URL is set.',
   },
   {
+    name: 'access-reconcile',
+    jobType: 'access.reconcile',
+    intervalSeconds: 60,
+    description:
+      'Grants and revokes GitHub and Slack access so it matches who holds a confirmed seat. Simulated until GITHUB_ADMIN_TOKEN or SLACK_BOT_TOKEN is set.',
+  },
+  {
     name: 'attention-sweep',
     jobType: 'attention.sweep',
     intervalSeconds: 120,

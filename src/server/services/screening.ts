@@ -566,6 +566,19 @@ export async function submitScreening(
     metadata: { revision, isComplete: missingEvidence.length === 0, missingEvidence },
   });
 
+  // Checks run alongside reviewer assignment. They only add evidence for the
+  // reviewer; neither waits on the other.
+  const submission = await db.screeningSubmission.findUniqueOrThrow({
+    where: { screeningId_revision: { screeningId: screening.id, revision } },
+    select: { id: true },
+  });
+  await enqueueJob(db, {
+    type: 'screening.check_submission',
+    payload: { submissionId: submission.id },
+    priority: 30,
+    dedupeKey: `screening.check_submission:${submission.id}`,
+  });
+
   // Assigning a reviewer is automatic; failing to find one is an exception,
   // not a silent stall. Both are handled by the job.
   await enqueueJob(db, {

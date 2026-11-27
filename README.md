@@ -710,6 +710,28 @@ Each of these can be switched on alone, as described in
     batch by transfer with one idempotency key per item.
   - live keys are refused.
 
+### Screening checks and managed access
+
+- **Screening checks** ([`docs/screening-checks.md`](docs/screening-checks.md)).
+  Every screening submission gets:
+  - suggested rubric scores (Claude when `SCREENING_CHECK_PROVIDER=anthropic`).
+    These stay hidden from a reviewer until they have scored it themselves.
+  - lookups of the GitHub accounts and CVEs it cites.
+  - flags for copied answers, a GitHub account another candidate also claims, a
+    brand-new account, citations that do not exist, and text aimed at the
+    grader.
+
+  All of it is advisory. A person still decides.
+- **GitHub and Slack access** ([`docs/access.md`](docs/access.md)):
+  - a project lists its repositories and channels.
+  - every expert with a confirmed seat is granted them.
+  - access is revoked when the seat, the project or the expert's verification
+    ends.
+
+  This is enforced by reconciliation every minute. A revoke that cannot be
+  completed is a high-severity alert, never a silent success. It is simulated
+  until `GITHUB_ADMIN_TOKEN` or `SLACK_BOT_TOKEN` is set.
+
 ### Not implemented (future integrations)
 
 The original build shipped two job types that reported success while doing

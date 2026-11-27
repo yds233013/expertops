@@ -29,6 +29,8 @@ import { queueExpertMessage } from '@/server/services/contact-preferences';
 import { buildReplacementBatch } from '@/server/services/outreach';
 import { draftPaymentFromApprovedWork } from '@/server/services/payments';
 import { runTaskCheck } from '@/server/services/task-quality';
+import { runScreeningCheck } from '@/server/services/screening-checks';
+import { reconcileAccess } from '@/server/services/access';
 import { postAttentionToSlack } from '@/server/integrations/slack';
 import { issuePortalToken } from '@/server/services/portal-access';
 import { expireOverdueScreenings } from '@/server/services/screening';
@@ -970,6 +972,17 @@ export const HANDLERS: Record<JobType, JobHandler> = {
     return runTaskCheck(ctx.db, submissionId, { now: ctx.now });
   },
 
+  /**
+   * A screening was submitted: score it, look up what it cites, and flag
+   * anything a reviewer should look at twice. Reads only, like
+   * `work.check_task`, so a rollback costs the calls and nothing else.
+   */
+  'screening.check_submission': async (payload, ctx) => {
+    const schema = z.object({ submissionId: z.string().min(1) });
+    const { submissionId } = parse(schema, payload, 'screening.check_submission');
+    return runScreeningCheck(ctx.db, submissionId, { now: ctx.now });
+  },
+
   /** Flag work that is past its due date and still not submitted. */
   'work.remind_overdue': async (_payload, ctx) => {
     const overdue = await ctx.db.workItem.findMany({
@@ -1147,6 +1160,15 @@ export const HANDLERS: Record<JobType, JobHandler> = {
     const result = await openProjectOffboarding(ctx.db, SYSTEM_ACTOR, projectId);
     return { opened: true, ...result };
   },
+
+  /**
+   * Make GitHub and Slack access match who is staffed. Level-triggered: it
+   * compares desired with granted every run, so a missed trigger only delays a
+   * change. See `src/server/services/access.ts`.
+   */
+  'access.reconcile': async (_payload, ctx) => ({
+    ...(await reconcileAccess(ctx.db, { now: ctx.now })),
+  }),
 
   /** The periodic sweep that keeps the attention queue honest. */
   'attention.sweep': async (_payload, ctx) => {

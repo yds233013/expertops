@@ -14,6 +14,7 @@ import {
 } from '@/server/email/templates';
 import { type Actor, recordActivity } from './activity';
 import { enqueueJob } from './jobs';
+import { triggerAccessReconcile } from './access';
 import { declaredHoursForProject } from './availability';
 import { queueExpertMessage } from './contact-preferences';
 import { advanceProjectStatus } from './projects';
@@ -308,6 +309,7 @@ export async function confirmAssignment(
     };
   });
 
+  await triggerAccessReconcile(client);
   await enqueueJob(client, {
     type: 'staffing.project_start_tasks',
     payload: { assignmentId },
@@ -449,6 +451,9 @@ export async function releaseAssignmentWithin(
     });
   }
 
+  // Access to client systems goes with the seat.
+  await triggerAccessReconcile(tx, now);
+
   const released = await tx.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
   return { assignment: released, seatsFilled };
 }
@@ -478,6 +483,7 @@ export async function completeAssignment(
     action: 'assignment.completed',
     summary: `${assignment.expert.fullName} completed their engagement on ${assignment.project.code}`,
   });
+  await triggerAccessReconcile(db);
   return updated;
 }
 

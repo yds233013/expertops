@@ -157,6 +157,11 @@ model Expert {
   /// Stripe's `requirements.currently_due`, so an operator sees what is missing.
   payoutRequirementsDue  Json              @default("[]")
   payoutStatusUpdatedAt  DateTime?
+  /// GitHub login used for repository access. Set by the expert or an operator.
+  githubUsername         String?
+  /// Slack member id, resolved from the email address the first time access is
+  /// granted, so a later email change cannot point a revoke at someone else.
+  slackUserId            String?
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
@@ -182,6 +187,7 @@ model Expert {
   paymentItems       PaymentItem[]
   offboardingTasks   OffboardingTask[]
   taskChecks         TaskCheck[]
+  accessGrants       AccessGrant[]
 
   @@index([status])
   @@index([status, hourlyRateCents])
@@ -316,6 +322,8 @@ model Project {
   paymentItems              PaymentItem[]
   offboardingTasks          OffboardingTask[]
   taskChecks                TaskCheck[]
+  accessResources           ProjectAccessResource[]
+  accessGrants              AccessGrant[]
 
   @@index([status])
   @@index([createdById])
@@ -536,6 +544,7 @@ model Assignment {
   // Extension back-relations
   workItems        WorkItem[]
   offboardingTasks OffboardingTask[]
+  accessGrants     AccessGrant[]
 
   @@unique([projectId, expertId])
   @@index([projectId, status])
@@ -1249,6 +1258,7 @@ model Screening {
   conflict       ReviewConflict?
   qualification  Qualification?
   attentionItems AttentionItem[]
+  checks         ScreeningCheck[]
 
   @@index([status, reviewDueAt])
   @@index([candidateId])
@@ -1260,7 +1270,9 @@ model ScreeningSubmission {
   revision        Int
   /// Answers keyed by criterion key.
   answers         Json     @default("{}")
-  /// Synthetic links, stored as text. Never fetched by the application.
+  /// Stored as text and never fetched. Evidence checks parse a GitHub login or
+  /// repository out of a link and query the GitHub API for it; the link itself
+  /// is never requested, so a submitted URL cannot make the server call it.
   workSampleLinks Json     @default("[]")
   note            String   @default("")
   /// False when required evidence is missing, which is how an incomplete
@@ -1271,6 +1283,7 @@ model ScreeningSubmission {
 
   screening Screening         @relation(fields: [screeningId], references: [id], onDelete: Cascade)
   reviews   ScreeningReview[]
+  check     ScreeningCheck?
 
   @@unique([screeningId, revision])
 }
@@ -2051,4 +2064,145 @@ model WebhookEvent {
 
   @@unique([provider, eventId])
   @@index([provider, receivedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Screening checks
+// ---------------------------------------------------------------------------
+
+enum ScreeningCheckStatus {
+  PENDING
+  COMPLETE
+  FAILED
+}
+
+/// Automated evidence about one screening submission.
+///
+/// Advisory, every field of it. Nothing here moves a screening, rejects a
+/// candidate or feeds a decision automatically: a reviewer reads it next to the
+/// submission. Suggested scores are withheld from a reviewer until that
+/// reviewer has submitted their own, so the model cannot anchor them.
+model ScreeningCheck {
+  id              String               @id @default(cuid())
+  screeningId     String
+  submissionId    String               @unique
+  status          ScreeningCheckStatus @default(PENDING)
+  scorerProvider  String               @default("simulated")
+  scorerModel     String               @default("")
+  /// [{ key, label, score, maxScore, weight, rationale, quote, quoteFound }]
+  suggestedScores Json                 @default("[]")
+  suggestedTotal  Int?
+  maxTotal        Int?
+  /// Total at or over the rubric threshold, and every gating criterion at
+  /// least half marks. A suggestion, labelled as one.
+  suggestedPass   Boolean?
+  summary         String               @default("")
+  /// "live" or "simulated": whether evidence lookups reached the real APIs.
+  evidenceMode    String               @default("simulated")
+  /// [{ kind, subject, status, detail, url }]
+  evidence        Json                 @default("[]")
+  /// [{ code, severity, detail, relatedReference }]
+  flags           Json                 @default("[]")
+  inputTokens     Int                  @default(0)
+  outputTokens    Int                  @default(0)
+  costMicros      Int?
+  error           String?
+  checkedAt       DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  screening  Screening           @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  submission ScreeningSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([screeningId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Access to client systems
+// ---------------------------------------------------------------------------
+
+enum AccessSystem {
+  GITHUB
+  SLACK
+}
+
+/// A client system an expert on this project should be able to reach: one
+/// GitHub repository or one Slack channel.
+model ProjectAccessResource {
+  id          String       @id @default(cuid())
+  projectId   String
+  system      AccessSystem
+  /// "owner/repo" for GitHub, a channel id (C0123...) for Slack.
+  resource    String
+  label       String       @default("")
+  /// GitHub permission: pull, triage, push, maintain. Ignored for Slack.
+  permission  String       @default("push")
+  createdById String?
+  createdAt   DateTime     @default(now())
+  /// Set when removed. Grants on a removed resource are revoked, then the row
+  /// stays so the history of who had access still resolves.
+  removedAt   DateTime?
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  grants  AccessGrant[]
+
+  @@unique([projectId, system, resource])
+  @@index([projectId, removedAt])
+}
+
+enum AccessGrantStatus {
+  /// Access is wanted and has not been granted yet.
+  PENDING
+  ACTIVE
+  /// Access must be removed and has not been yet.
+  REVOKING
+  REVOKED
+  /// Granting stopped and needs a person (missing username, not in workspace,
+  /// token lacks rights). Nothing was granted.
+  GRANT_FAILED
+  /// Removing failed. The expert may still have access: always urgent.
+  REVOKE_FAILED
+}
+
+/// One expert's access to one resource, and its full lifecycle.
+///
+/// Rows are driven by reconciliation, not by events: the worker compares who
+/// should have access (a CONFIRMED seat on an open project, held by a VERIFIED
+/// expert) with what was granted, and closes the gap in both directions. A
+/// missed event therefore delays a change by one sweep, never loses it.
+model AccessGrant {
+  id                String            @id @default(cuid())
+  resourceId        String
+  projectId         String
+  expertId          String
+  assignmentId      String?
+  system            AccessSystem
+  status            AccessGrantStatus @default(PENDING)
+  /// The GitHub login or Slack member id the grant was made to. A revoke always
+  /// uses this, never the expert's current value.
+  subject           String?
+  /// "live" or "simulated": which provider performed the last change.
+  provider          String            @default("simulated")
+  /// GitHub repository invitation id while the invitation is unaccepted.
+  invitationId      String?
+  invitationPending Boolean           @default(false)
+  attempts          Int               @default(0)
+  lastError         String?
+  revokeReason      String?
+  grantedAt         DateTime?
+  revokedAt         DateTime?
+  lastVerifiedAt    DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  resource   ProjectAccessResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  project    Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expert     Expert                @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  assignment Assignment?           @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+
+  @@unique([resourceId, expertId])
+  @@index([status])
+  @@index([projectId, expertId])
+  @@index([expertId, status])
 }
