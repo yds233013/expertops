@@ -5,6 +5,8 @@ import { formatDate, formatDateTime, formatRelative } from '@/lib/time';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { listActivity } from '@/server/services/activity';
+import { listProjectAccess } from '@/server/services/access';
+import { GITHUB_PERMISSIONS } from '@/server/integrations/access-providers';
 import { getProject } from '@/server/services/projects';
 import { listStaffingCandidates } from '@/server/services/staffing';
 import { SimulatedDeliveryBadge } from '@/components/delivery-note';
@@ -14,6 +16,7 @@ import { ExpertSearchInvite } from '@/components/expert-search-invite';
 import { ProposeForm } from '@/components/propose-form';
 import { WithdrawButton } from '@/components/withdraw-button';
 import { ActivityList } from '@/components/activity-list';
+import { ProjectAccessSection } from '@/components/project-access';
 import {
   Badge,
   Card,
@@ -49,10 +52,20 @@ export default async function ProjectDetailPage({
   const operator = await requireOperator();
   const { projectId } = await params;
   const project = await getProject(prisma, projectId);
-  const [activity, staffingCandidates] = await Promise.all([
+  const canReadAccess = roleHasCapability(operator.role, 'access:read');
+  const [activity, staffingCandidates, access] = await Promise.all([
     listActivity(prisma, { projectId, limit: 60 }),
     listStaffingCandidates(prisma, projectId),
+    canReadAccess ? listProjectAccess(prisma, project.id) : null,
   ]);
+  const accessProblems =
+    access?.resources.reduce(
+      (sum, resource) =>
+        sum +
+        resource.grants.filter((g) => g.status === 'GRANT_FAILED' || g.status === 'REVOKE_FAILED')
+          .length,
+      0,
+    ) ?? 0;
 
   const canMatch = roleHasCapability(operator.role, 'matching:run');
   const canInvite = roleHasCapability(operator.role, 'invitation:send');
@@ -209,6 +222,18 @@ export default async function ProjectDetailPage({
         <a href="#staffing">
           Staffing <span className="section-nav-count">{staffingCandidates.length}</span>
         </a>
+        {access && (
+          <a href="#access">
+            Access{' '}
+            {accessProblems > 0 ? (
+              <span className="section-nav-count">{accessProblems} failed</span>
+            ) : (
+              <span className="section-nav-count">
+                {access.resources.filter((resource) => !resource.removedAt).length}
+              </span>
+            )}
+          </a>
+        )}
         <a href="#history">History</a>
       </nav>
 
@@ -531,6 +556,17 @@ export default async function ProjectDetailPage({
           )}
         </Card>
       </div>
+
+      {access && (
+        <div id="access" className="scroll-mt-28">
+          <ProjectAccessSection
+            projectId={project.id}
+            access={access}
+            canManage={roleHasCapability(operator.role, 'access:manage')}
+            permissions={GITHUB_PERMISSIONS}
+          />
+        </div>
+      )}
 
       <div id="history" className="scroll-mt-28">
         <Card

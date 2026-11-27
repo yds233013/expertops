@@ -6,6 +6,7 @@ import { roleHasCapability } from '@/server/auth/permissions';
 import { requireOperator } from '@/server/http/context';
 import { listActivity } from '@/server/services/activity';
 import { getExpert } from '@/server/services/experts';
+import { listExpertAccess } from '@/server/services/access';
 import { CONTACT_PREFERENCE_LABEL } from '@/server/services/contact-preferences';
 import { ExpertProfileEditor } from '@/components/expert-profile-editor';
 import { ExpertSkillsEditor } from '@/components/expert-skills-editor';
@@ -14,6 +15,7 @@ import { VerifyPanel } from '@/components/verify-panel';
 import { SimulatedDeliveryBadge } from '@/components/delivery-note';
 import { ActivityList } from '@/components/activity-list';
 import { ExpertPayoutPanel } from '@/components/payout-status';
+import { ExpertAccessCard } from '@/components/expert-access';
 import {
   Badge,
   Card,
@@ -36,7 +38,11 @@ export default async function ExpertDetailPage({
   const operator = await requireOperator();
   const { expertId } = await params;
   const expert = await getExpert(prisma, expertId);
-  const activity = await listActivity(prisma, { expertId, limit: 40 });
+  const canReadAccess = roleHasCapability(operator.role, 'access:read');
+  const [activity, accessGrants] = await Promise.all([
+    listActivity(prisma, { expertId, limit: 40 }),
+    canReadAccess ? listExpertAccess(prisma, expert.id) : [],
+  ]);
 
   const canVerify = roleHasCapability(operator.role, 'onboarding:verify');
   // Gate on the capability the route actually checks, not on a neighbouring one.
@@ -353,6 +359,15 @@ export default async function ExpertDetailPage({
           </Card>
 
           <ExpertPayoutPanel expert={expert} />
+
+          {canReadAccess && (
+            <ExpertAccessCard
+              expertId={expert.id}
+              githubUsername={expert.githubUsername}
+              grants={accessGrants}
+              canManage={roleHasCapability(operator.role, 'access:manage')}
+            />
+          )}
 
           {canIssuePortalLink && (
             <Card

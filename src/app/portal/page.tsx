@@ -4,6 +4,7 @@ import { formatDate, formatDateTime, formatRelative } from '@/lib/time';
 import Link from 'next/link';
 import { PORTAL_COOKIE, currentExpert, hasCookie } from '@/server/http/context';
 import { listAvailability } from '@/server/services/availability';
+import { listExpertAccess } from '@/server/services/access';
 import { listInvitationsForExpert } from '@/server/services/invitations';
 import { listExpertCommitments } from '@/server/services/staffing-gaps';
 import { listSupportForExpert } from '@/server/services/support';
@@ -17,6 +18,7 @@ import { SupportPanel } from '@/components/portal/support-panel';
 import { WithdrawalPanel } from '@/components/portal/withdrawal-panel';
 import { WorkPanel } from '@/components/portal/work-panel';
 import { PayoutsPanel } from '@/components/portal/payouts-panel';
+import { AccessPanel } from '@/components/portal/access-panel';
 import { payoutRequirements, payoutState } from '@/lib/payout-requirements';
 import { Badge, Card, FieldRow, NextAction, StatusBadge } from '@/components/ui';
 
@@ -66,18 +68,26 @@ export default async function PortalHome({
     );
   }
 
-  const [invitations, availability, onboardingCase, supportThreads, workItems, commitments] =
-    await Promise.all([
-      listInvitationsForExpert(prisma, expert.id),
-      listAvailability(prisma, expert.id),
-      prisma.onboardingCase.findUnique({
-        where: { expertId: expert.id },
-        include: { items: { orderBy: { position: 'asc' } } },
-      }),
-      listSupportForExpert(prisma, expert.id),
-      listWorkItemsForExpert(prisma, expert.id),
-      listExpertCommitments(prisma, expert.id),
-    ]);
+  const [
+    invitations,
+    availability,
+    onboardingCase,
+    supportThreads,
+    workItems,
+    commitments,
+    accessGrants,
+  ] = await Promise.all([
+    listInvitationsForExpert(prisma, expert.id),
+    listAvailability(prisma, expert.id),
+    prisma.onboardingCase.findUnique({
+      where: { expertId: expert.id },
+      include: { items: { orderBy: { position: 'asc' } } },
+    }),
+    listSupportForExpert(prisma, expert.id),
+    listWorkItemsForExpert(prisma, expert.id),
+    listExpertCommitments(prisma, expert.id),
+    listExpertAccess(prisma, expert.id),
+  ]);
 
   const payoutsParam = (await searchParams).payouts;
   const notice = payoutsParam === 'returned' || payoutsParam === 'expired' ? payoutsParam : null;
@@ -156,6 +166,7 @@ export default async function PortalHome({
           )}
         </a>
         <a href="#payouts">Get paid</a>
+        <a href="#access">Access</a>
         <a href="#availability">Availability</a>
         <a href="#support">Support</a>
         <a href="#settings">Profile and contact</a>
@@ -284,6 +295,24 @@ export default async function PortalHome({
       </div>
 
       {!notice && payouts}
+
+      <div id="access" className="scroll-mt-16">
+        <AccessPanel
+          githubUsername={expert.githubUsername}
+          items={accessGrants.map((grant) => ({
+            id: grant.id,
+            system: grant.system,
+            name:
+              grant.resource.system === 'GITHUB'
+                ? grant.resource.resource
+                : grant.resource.label || 'Slack channel',
+            projectCode: grant.project.code,
+            status: grant.status,
+            invitationPending: grant.invitationPending,
+            simulated: grant.provider === 'simulated',
+          }))}
+        />
+      </div>
 
       <div id="availability" className="scroll-mt-16">
         <AvailabilityPanel

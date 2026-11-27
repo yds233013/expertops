@@ -4,8 +4,11 @@ import { formatDateTime, formatRelative } from '@/lib/time';
 import { requireOperator } from '@/server/http/context';
 import { roleHasCapability } from '@/server/auth/permissions';
 import { listScreenings } from '@/server/services/screening';
+import { viewCheckFor } from '@/server/services/screening-checks';
+import { readFlags } from '@/lib/screening-check-format';
 import { AssignReviewerPanel, ReviewForm } from '@/components/review-form';
 import { ScreeningDecisionPanel } from '@/components/screening-decision-panel';
+import { ScreeningCheckPanel, type RelatedScreening } from '@/components/screening-check-panel';
 import { Badge, Card, EmptyState, StatusBadge, PageHeader } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +40,39 @@ export default async function ScreeningsPage({
     select: { id: true, name: true },
     orderBy: { name: 'asc' },
   });
+
+  // The automated check on each latest submission, shaped for this viewer:
+  // an assigned reviewer who has not scored yet does not see the suggestions.
+  const latestSubmissionIds = screenings.flatMap((screening) =>
+    screening.submissions[0] ? [screening.submissions[0].id] : [],
+  );
+  const checkRows = latestSubmissionIds.length
+    ? await prisma.screeningCheck.findMany({ where: { submissionId: { in: latestSubmissionIds } } })
+    : [];
+  const checkBySubmission = new Map(checkRows.map((row) => [row.submissionId, row]));
+
+  // Flags that point at another screening link to that candidate.
+  const relatedReferences = [
+    ...new Set(
+      checkRows.flatMap((row) =>
+        readFlags(row.flags).flatMap((flag) =>
+          flag.relatedReference ? [flag.relatedReference] : [],
+        ),
+      ),
+    ),
+  ];
+  const relatedRows = relatedReferences.length
+    ? await prisma.screening.findMany({
+        where: { reference: { in: relatedReferences } },
+        select: { reference: true, candidate: { select: { id: true, fullName: true } } },
+      })
+    : [];
+  const related: Record<string, RelatedScreening> = Object.fromEntries(
+    relatedRows.map((row) => [
+      row.reference,
+      { candidateId: row.candidate.id, candidateName: row.candidate.fullName },
+    ]),
+  );
 
   const canReview = roleHasCapability(operator.role, 'screening:review');
   const canWrite = roleHasCapability(operator.role, 'screening:write');
@@ -87,6 +123,8 @@ export default async function ScreeningsPage({
           );
           const answers = (submission?.answers ?? {}) as Record<string, string>;
           const links = (submission?.workSampleLinks ?? []) as string[];
+          const checkRow = submission ? checkBySubmission.get(submission.id) : undefined;
+          const check = checkRow ? viewCheckFor(checkRow, screening.reviews, operator.id) : null;
 
           return (
             <Card
@@ -156,6 +194,15 @@ export default async function ScreeningsPage({
                     {submission.note && (
                       <p className="mt-2 text-sm text-ink-700">{submission.note}</p>
                     )}
+                    <div className="mt-3">
+                      <ScreeningCheckPanel
+                        screeningId={screening.id}
+                        check={check}
+                        passThreshold={screening.rubricVersion.passThreshold}
+                        related={related}
+                        canRecheck={canWrite && screening.status !== 'WITHDRAWN'}
+                      />
+                    </div>
                   </section>
                 ) : (
                   <EmptyState title="Nothing submitted yet" />

@@ -114,6 +114,12 @@ const STATUS_TONES: Record<string, Tone> = {
   VOID: 'muted',
   DISPATCHED: 'success',
   PARTIALLY_DISPATCHED: 'warning',
+  // Access to client systems. A failed revoke means someone may still have
+  // access, so it is the one that is red.
+  REVOKING: 'info',
+  REVOKED: 'muted',
+  GRANT_FAILED: 'warning',
+  REVOKE_FAILED: 'danger',
   // Actors, on history rows
   OPERATOR: 'neutral',
   EXPERT: 'info',

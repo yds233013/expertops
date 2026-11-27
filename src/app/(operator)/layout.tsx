@@ -2,12 +2,12 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { environmentLabel } from '@/lib/env';
-import { capabilitiesFor } from '@/server/auth/permissions';
+import { capabilitiesFor, roleHasCapability, type Capability } from '@/server/auth/permissions';
 import { workloadQueues } from '@/server/services/workload';
 import { emailConfig } from '@/server/email/provider';
 import { stripeConfig } from '@/server/integrations/stripe';
 import { currentOperator } from '@/server/http/context';
-import { OperatorNav, type NavGroup } from '@/components/operator-nav';
+import { OperatorNav, type NavGroup, type NavItem } from '@/components/operator-nav';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Badge, SampleDataBadge } from '@/components/ui';
 
@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
  * people come from, how they get onto a project, what they deliver, and the
  * machinery underneath.
  */
-const NAV_GROUPS: NavGroup[] = [
+const NAV_GROUPS: { heading: string; items: (NavItem & { capability?: Capability })[] }[] = [
   {
     heading: 'Today',
     items: [
@@ -53,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/quality', label: 'Task quality' },
       { href: '/support', label: 'Support' },
       { href: '/payments', label: 'Payments' },
+      { href: '/access', label: 'Access', capability: 'access:read' },
     ],
   },
   {
@@ -79,6 +80,14 @@ export default async function OperatorLayout({ children }: { children: React.Rea
 
   // Badges show work waiting on a person, not raw record counts, and come from
   // the same service as the dashboard's queue so the two cannot disagree.
+  // A destination the role cannot open is left out rather than shown and refused.
+  const navGroups: NavGroup[] = NAV_GROUPS.map((group) => ({
+    heading: group.heading,
+    items: group.items
+      .filter((item) => !item.capability || roleHasCapability(operator.role, item.capability))
+      .map(({ href, label }) => ({ href, label })),
+  }));
+
   const { queues } = await workloadQueues(prisma);
   const badges: Record<string, number> = Object.fromEntries(
     queues.map((queue) => [queue.href, queue.count]),
@@ -123,7 +132,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
             </span>
           </Link>
           <div className="lg:mt-5">
-            <OperatorNav groups={NAV_GROUPS} badges={badges} total={waitingTotal} />
+            <OperatorNav groups={navGroups} badges={badges} total={waitingTotal} />
           </div>
           {/* Sits under the last section rather than above the first: the rail
               is for navigating, and this is a standing caveat, not a control. */}
